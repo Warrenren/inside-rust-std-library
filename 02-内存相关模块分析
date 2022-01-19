@@ -1,0 +1,618 @@
+# RUST标准库内存相关模块实现探秘
+对RUST标准库内存相关模块的理解，是理解整个RUST编程的关键和基础。理解了RUST标准库内存相关模块的代码，那就理解了整个RUST的理念。所以，本书首先来对RUST的内存操作库进行分析。
+RUST内存相关主要包括：从内存角度看RUST类型，内存分配与释放，内存拷贝，置值，内存地址操作等。
+
+## RUST类型系统的内存布局 
+每一个类型的内存布局是编程语言的类型系统的关键任务。RUST语言提供了程序员自定义内存管理算法的机制(例如自定义实现jemalloc内存管理算法)，而内存管理算法与类型内存布局（类型内存大小及内存对齐大小）紧密相关，RUST设计的特点（例如泛型，Trait对象，闭包) 又导致其无法象C语言一样遵循一个固定的内存布局规则，所以需要对类型的内存布局有特殊的关注。内存布局的数据结构如下：
+```rust
+pub struct Layout {
+    // size of the requested block of memory, measured in bytes.
+    // 类型需占用的内存大小，用字节数目表示
+    size_: usize,
+    //  按照此字节数目进行类型内存对齐， NonZeroUsize见代码后面文字分析
+    align_: NonZeroUsize,
+}
+```
+*`NonZeroUsize`是一种非0值的usize, 这种类型主要应用于不可取0的值，本结构中， 字节对齐属性变量不能被置0，所以用`NonZeroUsize`来确保安全性。如果用usize类型，那代码中就可能会把0置给align_，导致bug产生。由此可发现RUST的一个设计规则，所有的限制要在类型定义即显性化，从而使bug在编译中就被发现。*
+
+每一个RUST的类型都有自身独特的内存布局Layout，这个Layout一般RUST可以自动生成。可以用 `#[repr(C)]`来指定类型采用与C语言相同的内存布局。
+RUST对类型内存布局因为编译优化和泛型的关系，没有确定的规则。
+具体的RUST的内存布局阐述请参考[RUST内存布局](https://doc.rust-lang.org/nomicon/data.html)，
+内存布局是一个C/C++程序员熟悉到不必关注，其他语言程序员不重视的极其重要的概念。
+### `repr(transparent)`
+repr(transparent)用于仅包含一个成员变量的类型，该类型的内存布局与成员变量类型的内存布局完全一致。类型仅仅具备编译阶段的意义，在运行时，类型变量与其成员变量可以认为是一个相同变量，可以相互无障碍类型转换。使用repr(transparent)布局的类型基本是一种封装结构。
+### `repr(packed)`
+强制类型成员变量以1字节对齐，此种结构在协议分析和结构化二进制数据文件中经常使用
+### `repr(RUST)`
+默认的布局方式，采用此种布局，RUST编译器会根据情况来自行优化内存
+
+## 所有权转移的底层实现
+所有权的转移实际上是两步：1.栈上内存的浅拷贝；2：原先的变量置标志表示所有权已转移。置标志的变量如果没有重新绑定其他变量，则在生命周期结束的时候被drop。 引用及指针自身也是一个isize的值变量，也有所有权，也具备生命周期。
+
+## RUST内存的类型与函数库体系
+### intrinsic 固有内存函数库
+intrinsics函数由编译器内置实现，并提供给其他模块使用，对于固有函数，没必要去关注如何实现，重要的是了解其功能和如何使用，intrinsics内存函数一般不由库以外的代码直接调用，内存相关函数由mem模块和ptr模块封装后再提供给其他模块。
+
+`intrinsics::drop_in_place<T:Sized?>(to_drop: * mut T)` 在编译器无法自动drop时， 手工调用此函数将内存释放
+`intrinsics::forget<T:Sized?> (_:T)`, 通知编译器不回收forget的变量内存
+`intrinsics::needs_drop<T>()`, 判断T类型是否需要做drop操作，实现了Copy Trait的类型会返回false
+`intrinsics::transmute<T,U>(e:T)->U`, 对于内存布局相同的类型 T和U, 完成将类型T变量转换为类型U变量
+`intrinsics::offset<T>(dst: *const T, offset: usize)->* const T`, 相当于C的类型指针加减计算
+`intrinsics::copy<T>(src:*const T, dst: *mut T, count:usize)`, 内存拷贝， src和dst内存可重叠， 类似c语言中的memmove
+`intrinsics::copy_no_overlapping<T>(src:*const T, dst: * mut T, count:usize)`, 内存拷贝， src和dst内存不重叠
+`intrinsics::write_bytes(dst: *mut T, val:u8, count:usize)` , C语言的memset的RUST实现
+`intrinsics::size_of<T>()` 类型内存空间大小
+`intrinsics::min_align_of<T>()` 返回类型对齐字节
+`intrinsics::size_of_val<T>(_:*const T)`返回指针指向的变量内存空间大小
+`intrinsics::min_align_of_val<T>(_: * const T) `
+`intrinsics::volatile_xxxx` 通知编译器不做内存优化的操作函数,一般用于硬件访问
+`intrinsics::volatile_copy_nonoverlapping_memory<T>(dst: *mut T, src: *const T, count: usize)` 不做优化的内存拷贝
+`intrinsics::volatile_copy_memory<T>(dst: *mut T, src: *const T, count: usize)`; 不做优化的memmove实现
+`intrinsics::volatile_set_memory<T>(dst: *mut T, val: u8, count: usize)`;  不做优化的类似memset实现
+`intrinsics::volatile_load<T>(src: *const T) -> T`;不做优化的读取内存或寄存器
+`intrinsics::volatile_store<T>(dst: *mut T, val: T)`;不做优化的内存或寄存器写入
+`intrinsics::unaligned_volatile_load<T>(src: *const T) -> T`; 不做优化的字节非对齐载入
+`intrinsics::unaligned_volatile_store<T>(dst: *mut T, val: T)`;不做优化的字节非对齐写入
+`intrinsics::raw_eq<T>(a: &T, b: &T) -> bool`;内存比较，类似C语言memcmp
+
+### RUST内存申请与释放接口
+对于操作系统内核，内存管理模块就是核心任务之一；对于用户空间的程序，语言标准库往往在操作系统内存管理系统调用之上再实现一套内存管理算法系统以便提高效率。例如C语言的库往往会内部固定实现一种内存管理模块，然后提供malloc, free等库函数。
+RUST语言库因为要兼容内核与用户空间程序，所以给出了能够兼容两者的方案，并额外增加了扩展性。即定义内存管理模块的Trait，但库本身不把内存管理的实现固定化，程序员如果对库的具体实现不满意，可以自行编写内存管理模块并实现规定的Trait，即可被RUST的整个库体系的其他模块所使用。
+内存管理Trait定义如下:
+```rust
+pub unsafe trait GlobalAlloc {
+    unsafe fn alloc(&self, layout: Layout) -> *mut u8;
+    unsafe fn dealloc(&self, ptr: *mut u8, layout: Layout);
+    unsafe fn alloc_zeroed(&self, layout: Layout) -> *mut u8 {
+        let size = layout.size();
+        let ptr = unsafe { self.alloc(layout) };
+        if !ptr.is_null() {
+            //ptr::write_bytes 函数后文有说明
+            unsafe { ptr::write_bytes(ptr, 0, size) };
+        }
+        ptr
+    }
+```
+以上是RUST堆内存(动态内存)申请与释放Trait。在内核编程或大的系统架构编程中，编程人员可以自行设计动态内存管理模块，模块实现GlobalAlloc Trait并添加#[global_allocator]标识。对于用户态程序，RUST标准库有默认的GlobalAlloc实现。
+从代码中可以看到，GlobalAlloc申请返回* mut u8原始指针。此原始指针还要经过Allocator Trait处理之后，才能够被转换为接下来的RUST内存相关模块使用。
+```rust
+pub unsafe trait Allocator {
+    fn allocate(&self, layout: Layout) -> Result<NonNull<[u8]>, AllocError>;
+
+    fn allocate_zeroed(&self, layout: Layout) -> Result<NonNull<[u8]>, AllocError> {
+        let ptr = self.allocate(layout)?;
+        // 下面的函数后文会有说明
+        unsafe { ptr.as_non_null_ptr().as_ptr().write_bytes(0, ptr.len()) }
+        Ok(ptr)
+    }
+
+    unsafe fn deallocate(&self, ptr: NonNull<u8>, layout: Layout);
+
+    ...
+}
+```
+Allocator使用GlobalAlloc Trait获取内存，然后将申请到的* mut u8转换为确定大小的单一指针NonNull<[u8]>， 并处理申请内存可能出现的不成功。NonNull<[u8]>此时已经可以随时转化为真正需要的类型指针并进一步转化为相关类型的引用，从而符合RUST类型系统安全原则并被后继代码所使用。
+Global 实现了 Allocator Trait。Rust大部分core库，alloc库数据结构的实现使用Global作为Allocator。
+```rust
+unsafe impl Allocator for Global {
+    fn allocate(&self, layout: Layout) -> Result<NonNull<[u8]>, AllocError> {
+        self.alloc_impl(layout, false)
+    }
+
+    fn allocate_zeroed(&self, layout: Layout) -> Result<NonNull<[u8]>, AllocError> {
+        self.alloc_impl(layout, true)
+    }
+
+    unsafe fn deallocate(&self, ptr: NonNull<u8>, layout: Layout) {
+        if layout.size() != 0 {
+            unsafe { dealloc(ptr.as_ptr(), layout) }
+        }
+    }
+    ...
+    ...
+}
+impl Global {
+    fn alloc_impl(&self, layout: Layout, zeroed: bool) -> Result<NonNull<[u8]>, AllocError> {
+        match layout.size() {
+            0 => Ok(NonNull::slice_from_raw_parts(layout.dangling(), 0)),
+            size => unsafe {
+                let raw_ptr = if zeroed { alloc_zeroed(layout) } else { alloc(layout) };
+                let ptr = NonNull::new(raw_ptr).ok_or(AllocError)?;
+                Ok(NonNull::slice_from_raw_parts(ptr, size))
+            },
+        }
+    }
+    ...
+    ...
+}
+
+pub unsafe fn alloc(layout: Layout) -> *mut u8 {
+    unsafe { __rust_alloc(layout.size(), layout.align()) }
+}
+
+```
+`__rust_alloc`实际上会转化为`GlobalAlloc::alloc`的调用。`NonNull<[T]>`相关代码在后继还会有专节说明。
+
+### ptr模块初探
+ptr是RUST的指针实现。相比于C指针内存地址的简单，RUST指针实现机制复杂的多，以满足实现内存安全的类型系统需求，并兼顾内存使用效率和方便性。对内存的操作需要对ptr的若干概念先做一个理解，本节主要基于intrinsics模块的基础对ptr的一些类型结构及函数做出分析，为下节的内存类型和函数库做一个基础, 本文的ptr主要为`*const T`和`*mut T`。 
+
+#### RUST指针具体实现
+RUST的原生指针类型(`*const T/*mut T`)可以认为由两个部分组成，第一个部分是一个内存地址，第二个部分对这个内存地址的限制性描述-元数据
+元数据的规则:
+* 对于固定大小类型的指针（实现了 `Sized` Trait）, RUST定义为廋指针(thin pointer)，元数据大小为0，类型为(),这里要注意，RUST中数组也是固定大小的类型，运行中对数组下标合法性的检测，就是比较是否已经越过了数组的内存大小。
+* 对于动态大小类型的指针(DST 类型)，RUST定义为胖指针(fat pointer 或 wide pointer), 元数据为：  
+    * 对于结构类型，如果最后一个成员是动态大小类型(结构的其他成员不允许为动态大小类型)，则元数据为此动态大小类型的元数据  
+    * 对于`str`类型, 元数据是按字节计算的长度值，元数据类型是usize  
+    * 对于切片类型，例如`[T]`类型，元数据是数组元素的数目值，元数据类型是usize   
+    * 对于trait对象，例如 dyn SomeTrait， 元数据是 [DynMetadata<Self>][DynMetadata]（后面代码解释）
+    （例如：`DynMetadata<dyn SomeTrait>`)
+随着RUST的发展，有可能会根据需要引入新的元数据种类。
+
+给出具体的实现代码：
+```rust
+pub trait Pointee {
+    /// The type for metadata in pointers and references to `Self`.
+    type Metadata: Copy + Send + Sync + Ord + Hash + Unpin;
+}
+```
+从Pointee的定义可以看到一个RUST的编程技巧，即**Trait可以只用来实现对关联类型的指定**，Pointee这一Trait即只用来指定Metadata的类型。但在标准库当中没有其他类型如何实现此Trait的代码，推测编译器针对每个类型自动的实现了Pointee。
+如下为rust编译器代码的一个摘录
+```rust
+    pub fn ptr_metadata_ty(&'tcx self, tcx: TyCtxt<'tcx>) -> Ty<'tcx> {
+        // FIXME: should this normalize?
+        let tail = tcx.struct_tail_without_normalization(self);
+        match tail.kind() {
+            // Sized types
+            ty::Infer(ty::IntVar(_) | ty::FloatVar(_))
+            | ty::Uint(_)
+            | ty::Int(_)
+            | ty::Bool
+            | ty::Float(_)
+            | ty::FnDef(..)
+            | ty::FnPtr(_)
+            | ty::RawPtr(..)
+            | ty::Char
+            | ty::Ref(..)
+            | ty::Generator(..)
+            | ty::GeneratorWitness(..)
+            | ty::Array(..)
+            | ty::Closure(..)
+            | ty::Never
+            | ty::Error(_)
+            | ty::Foreign(..)
+            // If returned by `struct_tail_without_normalization` this is a unit struct
+            // without any fields, or not a struct, and therefore is Sized.
+            | ty::Adt(..)
+            // If returned by `struct_tail_without_normalization` this is the empty tuple,
+            // a.k.a. unit type, which is Sized
+            | ty::Tuple(..) => tcx.types.unit,
+
+            ty::Str | ty::Slice(_) => tcx.types.usize,
+            ty::Dynamic(..) => {
+                let dyn_metadata = tcx.lang_items().dyn_metadata().unwrap();
+                tcx.type_of(dyn_metadata).subst(tcx, &[tail.into()])
+            },
+
+            ty::Projection(_)
+            | ty::Param(_)
+            | ty::Opaque(..)
+            | ty::Infer(ty::TyVar(_))
+            | ty::Bound(..)
+            | ty::Placeholder(..)
+            | ty::Infer(ty::FreshTy(_) | ty::FreshIntTy(_) | ty::FreshFloatTy(_)) => {
+                bug!("`ptr_metadata_ty` applied to unexpected type: {:?}", tail)
+            }
+        }
+    }
+```
+以上代码比较清晰的说明了编译器对每一个类型（或类型指针）都实现了Pointee中元数据类型的获取。
+ptr的具体结构定义见如下代码：
+```rust
+pub(crate) union PtrRepr<T: ?Sized> {
+    pub(crate) const_ptr: *const T,
+    pub(crate) mut_ptr: *mut T,
+    pub(crate) components: PtrComponents<T>,
+}
+
+#[repr(C)]
+pub(crate) struct PtrComponents<T: ?Sized> {
+    pub(crate) data_address: *const (),
+    pub(crate) metadata: <T as Pointee>::Metadata,
+}
+```
+这里，PtrRepr是RUST的指针结构。 PtrComponents 则主要用于具备元数据的指针特性实现， *const ()按照理解是一个指向单元类型的指针，实际上应该就是内存地址的一种通用写法。
+```rust
+pub struct DynMetadata<Dyn: ?Sized> {
+    vtable_ptr: &'static VTable,
+    phantom: crate::marker::PhantomData<Dyn>,
+}
+```
+phantom使用PhantomData来表示Dyn和DynMetadata的生命周期关系。PhantomData的含义英文如下：
+ Zero-sized type used to mark things that "act like" they own a `T`.
+一个零占用的变量，使得结构拥有了一个T类型的变量。类似于C语言当中结构最后使用的  type a[0] 的用法。在RUST中，这一用法常常因为生命周期而使用，以作为安全性的一个判断。
+```rust
+struct VTable {
+    drop_in_place: fn(*mut ()),
+    size_of: usize,
+    align_of: usize,
+}
+```
+VTable 中包含4个成员，上面的结构体仅列出了前三个，即指向实现Trait的结构的drop_in_place函数的指针; 结构内存占用字节大小；结构内存对齐字节大小；VTable结构后面的内存为Trait的所有行为或函数的指针数组。
+
+#### ptr模块函数
+`ptr::drop_in_place<T: ?Sized>(to_drop: *mut T)` 此函数用于不需要RUST自动drop时，由程序代码调用以释放内存
+`ptr::metadata<T: ?Sized>(ptr: *const T) -> <T as Pointee>::Metadata `用来返回指针的元数据
+`ptr::null<T>() -> *const T` 返回0值
+`ptr::null_mut<T>()->*mut T` 返回0值
+`ptr::from_raw_parts<T: ?Sized>(data_address: *const (), metadata: <T as Pointee>::Metadata) -> *const T` 从原始变量形成RUST指针
+`ptr::from_raw_parts<T: ?Sized>(data_address: *mut (), metadata: <T as Pointee>::Metadata) -> *mut T` 功能同上，形成可变指针
+RUST指针类型转换时，需要用到以上两个函数。
+`ptr::slice_from_raw_parts<T>(data: *const T, len: usize) -> *const [T] `
+`ptr::slice_from_raw_parts_mut<T>(data: *mut T, len: usize) -> *mut [T]` 切片指针类型转换或生成函数
+
+#### `*const T`, `* const [T]`,  `* mut T`, `* mut [T]`
+Rust对于泛型，一般都会针对`[T]` 做独立于`T`的特殊化处理。 
+`* const T`及`* mut T`是RUST的裸指针类型(当然，其实际是PtrRepr结构)， RUST对`* const T`及`* mut T`可实现的特性如下：
+`*const T::is_null(self)->bool` 
+`*mut T::is_null(self)->bool此`函数判断self是否为0
+`*const T::cast<U>(self) -> *const U ` 
+`*mut T::cast<U>(self)->*mut U` cast函数主要完成不同类型的 `*const`，`*mut`的互相转换，基本上等同于C的指针类型转换，需要程序员确保U与T的内存布局一致。
+`*const T::to_raw_parts(self) -> (*const (), <T as super::Pointee>::Metadata)`
+`*mut T::to_raw_parts(self)->(* const (), <T as super::Pointee>::Metadata)`  每一个指针都是由内存地址和元数据组成
+```*const T::as_ref<`a>(self) -> Option<&`a T>```
+```*mut T::as_ref<`a>(self)->Option<&`a T>```
+```*mut T::as_mut<`a>(self)->Option<&`a mut T>```将* const T或* mut T转化为一个引用，程序员需要保证指针转化的引用满足内存对齐，并正确被初始化，特别注意，内存清零不代表正确的初始化。
+`*const T::offset(self, count:isize)->* const T` `*mut T::offset(self, count:isize)->* mut T` 实质是intrinsics::offset的封装
+    
+#### NonNull
+`repr(transparent)`布局，
+NonNull封装`* const T`的唯一成员变量。
+因为`* const T`或`* mut T`可能为空，RUST安全代码中应该用`Option::None`表示这种情况。所以引入`NonNull<T>`代表一个非空的指针，后继就可以使用`Option`来安全的表示空指针的情况。
+同时，因为`NonNull<T>`是新建立的类型变量，可以满足RUST对类型系统的实现的规则尤其是生命周期, 所有权，借用等。因此NonNull实际上完成了将包装的`* const T`，`*mut T`等原始指针类型向正常的RUST类型的转变。这是RUST编程的一个重要技巧。
+
+再次用Global 的实例说明 NonNull在动态内存申请中的使用：
+```rust
+    impl Global {
+        fn alloc_impl(&self, layout: Layout, zeroed: bool) -> Result<NonNull<[u8]>, AllocError> {
+            match layout.size() {
+                0 => Ok(NonNull::slice_from_raw_parts(layout.dangling(), 0)),
+                
+                size => unsafe {
+                    let raw_ptr = if zeroed { alloc_zeroed(layout) } else { alloc(layout) };
+                    let ptr = NonNull::new(raw_ptr).ok_or(AllocError)?;
+                    Ok(NonNull::slice_from_raw_parts(ptr, size))
+                },
+            }
+        }
+        ....
+    }
+```
+代码中 `alloc(layout)`返回 `* mut u8`指针， 利用`NonNull::new`返回`NonNull<u8>`并做了 `* mut u8`是否为空的判断。因为`NonNull<u8>`的指针仅指向单字节，大小是不正确的，所以随后将`NonNull<u8>`再次转换为`NonNull<[u8]>`使其大小正确，这里要注意RUST的转换的实现方式是用了`slice_from_raw_parts`函数实现`NonNull<u8>`与`NonNull<[u8]>`的内存布局是不同的，所以不能直接转换。对于`NonNull<[U8]>`只要和T的内存大小相同，即可直接转换获得`NonNull<T>`。但因为内存没有被初始化，所以一般接下来会将`NonNull<[u8]>`转换为`MaybeUninit<T>`。后继将有专节对`MaybeUninit<T>`进行说明。
+函数：
+`NonNull::<T>::cast<U>(self)->NonNull<U>` 类型转换，程序员应该保证T和U的内存布局相同
+`NonNull::<T>::new(* mut T)->Option<Self>` 函数中判断* mut T是否为0值的情况，并返回Option<T>类型
+`NonNull::<T>::new_unchecked(* mut T)->Self` 封装* mut T，不检查* mut T是否为零
+`NonNull::<T>::from_raw_parts(
+        data_address: NonNull<()>,
+        metadata: <T as super::Pointee>::Metadata,
+    ) -> NonNull<T> `，与ptr::from_raw_parts功能实际是基本相同的
+`NonNull::<T>::to_raw_parts(self) -> (NonNull<()>, <T as super::Pointee>::Metadata)` 上个函数的反操作。
+`NonNull::<T>::as_ptr(self)->* mut T`
+``NonNull::<T>::as_ref<`a>(&self)->&`a T``返回引用，需要程序员保证引用符合RUST的安全规则，并保证NonNull的指针已经初始化完毕
+``NonNull::<T>::as_mut<`a>(&mut self)->&`a mut T``返回可变引用，需要程序员保证引用符合RUST的安全规则，并保证NonNull指针已经初始化完毕。
+``NonNull::<[T]>::slice_from_raw_parts(data: NonNull<T>, len: usize) -> Self`` 将单一指针转化为切片指针
+
+## RUST引用`&T`的强制要求
+1. 引用的内存地址必须是内存字节对齐的
+2. 引用的内存内容必须是初始化过的
+举例：
+    ```rust
+    #[repr(packed)]
+    struct RefTest {a:u8, b:u16, c:u32}
+    fn main() {
+        let test = RefTest{a:1, b:2, c:3};
+        let ref1 = &test.b
+    }
+    ```
+以上的例子在对ref1赋值时会无法通过编译，因为test.b内存不对齐。
+
+### mem模块结构及函数
+
+#### MaybeUninit<T>
+##### MaybeUninit<T>类型
+MaybeUninit也是repr(transparent) 
+```rust
+    pub union MaybeUninit<T> {
+        uninit: (),
+        value: ManuallyDrop<T>,
+    }
+```
+此union的内存布局实际就是value的内存布局，也就是T的内存布局。所以MaybeUninit在内存中实质也就是T。
+RUST的引用使用的内存块必须保证是内存对齐及赋以初始值，未初始化的内存块和清零的内存块都不能满足引用的条件。但内存申请后都是未初始化的，且在程序中某些情况下也需要先将内存设置为未初始化。因此，RUST提供了MaybeUninit<T>容器来实现对未初始化变量能够不引发编译错误且可进行一定的操作.
+MaybeUninit<T>利用ManuallyDrop<T>的方式对T的未初始化进行了一个标识。这对T也有一个保护，使得未初始化的变量免于被RUST自动调用drop所释放掉.
+
+##### ManuallyDrop<T>
+此结构使用了repr(transparent)，ManuallyDrop用于通知RUST其内部类型T的变量不再需要由RUST编译器做内存释放。其主要使用场景：
+1. 作为MaybeUninit的内部结构，对未初始化的内存做一个保护和标识
+2. 在相同内存布局的类型做转换时，此时不需要释放空间，使用ManuallyDrop可以让编译器不再对原有的类型变量做drop操作，才能安全的把内存以新的类型变量进入rust的自动drop。
+3. 对变量的操作需要脱离RUST的内存管理时。
+有意义的函数如下
+ManuallyDrop<T>::new（val:T) -> ManuallyDrop<T>, 此函数返回ManuallyDrop变量拥有传入的T类型变量所有权，并将此块内存直接用ManuallyDrop封装, 此函数过后，RUST将不自动drop传入new的变量。
+ManuallyDrop<T>::into_inner(slot: ManuallyDrop<T>)->T, 将封装的T类型变量所有权转移出来，也即通知编译器重新将T类型变量纳入drop管理体系。
+ManuallyDrop<T>::take(slot: &mut ManuallyDrop<T>)->T，实质是复制一个变量。 不影响原有的变量。
+ManuallyDrop<T>::drop(slot: &mut ManuallyDrop<T>)，drop掉变量占用的内存。
+ManuallyDrop<T>::deref(&self)-> & T, 返回内部包装的变量的引用
+ManuallyDrop<T>::deref_mut(&mut self)-> & mut T
+
+ManuallyDrop举例：
+```rust
+    use std::mem::ManuallyDrop;
+    let mut x = ManuallyDrop::new(String::from("Hello World!"));
+    x.truncate(5); // You can still safely operate on the value
+    assert_eq!(*x, "Hello");
+    // But `Drop` will not be run here
+```
+##### MaybeUninit<T> 函数库
+MaybeUninit<T>提供了在GlobalAlloc Trait之外的一种获取内存的方法， 实际上可类比为泛型 new()的一种实现方式,不过返回的不是指针，而是变量。MaybeUninit<T>获取的内存位于栈空间。
+MaybeUninit<T>::uninit()->MaybeUninit<T>, 是一种在栈上申请了T类型大小的内存的方法，该内存没有初始化；在RUST中，这是唯一不用经过GlobalAlloc Trait获得内存的方法，可以与其他语言的new(), malloc()等同来看，不过返回是变量而不是指针。此函数非常非常非常值得关注，是非常多场景下的代码解决方案。
+MaybeUninit<T>::new(val:T)->ManybeUninit<T>, 内部用ManuallyDrop封装了val, 然后用MaybeUninit封装ManuallyDrop。因为如果T没有初始化过，是不能调用这个函数的，所以此时内存实际上已经初始化了。
+MaybeUninit<T>::zeroed(), 申请了T类型内存并清零。
+MaybeUninit<T>::assume_init(),代码如下：
+
+```rust
+    pub const unsafe fn assume_init(self) -> T {
+        // SAFETY: the caller must guarantee that `self` is initialized.
+        // This also means that `self` must be a `value` variant.
+        unsafe {
+            intrinsics::assert_inhabited::<T>();
+            ManuallyDrop::into_inner(self.value)
+        }
+    }
+```
+调用ManuallyDrop::into_inner()把value重新置于RUST编译器的所有权管理下，由RUST编译器自动drop。
+MaybeUninit<T>::assume_init_xxx()此类函数和assume_init不同，没有把self.value的所有权转移给RUST编译器。    
+MaybeUninit<T>::write(val), 代码如下：
+```rust
+    pub const fn write(&mut self, val: T) -> &mut T {
+        *self = MaybeUninit::new(val);
+        // SAFETY: We just initialized this value.
+        unsafe { self.assume_init_mut() }
+    }
+```
+*self = MaybeUninit::new(val); 这个赋值实际上是把MaybeUninit::new(val)的所有权进行了转移。self在之前绑定的变量生命周期将终止。如果原先绑定的变量执行过MaybeUninit::new()，则会出现内存泄漏问题。如果仅是MaybeUninit::uninit(),那没有内存问题。
+assume_init_mut并没有将self.value所有权转移出来，所以，如果write后，直接再调用write()，会出现刚刚所说的内存泄漏问题。
+    
+MaybeUninit<T>::uninit_array<const LEN:usize>()->[Self; LEN] 此处对LEN的使用方式需要注意，少见的一个泛型写法,这个函数同样的申请了一块内存。代码：
+```rust
+    pub const fn uninit_array<const LEN: usize>() -> [Self; LEN] {
+        // SAFETY: An uninitialized `[MaybeUninit<_>; LEN]` is valid.
+        unsafe { MaybeUninit::<[MaybeUninit<T>; LEN]>::uninit().assume_init() }
+    }
+```
+此时，对于数组内部的元素，都是没有初始化的，但是对于数组[MaybeUninit<T>;LEN]这一类型本身来说，已经初始化完毕，数组初始化实际就是设置类型内存大小和数组长度，完成内存初始化。所以此时assume_init()是正确的。但的确不易理解。
+
+MaybeUninit<T>一些典型使用：
+boxed内存申请例子：
+```rust
+    pub fn try_new_uninit_in(alloc: A) -> Result<Box<mem::MaybeUninit<T>, A>, AllocError> {
+        let layout = Layout::new::<mem::MaybeUninit<T>>();
+        let ptr = alloc.allocate(layout)?.cast();
+        unsafe { Ok(Box::from_raw_in(ptr.as_ptr(), alloc)) }
+    }
+```
+以上代码可以看到，NonNull<[u8]>可以直接通过cast 转换为NonNull<MaybeUninit<T>>, 这是另一种MaybeUninit<T>的生成方法，直接通过指针类型转换将未初始化的内存转换为MaybeUninit<T>.
+
+```rust
+    use std::mem::MaybeUninit;
+
+    // Create an explicitly uninitialized reference. The compiler knows that data inside
+    // a `MaybeUninit<T>` may be invalid, and hence this is not UB:
+    let mut x = MaybeUninit::<&i32>::uninit();
+    // Set it to a valid value.
+    x.write(&0);
+    // Extract the initialized data -- this is only allowed *after* properly
+    // initializing `x`!
+    let x = unsafe { x.assume_init() };
+```
+以上代码，说明了未初始化内存如何初始化，即调用write将值写入(注意此时编译器允许对x操作，这是MaybeUninit<T>的最重要的用处之一)，然后再调用 assume_init()通知内存已经被初始化，（注意assume_init前的注释。MaybeUninit只有在正确写入值后才能调用assume_init()，否则的话会有UB（undefined behavior)发生。）
+
+更复杂的例子：
+```rust
+    use std::mem::{self, MaybeUninit};
+    
+    let data = {
+    // Create an uninitialized array of `MaybeUninit`. The `assume_init` is
+    // safe because the type we are claiming to have initialized here is a
+    // bunch of `MaybeUninit`s, which do not require initialization.
+    let mut data: [MaybeUninit<Vec<u32>>; 1000] = unsafe {
+        MaybeUninit::uninit().assume_init()
+    };
+    
+    // Dropping a `MaybeUninit` does nothing. Thus using raw pointer
+    // assignment instead of `ptr::write` does not cause the old
+    // uninitialized value to be dropped. Also if there is a panic during
+    // this loop, we have a memory leak, but there is no memory safety
+    // issue.
+    for elem in &mut data[..] {
+    elem.write(vec![42]);
+    }
+    
+    // Everything is initialized. Transmute the array to the
+    // initialized type.
+    unsafe { mem::transmute::<_, [Vec<u32>; 1000]>(data) }
+    };
+    
+    assert_eq!(&data[0], &[42]);
+```
+let mut data:[MaybeUninit<Vec<u32>;1000>] = unsafe {MaybeUninit::uninit().assume_init()}} 实际上是对data数组的初始化，这个初始化实际已经由编译器完成了。 最后的transmute把初始化后的内存做了直接转换。 由此，可见MaybeUninit<T>与T的内存是一致的.
+一块内存被 MaybeUnint<T>封装后，编译器将不再对其做释放，必须在代码中显式释放，例子如下：
+
+```rust
+    use std::mem::MaybeUninit;
+    use std::ptr;
+   
+    // Create an uninitialized array of `MaybeUninit`. The `assume_init` is
+    // safe because the type we are claiming to have initialized here is a
+    // bunch of `MaybeUninit`s, which do not require initialization.
+    let mut data: [MaybeUninit<String>; 1000] = unsafe { MaybeUninit::uninit().assume_init() };
+    // Count the number of elements we have assigned.
+    let mut data_len: usize = 0;
+    for elem in &mut data[0..500] {
+        elem.write(String::from("hello"));
+        data_len += 1;
+    }
+    // For each item in the array, drop if we allocated it.
+    for elem in &mut data[0..data_len] {
+        unsafe { ptr::drop_in_place(elem.as_mut_ptr()); }
+    }
+```
+上例中，在没有assume_init()调用的情况下，必须手工调用drop_in_place释放内存。
+
+下面为ptr模块read函数的一个例子，
+
+```rust
+    pub const unsafe fn read<T>(src: *const T) -> T {` 
+        let mut tmp = MaybeUninit::<T>::uninit();
+        // SAFETY: the caller must guarantee that `src` is valid for reads.
+        // `src` cannot overlap `tmp` because `tmp` was just allocated on
+        // the stack as a separate allocated object.
+        //
+        // Also, since we just wrote a valid value into `tmp`, it is guaranteed
+        // to be properly initialized.
+        unsafe {
+            copy_nonoverlapping(src, tmp.as_mut_ptr(), 1);
+            tmp.assume_init()
+        }
+    }
+```
+上例中，需要拷贝src以建立一个新的泛型T变量，因为所有权不能转移，必须要获取新的内存。此时使用MaybeUninit::uninit()在栈中来获取内存非常方便，然后用内存拷贝的方式完成初始化。这种方式主要是因为RUST不允许对未初始化的变量取引用而导致。
+
+### mem模块函数库：
+
+mem::zeroed<T>() -> T 此函数用MaybeUninit::zeroed获取全零内存后，调用assume_init(), 返回一个清零的T变量，要确认全零是一种T类型合理的初始化才可用
+
+mem::uninitialized<T>() -> T 用MaybeUnint::uninit获取一块未初始化内存，然后调用assume_init(), 此时内存彻底未初始化。
+ 
+mem::take<T: Default>(dest: &mut T) -> T 将dest设置为默认内容(不改变所有权)，用一个新变量返回dest的内容。
+ 
+mem::replace<T>(dest: &mut T, src: T) -> T 用src的内容赋值dest(不改变所有权)，用一个新变量返回dest的内容。
+
+mem::transmute<T,U>(src: T) -> U  直接将T类型转化为U类型。 本质是一个C语言的&(U *(&src))操作。
+mem::transmute_copy<T, U>(src: &T) -> U 新建类型U的变量，并把src的内容拷贝到U。
+mem::forget<T>(t:T) 通知RUST不做t的drop，利用ManuallyDrop完成
+mem::forget_unsized<T:Sized?> 利用intrinsics::forget完成
+mem::size_of<T>()->usize
+mem::min_align_of<T>()->usize
+mem::size_of_val<T>(val:& T)->usize
+mem::min_align_of_val<T>(val: &T)->usize
+mem::needs_drop<T>()->bool
+mem::drop<T>(_x:T) 释放内存
+
+### ptr模块再探
+ptr::read<T>(src: *const T) -> T 此函数用已有的类型复制出一个新的类型实体,对于不支持Copy Trait的类型，read函数是RUST实现未知类型变量的复制的一种方法，此函数作为内存函数take(), replace(), transmute_copy()的基础，底层使用intrisic::copy_no_overlapping支持
+
+```rust
+    pub const unsafe fn read<T>(src: *const T) -> T {` 
+        let mut tmp = MaybeUninit::<T>::uninit();
+        // SAFETY: the caller must guarantee that `src` is valid for reads.
+        // `src` cannot overlap `tmp` because `tmp` was just allocated on
+        // the stack as a separate allocated object.
+        //
+        // Also, since we just wrote a valid value into `tmp`, it is guaranteed
+        // to be properly initialized.
+        unsafe {
+            copy_nonoverlapping(src, tmp.as_mut_ptr(), 1);
+            tmp.assume_init()
+        }
+    }
+```
+ptr::read_unaligned<T>(src: *const T) -> T 这个函数重要，当数据结构中有未内存对齐的成员变量时，需要用此函数读取内容并转化为内存对齐的变量。否则会引发UB(undefined behaiver) 如下例：
+
+/// Read a usize value from a byte buffer:
+ ```rust
+    use std::mem;
+   
+    fn read_usize(x: &[u8]) -> usize {
+        assert!(x.len() >= mem::size_of::<usize>());
+
+        let ptr = x.as_ptr() as *const usize;
+        unsafe { ptr.read_unaligned() }
+    }
+```
+例子中，为了从byte串中读取一个usize，需要用read_unaligned来获取值，不能象C语言那样通过指针类型转换直接获取值。
+
+ptr::write<T>(dst: *mut T, src: T) write函数将src的内容拷贝到dst，同时调用了forget(src), 这使得src的Drop不再被调用。这里调用forget因为src可能包含智能指针或其他引用，forget仅仅释放src的内存，不影响深层，深层的内存由dst继承。如果不做forget，后继src释放的时候就可能释放深层内存，导致dst的引用或指针成为悬垂指针。ptr::write是RUST实现内存拷贝的另一种方法。 此函数作为mem::replace， mem::transmute_copy的基础。底层由intrisic:: copy_no_overlapping支持
+
+ptr::write_unaligned<T>(dst: *mut T, src: T) 与read_unaligned相对应。
+```rust
+    #[repr(packed, C)]
+    struct Packed {
+        _padding: u8,
+        unaligned: u32,
+    }
+    
+    let mut packed: Packed = unsafe { std::mem::zeroed() };
+    
+    // Take the address of a 32-bit integer which is not aligned.
+    // In contrast to `&packed.unaligned as *mut _`, this has no undefined behavior.
+    let unaligned = std::ptr::addr_of_mut!(packed.unaligned);
+    
+    unsafe { std::ptr::write_unaligned(unaligned, 42) };
+    
+     assert_eq!({packed.unaligned}, 42); // `{...}` forces copying the field instead of creating a reference.
+```
+对于结构中unaligned的成员，要用addr_of_mut!宏来获取地址指针。
+
+ptr::read_volatile<T>(src: *const T) -> T  是intrinsics::volatile_load的封装
+ptr::write_volatile<T>(dst: *mut T, src:T) 是intrinsics::volatiel_store的封装
+
+
+ptr::macro addr_of($place:expr) 因为用&获得引用必须是对齐的地址，所以用这个宏获取非地址对齐的变量地址
+
+ptr::macro addr_of_mut($place:expr) 同上。
+指针的通用函数请参考[Rust库函数参考](https://doc.rust-lang.org/core/ptr/index.html#functions)
+
+#### NonNull 与MaybeUninit<T>相关函数
+NonNull<T>::as_uninit_ref<`a>(&self) -> &`a MaybeUninit<T> NonNull与MaybeUninit基本就是直接转换的关系，一体双面
+NonNull<T>::as_uninit_mut<`a>(&self) -> &`a mut MaybeUninit<T>
+NonNull<[T]>::as_uninit_slice<'a>(&self) -> &'a [MaybeUninit<T>]
+NonNull<[T]>::as_uninit_slice_mut<'a>(&self) -> &'a mut [MaybeUninit<T>] 
+
+#### Unique
+```rust
+    pub struct Unique<T: ?Sized> {
+        pointer: *const T,
+        // NOTE: this marker has no consequences for variance, but is necessary
+        // for dropck to understand that we logically own a `T`.
+        //
+        // For details, see:
+        // https://github.com/rust-lang/rfcs/blob/master/text/0769-sound-generic-drop.md#phantom-data
+        _marker: PhantomData<T>,
+    }
+```
+和NonNull对比，Unique多了PhantomData<T>类型变量。这个定义使得编译器知晓，Unique<T>拥有了pointer指向的内存的所有权，NonNull<T>没有这个特性。具备所有权后，Unique<T>可以实现Send, Sync等Trait
+指针在被Unique封装前，必须保证是NonNull的
+RUST用Allocator申请出来的内存的所有权用Unique<T>做了绑定，使得内存进入了RUST的所有权和借用系统。
+Unique<T>创建举例：
+```rust
+    pub fn try_new_uninit_in(alloc: A) -> Result<Box<mem::MaybeUninit<T>, A>, AllocError> {
+        let layout = Layout::new::<mem::MaybeUninit<T>>();
+        let ptr = alloc.allocate(layout)?.cast();
+        unsafe { Ok(Box::from_raw_in(ptr.as_ptr(), alloc)) }
+    }
+
+    pub unsafe fn from_raw_in(raw: *mut T, alloc: A) -> Self {
+        Box(unsafe { Unique::new_unchecked(raw) }, alloc)
+    }
+```
+以上代码是Box<T>的创建关联函数，从代码可以分析比较完整的RUST的动态内存申请类型转换过程是，GlobalAlloc::alloc申请返回* mut u8指针，Allocator::allocate() 返回NonNull<[U8]>类型指针，由NonNull::cast()转化为NonNull<MaybeUninit<T>>类型，然后由NonNull<MaybeUninit<T>> 重新拆封装建立Unique<MaybeUninit<T>>类型。至此，申请的动态内存进入了RUST的所有权识别领域
+
+Unique::cast<U>(self)->Unique<U> 类型转换，程序员应该保证T和U的内存布局相同
+Unique::<T>::new(* mut T)->Option<Self> 此函数内部判断* mut T是否为0值
+Unique::<T>::new_unchecked(* mut T)->Self 封装* mut T
+Unique::as_ptr(self)->* mut T 因为拥有了T的所有权，所以此处不必再有生命周期标识
+Unique::as_ref(&self)->& T
+Unique::as_mut(&mut self)->& mut T
+
+### 小结
+在RUST标准库的内存模块中，具有大量的实例给出了在底层编程中如何处理所有权。也给出了如何从申请的堆内存到可以使用的RUST类型系统变量的一步一步的转化过程。对于所有的自定义复杂数据结构类型尤其是容器结构类型，内存模块库是必不可缺的一个工具。
