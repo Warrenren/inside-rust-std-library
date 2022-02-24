@@ -114,8 +114,8 @@ impl<T: Default> Default for Box<T> {
 有效使用针对限制的泛型实现方法和Trait可以大幅的减少代码，受限制的泛型是RUST提供的强大的泛型语法武器。
 
 ## 编译器内置Trait代码分析
-代码路径：
-%USER%\.rustup\toolchains\nightly-x86_64-pc-windows-msvc\lib\rustlib\src\rust\library\core\src\marker.rs
+代码路径： 
+%USER%\.rustup\toolchains\nightly-x86_64-pc-windows-msvc\lib\rustlib\src\rust\library\core\src\marker.rs  
 源代码主要部分是标准库指南文档。这里简要给出一些需注意的点
 ```rust
 //Send Trait
@@ -208,7 +208,7 @@ pub struct PhantomData<T: ?Sized>;
 
 
 ## ops 运算符 Trait 代码分析
-代码路径如下：
+代码路径如下：  
 %USER%\.rustup\toolchains\nightly-x86_64-pc-windows-msvc\lib\rustlib\src\rust\library\core\src\ops\*.rs
 
 RUST中，所有的运算符号都可以重载。
@@ -228,7 +228,7 @@ RUST中，所有的运算符号都可以重载。
 易理解，略
 
 ### 关系运算符Trait
-代码路径如下：
+代码路径如下：  
 %USER%\.rustup\toolchains\nightly-x86_64-pc-windows-msvc\lib\rustlib\src\rust\library\core\src\cmp.rs
 
 关系运算符的代码稍微复杂，这里给出较完整的代码。
