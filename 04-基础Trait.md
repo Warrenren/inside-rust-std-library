@@ -231,9 +231,14 @@ RUST中，所有的运算符号都可以重载。
 代码路径如下：  
 %USER%\.rustup\toolchains\nightly-x86_64-pc-windows-msvc\lib\rustlib\src\rust\library\core\src\cmp.rs
 
+### 关系运算符Trait
+代码路径如下：
+%USER%\.rustup\toolchains\nightly-x86_64-pc-windows-msvc\lib\rustlib\src\rust\library\core\src\cmp.rs
+
 关系运算符的代码稍微复杂，这里给出较完整的代码。
 ```rust
-//"==" "!="的实现Trait，实现该Trait的类型可以只部分相等
+//"==" "!="的实现Trait，对于在整个类型定义域内存在值无法满足相等条件的，就只实现该Trait的类型
+//例如浮点类型 “NaN != NaN" , 实质上，在代码上，只需要实现这个Trait
 pub trait PartialEq<Rhs: ?Sized = Self> {
     /// “==” 重载方法
     fn eq(&self, other: &Rhs) -> bool;
@@ -244,21 +249,78 @@ pub trait PartialEq<Rhs: ?Sized = Self> {
     }
 }
 
-/// 实现Derive属性的过程宏
-pub macro PartialEq($item:item) {
-    /* compiler built-in */
-}
-
-//实现该Trait的类型必须完全相等
+//对于全作用域所有值都可相等的类型。实现这个Trait，PartialEq和Eq区别实现，也是Rust安全性的体现之一
+//代码就用PartialEq即可
 pub trait Eq: PartialEq<Self> {
     fn assert_receiver_is_total_eq(&self) {}
 }
+```
+对于"<,>,<=,>="等四种运算，同上，对于全域如果有可能出现无法比较的情况，仅实现PartialOrd<Rhs>，如下：
+```rust
+// "<" ">" ">=" "<=" 运算符重载结构, 事实上关系运算只需要重载这个Trait
+// Ord Trait 不用编码
+pub trait PartialOrd<Rhs: ?Sized = Self>: PartialEq<Rhs> {
+    // 显然，只能有一个比较函数, 对于全域都满足比较的，此函数内部一般用Ord
+    // Trait的cmp，对于无法比较的，需要实现独立的代码，如浮点,因为存在不可比较
+    //的值，所以需要用Option
+    fn partial_cmp(&self, other: &Rhs) -> Option<Ordering>;
 
-/// 实现Derive属性的过程宏
-pub macro Eq($item:item) {
-    /* compiler built-in */
+    // "<" 运算符重载
+    fn lt(&self, other: &Rhs) -> bool {
+        matches!(self.partial_cmp(other), Some(Less))
+    }
+    
+    //"<="运算符重载
+    fn le(&self, other: &Rhs) -> bool {
+        // Pattern `Some(Less | Eq)` optimizes worse than negating `None | Some(Greater)`.
+        !matches!(self.partial_cmp(other), None | Some(Greater))
+    }
+
+    //">"运算符重载, 代码略
+    fn gt(&self, other: &Rhs) -> bool;
+    
+    //">="运算符重载，代码略
+    fn ge(&self, other: &Rhs) -> bool;
+
+    //eq已经在PatialEq中包含
 }
 
+//Ord是全域值都可比较Trait，但其的结果应该是一致的
+pub trait Ord: Eq + PartialOrd<Self> {
+    //通常partial_cmp() == Some(cmp()),因为全域值
+    //都可以比较，不会出现Ordering之外的情况
+    fn cmp(&self, other: &Self) -> Ordering;
+
+    fn max(self, other: Self) -> Self
+    where
+        Self: Sized,
+    {
+        //见下面代码分析
+        max_by(self, other, Ord::cmp)
+    }
+
+    fn min(self, other: Self) -> Self
+    where
+        Self: Sized,
+    {
+        //见下面代码分析
+        min_by(self, other, Ord::cmp)
+    }
+
+    fn clamp(self, min: Self, max: Self) -> Self
+    where
+        Self: Sized,
+    {
+        assert!(min <= max);
+        if self < min {
+            min
+        } else if self > max {
+            max
+        } else {
+            self
+        }
+    }
+}
 //用于表示关系结果的结构体
 #[derive(Clone, Copy, PartialEq, Debug, Hash)]
 #[repr(i8)]
@@ -272,25 +334,8 @@ pub enum Ordering {
 }
 
 impl Ordering {
-    pub const fn is_eq(self) -> bool {
-        matches!(self, Equal)
-    }
-    
-    //以下函数体实现略
-    pub const fn is_ne(self) -> bool 
-    pub const fn is_lt(self) -> bool 
-    pub const fn is_gt(self) -> bool 
-    pub const fn is_le(self) -> bool
-    pub const fn is_ge(self) -> bool
-
-    //做反转操作
-    pub const fn reverse(self) -> Ordering {
-        match self {
-            Less => Greater,
-            Equal => Equal,
-            Greater => Less,
-        }
-    }
+    //对Ordering做逆操作, 代码略
+    pub const fn reverse(self) -> Ordering ;
 
     //用来简化代码及更好的支持函数式编程
     //举例：
@@ -313,34 +358,6 @@ impl Ordering {
     }
 }
 
-
-// "<" ">" ">=" "<=" 运算符重载结构
-pub trait PartialOrd<Rhs: ?Sized = Self>: PartialEq<Rhs> {
-    fn partial_cmp(&self, other: &Rhs) -> Option<Ordering>;
-
-    // "<" 运算符重载
-    fn lt(&self, other: &Rhs) -> bool {
-        matches!(self.partial_cmp(other), Some(Less))
-    }
-    
-    //"<="运算符重载
-    fn le(&self, other: &Rhs) -> bool {
-        // Pattern `Some(Less | Eq)` optimizes worse than negating `None | Some(Greater)`.
-        !matches!(self.partial_cmp(other), None | Some(Greater))
-    }
-
-    //">"运算符重载, 代码略
-    fn gt(&self, other: &Rhs) -> bool;
-    
-    //">="运算符重载，代码略
-    fn ge(&self, other: &Rhs) -> bool;
-}
-
-//实现Derive的过程宏
-pub macro PartialOrd($item:item) {
-    /* compiler built-in */
-}
-
 //用输入的闭包比较函数获取两个值中大的一个
 pub fn max_by<T, F: FnOnce(&T, &T) -> Ordering>(v1: T, v2: T, compare: F) -> T {
     match compare(&v1, &v2) {
@@ -355,43 +372,6 @@ pub fn min_by<T, F: FnOnce(&T, &T) -> Ordering>(v1: T, v2: T, compare: F) -> T {
         Ordering::Less | Ordering::Equal => v1,
         Ordering::Greater => v2,
     }
-}
-
-//以下代码易理解，分析略
-pub trait Ord: Eq + PartialOrd<Self> {
-    fn cmp(&self, other: &Self) -> Ordering;
-
-    fn max(self, other: Self) -> Self
-    where
-        Self: Sized,
-    {
-        max_by(self, other, Ord::cmp)
-    }
-
-    fn min(self, other: Self) -> Self
-    where
-        Self: Sized,
-    {
-        min_by(self, other, Ord::cmp)
-    }
-
-    fn clamp(self, min: Self, max: Self) -> Self
-    where
-        Self: Sized,
-    {
-        assert!(min <= max);
-        if self < min {
-            min
-        } else if self > max {
-            max
-        } else {
-            self
-        }
-    }
-}
-//实现Drive 属性过程宏
-pub macro Ord($item:item) {
-    /* compiler built-in */
 }
 
 pub fn min<T: Ord>(v1: T, v2: T) -> T {
@@ -409,8 +389,11 @@ pub fn max<T: Ord>(v1: T, v2: T) -> T {
 pub fn max_by_key<T, F: FnMut(&T) -> K, K: Ord>(v1: T, v2: T, mut f: F) -> T {
     max_by(v1, v2, |v1, v2| f(v1).cmp(&f(v2)))
 }
-
-//对于实现了PartialOrd的类型实现一个Ord的反转，这是一个
+```
+以下是利用泛型和Adapter模式的典型的解决一类问题的RUST解决方案，下面是对有序的类型实现逆序的方案
+```rust
+//对于实现了PartialOrd的类型实现一个Ord的反转，这个设计是典型的RUST的思考方式，
+//利用一个Adpater设计模式+泛型，很轻松的解决了一类需求
 //adapter的设计模式例子
 pub struct Reverse<T>(pub T);
 
@@ -427,41 +410,25 @@ impl<T: PartialOrd> PartialOrd for Reverse<T> {
     ...
     ...
 }
-
-impl<T: Ord> Ord for Reverse<T> {
-    fn cmp(&self, other: &Reverse<T>) -> Ordering {
-        other.0.cmp(&self.0)
-    }
-
-    //其他方法，略
-    ...
-}
-
-impl<T: Clone> Clone for Reverse<T> {
-    fn clone(&self) -> Reverse<T> {
-        Reverse(self.0.clone())
-    }
-
-    fn clone_from(&mut self, other: &Self) {
-        self.0.clone_from(&other.0)
-    }
-}
-
+```
+以下是关系运算的原生类型的实现，可以参考
+```rust
 // 具体的实现宏 
 mod impls {
     use crate::cmp::Ordering::{self, Equal, Greater, Less};
     use crate::hint::unreachable_unchecked;
     
-    //PartialEq在原生类型上的实现
+    //PartialEq在原生类型上的实现,利用宏减少重复代码
     macro_rules! partial_eq_impl {
         ($($t:ty)*) => ($(
             impl PartialEq for $t {
+                //编译器默认的符号
                 fn eq(&self, other: &$t) -> bool { (*self) == (*other) }
                 fn ne(&self, other: &$t) -> bool { (*self) != (*other) }
             }
         )*)
     }
-
+    //单元类型，一定相等
     impl PartialEq for () {
         fn eq(&self, _other: &()) -> bool {
             true
@@ -474,30 +441,66 @@ mod impls {
     partial_eq_impl! {
         bool char usize u8 u16 u32 u64 u128 isize i8 i16 i32 i64 i128 f32 f64
     }
-
-    // Eq，PartialOrd, Ord在原生类型上的实现，略
-    ...
-    ...
     
-    impl PartialEq for ! {
-        fn eq(&self, _: &!) -> bool {
-            *self
-        }
+    macro_rules! eq_impl {
+        ($($t:ty)*) => ($(
+            #[stable(feature = "rust1", since = "1.0.0")]
+            impl Eq for $t {}
+        )*)
     }
 
-    impl Eq for ! {}
-
-    impl PartialOrd for ! {
-        fn partial_cmp(&self, _: &!) -> Option<Ordering> {
-            *self
-        }
+    //浮点不实现Eq
+    eq_impl! { () bool char usize u8 u16 u32 u64 u128 isize i8 i16 i32 i64 i128 }
+    //关系运算，利用宏减少代码, 这个宏仅仅针对浮点数
+    macro_rules! partial_ord_impl {
+        ($($t:ty)*) => ($(
+            #[stable(feature = "rust1", since = "1.0.0")]
+            impl PartialOrd for $t {
+                fn partial_cmp(&self, other: &$t) -> Option<Ordering> {
+                    //RUST的典型的代码思路，需要学习及仔细体会,
+                    //专门为浮点做的比较
+                    match (self <= other, self >= other) {
+                        (false, false) => None,
+                        (false, true) => Some(Greater),
+                        (true, false) => Some(Less),
+                        (true, true) => Some(Equal),
+                    }
+                }
+                fn lt(&self, other: &$t) -> bool { (*self) < (*other) }
+                fn le(&self, other: &$t) -> bool { (*self) <= (*other) }
+                fn ge(&self, other: &$t) -> bool { (*self) >= (*other) }
+                fn gt(&self, other: &$t) -> bool { (*self) > (*other) }
+            }
+        )*)
     }
 
-    impl Ord for ! {
-        fn cmp(&self, _: &!) -> Ordering {
-            *self
-        }
+    partial_ord_impl! { f32 f64 }
+    
+    //为支持全域值可比较的类型实现的宏
+    macro_rules! ord_impl {
+        ($($t:ty)*) => ($(
+            impl PartialOrd for $t {
+                //复用Ord的cmp函数
+                fn partial_cmp(&self, other: &$t) -> Option<Ordering> {
+                    Some(self.cmp(other))
+                }
+                fn lt(&self, other: &$t) -> bool { (*self) < (*other) }
+                fn le(&self, other: &$t) -> bool { (*self) <= (*other) }
+                fn ge(&self, other: &$t) -> bool { (*self) >= (*other) }
+                fn gt(&self, other: &$t) -> bool { (*self) > (*other) }
+            }
+
+            impl Ord for $t {
+                fn cmp(&self, other: &$t) -> Ordering {
+                    if *self < *other { Less }
+                    else if *self == *other { Equal }
+                    else { Greater }
+                }
+            }
+        )*)
     }
+    //浮点数不支持Ord
+    ord_impl! { char usize u8 u16 u32 u64 u128 isize i8 i16 i32 i64 i128 }
 
     //A实现了PartialEq<B>, PartialOrd<B>后，对&A实现PartialEq<&B>， PartialOrd<&B>
     impl<A: ?Sized, B: ?Sized> PartialEq<&B> for &A
@@ -513,93 +516,11 @@ mod impls {
             PartialEq::ne(*self, *other)
         }
     }
-    impl<A: ?Sized, B: ?Sized> PartialOrd<&B> for &A
-    where
-        A: PartialOrd<B>,
-    {
-        fn partial_cmp(&self, other: &&B) -> Option<Ordering> {
-            PartialOrd::partial_cmp(*self, *other)
-        }
-        fn lt(&self, other: &&B) -> bool {
-            PartialOrd::lt(*self, *other)
-        }
-        ...
-        ...
-    }
-
-    //如果A实现了Ord Trait, 对&A实现Ord Trait
-    impl<A: ?Sized> Ord for &A
-    where
-        A: Ord,
-    {
-        fn cmp(&self, other: &Self) -> Ordering {
-            Ord::cmp(*self, *other)
-        }
-    }
-    impl<A: ?Sized> Eq for &A where A: Eq {}
-
-    impl<A: ?Sized, B: ?Sized> PartialEq<&mut B> for &mut A
-    where
-        A: PartialEq<B>,
-    {
-        fn eq(&self, other: &&mut B) -> bool {
-            PartialEq::eq(*self, *other)
-        }
-        fn ne(&self, other: &&mut B) -> bool {
-            PartialEq::ne(*self, *other)
-        }
-    }
-
-    impl<A: ?Sized, B: ?Sized> PartialOrd<&mut B> for &mut A
-    where
-        A: PartialOrd<B>,
-    {
-        fn partial_cmp(&self, other: &&mut B) -> Option<Ordering> {
-            PartialOrd::partial_cmp(*self, *other)
-        }
-        fn lt(&self, other: &&mut B) -> bool {
-            PartialOrd::lt(*self, *other)
-        }
-        ...
-        ...
-    }
-    impl<A: ?Sized> Ord for &mut A
-    where
-        A: Ord,
-    {
-        fn cmp(&self, other: &Self) -> Ordering {
-            Ord::cmp(*self, *other)
-        }
-    }
-    impl<A: ?Sized> Eq for &mut A where A: Eq {}
-
-    impl<A: ?Sized, B: ?Sized> PartialEq<&mut B> for &A
-    where
-        A: PartialEq<B>,
-    {
-        fn eq(&self, other: &&mut B) -> bool {
-            PartialEq::eq(*self, *other)
-        }
-        fn ne(&self, other: &&mut B) -> bool {
-            PartialEq::ne(*self, *other)
-        }
-    }
-
-    impl<A: ?Sized, B: ?Sized> PartialEq<&B> for &mut A
-    where
-        A: PartialEq<B>,
-    {
-        fn eq(&self, other: &&B) -> bool {
-            PartialEq::eq(*self, *other)
-        }
-        fn ne(&self, other: &&B) -> bool {
-            PartialEq::ne(*self, *other)
-        }
-    }
 }
 
 ```
 以上较完整的给出了关系运算Trait的代码，可以看到，RUST标准库除了对原生类型做了Trait的实现，也针对受限制的泛型尽可能的做了关系运算符 Trait的实现，以便最大的减少后继的开发量。程序员需要精通RUST的标准库已经针对那些泛型类型做好了实现，避免再重复的造轮子。
+
 
 ### ？运算符 Trait代码分析
 代码路径：try_trait.rs
