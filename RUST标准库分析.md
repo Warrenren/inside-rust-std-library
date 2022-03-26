@@ -356,16 +356,16 @@ impl <T> *mut [T] {
 操作系统内核经常需要直接将一个地址数值转换为某一类型的裸指针
 
 RUST也提供了一些其他的裸指针创建关联函数：
-`ptr::null<T>() -> *const T` 创建一个0值的`*const T`，实际上就是 `0 as *const T`，用null()函数明显更符合程序员的习惯 
-`ptr::null_mut<T>()->*mut T` 除了类型以外，其他同上
+`ptr::null<T>() -> *const T` 创建一个0值的`*const T`，实际上就是 `0 as *const T`，用null()函数明显更符合程序员的习惯  
+`ptr::null_mut<T>()->*mut T` 除了类型以外，其他同上  
 `ptr::from_raw_parts<T: ?Sized>(data_address: *const (), metadata: <T as Pointee>::Metadata) -> *const T` 从内存地址和元数据创建裸指针  
-`ptr::from_raw_parts_mut<T: ?Sized>(data_address: *mut (), metadata: <T as Pointee>::Metadata) -> *mut T` 功能同上，创建可变裸指针  
+`ptr::from_raw_parts_mut<T: ?Sized>(data_address: *mut (), metadata: <T as Pointee>::Metadata) -> *mut T` 功能同上，创建可变裸指针   
 RUST裸指针类型转换时，经常使用以上两个函数获得需要的指针类型。
 
 切片类型的裸指针创建函数如下：
 `ptr::slice_from_raw_parts<T>(data: *const T, len: usize) -> *const [T] `  
-`ptr::slice_from_raw_parts_mut<T>(data: *mut T, len: usize) -> *mut [T]` 由裸指针类型及切片长度获得切片类型裸指针，调用代码应保证data事实上就是切片的裸指针地址。由类型裸指针转换为切片类型裸指针最突出的应用之一是内存申请，申请的内存返回 * const u8的指针，这个裸指针是没有包含内存大小的，只有头地址，因此需要将这个指针转换为 * const [u8]，将申请的内存大小包含入裸指针结构体中。
-slice_from_raw_parts代码如下：
+`ptr::slice_from_raw_parts_mut<T>(data: *mut T, len: usize) -> *mut [T]` 由裸指针类型及切片长度获得切片类型裸指针，调用代码应保证data事实上就是切片的裸指针地址。由类型裸指针转换为切片类型裸指针最突出的应用之一是内存申请，申请的内存返回 * const u8的指针，这个裸指针是没有包含内存大小的，只有头地址，因此需要将这个指针转换为 * const [u8]，将申请的内存大小包含入裸指针结构体中。 
+slice_from_raw_parts代码如下： 
 ```rust
 pub const fn slice_from_raw_parts<T>(data: *const T, len: usize) -> *const [T] {
     //data.cast()将*const T转换为 *const()
@@ -389,7 +389,7 @@ ptr模块的函数大部分逻辑都比较简单。很多就是对intrinsic 函�
 
 #### 裸指针类型转换方法
 裸指针类型之间的转换：
-`*const T::cast<U>(self) -> *const U ` ，本质上就是一个`*const T as *const U`。利用RUST的类型推断，此函数可以简化代码并支持链式调用。
+`*const T::cast<U>(self) -> *const U ` ，本质上就是一个`*const T as *const U`。利用RUST的类型推断，此函数可以简化代码并支持链式调用。 
 `*mut T::cast<U>(self)->*mut U` 同上。
 调用以上的函数要注意，如果后继要把返回的指针转换成引用，那必须保证T类型与U类型内存布局完全一致。如果仅仅是将返回值做数值应用，则此约束可以不遵守，cast函数转换后的类型通常由编译器自行推断，有时需要仔细分析。  
 
@@ -399,7 +399,7 @@ ptr模块的函数大部分逻辑都比较简单。很多就是对intrinsic 函�
 ```*mut T::as_mut<`a>(self)->Option<&`a mut T>```同上，但转化类型为 &mut T。  
 
 切片类型裸指针类型转换：
-`ptr::*const [T]::as_ptr(self) -> *const T` 将切片类型的裸指针转换为切片元素的裸指针， 这个转换会导致指针的元数据丢失
+`ptr::*const [T]::as_ptr(self) -> *const T` 将切片类型的裸指针转换为切片成员类型的裸指针， 这个转换会导致指针的元数据丢失  
 `ptr::*mut [T]::as_mut_ptr(self) -> *mut T` 同上
 
 #### 裸指针结构体属性相关方法：
@@ -409,19 +409,19 @@ ptr模块的函数大部分逻辑都比较简单。很多就是对intrinsic 函�
 `ptr::*mut T::is_null(self)->bool此`函数判断裸指针的地址值是否为0  
 
 切片类型裸指针：
-`ptr::*const [T]:: len(self) -> usize` 获取切片长度，直接从裸指针的元数据获取长度
+`ptr::*const [T]:: len(self) -> usize` 获取切片长度，直接从裸指针的元数据获取长度  
 `ptr:: *mut [T]:: len(self) -> usize` 同上
 
 #### 裸指针偏移计算相关方法
-`ptr::*const T::offset(self, count:isize)->* const T` 得到偏移后的裸指针
-`ptr::*const T::wrapping_offset(self, count: isize) -> *const T` 考虑溢出绕回的offset
-`ptr::*const T::offset_from(self, origin: *const T) -> isize` 计算两个裸指针的offset值
-`ptr::*mut T::offset(self, count:isize)->* mut T` 偏移后的裸指针
-`ptr::*const T::wrapping_offset(self, count: isize) -> *const T` 考虑溢出绕回的offset
-`ptr::*const T::offset_from(self, origin: *const T) -> isize` 计算两个裸指针的offset值
+`ptr::*const T::offset(self, count:isize)->* const T` 得到偏移后的裸指针  
+`ptr::*const T::wrapping_offset(self, count: isize) -> *const T` 考虑溢出绕回的offset  
+`ptr::*const T::offset_from(self, origin: *const T) -> isize` 计算两个裸指针的offset值  
+`ptr::*mut T::offset(self, count:isize)->* mut T` 偏移后的裸指针  
+`ptr::*const T::wrapping_offset(self, count: isize) -> *const T` 考虑溢出绕回的offset  
+`ptr::*const T::offset_from(self, origin: *const T) -> isize` 计算两个裸指针的offset值  
 以上两个方法基本上通过intrinsic的函数实现
 
-`ptr::*const T::add(self, count: usize) -> Self`  
+`ptr::*const T::add(self, count: usize) -> Self`   
 `ptr::*const T::wraping_add(self, count: usize)->Self`  
 `ptr::*const T::sub(self, count:usize) -> Self`  
 `ptr::*const T::wrapping_sub(self, count:usize) -> Self`   
@@ -429,7 +429,7 @@ ptr模块的函数大部分逻辑都比较简单。很多就是对intrinsic 函�
 `ptr::*mut T::wraping_add(self, count: usize)->Self`  
 `ptr::*mut T::sub(self, count:usize) -> Self`  
 `ptr::*mut T::wrapping_sub(self, count:usize) -> Self`   
-以上是对offset函数的包装，使之更符合语义习惯，并便于理解
+以上是对offset函数的包装，使之更符合语义习惯，并便于理解  
 
 #### 裸指针直接赋值方法
 ```rust
@@ -445,12 +445,10 @@ ptr模块的函数大部分逻辑都比较简单。很多就是对intrinsic 函�
         self
     }
 ```
-
-大部分裸指针的函数和方法的代码都很简单，关键是要理解intrinsic中的函数功能。
-本节还有一部分原生方法没有介绍，留到mem模块分析完以后再介绍会更易于理解。
+本节还有一部分裸指针方法没有介绍，留到mem模块分析完以后再介绍会更易于理解。 
 
 ### 裸指针小结
-裸指针相关的代码多数比较简单，重要的是理解裸指针的概念，这样才能够准确的理解代码。
+裸指针相关的代码多数比较简单，重要的是理解裸指针的概念，理解intrinsic 相关函数，这样才能够准确的理解代码。
 
 #### RUST引用`&T`的安全要求
 1. 引用的内存地址必须满足类型T的内存对齐要求
