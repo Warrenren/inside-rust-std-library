@@ -118,6 +118,64 @@ std是在操作系统支撑下运行的只适用于用户态程序的库，core�
 ## 小结
 RUST的目标和现代编程语言的特点决定了它的库需要仔细的模块化设计。RUST的alloc库及std库都是基于core库。RUST的库设计非常巧妙和仔细，使得RUST完美的实现了对各种硬件架构平台的兼容，对各种操作系统平台的兼容。
 
+
+# RUST泛型小议
+RUST是一门生存在泛型的基础之上的语言。其他语言不使用泛型也不影响编程，泛型只是一个语法中的强大工具。与之相对，RUST是离开了泛型就无法完成程序编写，泛型与语法共生。
+
+## 直接针对泛型的方法和trait实现
+其他语言的泛型，是作为类型结构体成员，或是函数的输入/返回参数出现在代码中，是配角。RUST的泛型则可以作为主角，可以直接对泛型实现方法和trait。如：
+```rust
+//T:?Sized基本上就是所有的类型
+impl<T: ?Sized> Borrow<T> for T {
+    fn borrow(&self) -> &T {
+        self
+    }
+}
+
+impl<T: ?Sized> BorrowMut<T> for T {
+    fn borrow_mut(&mut self) -> &mut T {
+        self
+    }
+}
+```
+以上代码基本上就是对所有的类型都实现了Borrow<T>的trait。  
+直接针对泛型做方法和trait的实现是强大的工具，它的作用：  
+- 针对泛型的代码会更内聚，方法总比函数具备更明显的模块性
+- 逻辑更清晰及系统化更好
+- 具备更好的可扩展性
+- 更好的支持函数式编程
+
+## 泛型的层次关系
+RUST的泛型从一般到特殊会形成一种层次结构，有些类似于面对对象的基类和子类关系： 
+最基层： T  没有任何约束的T是泛型的基类   
+一级子层： 裸指针类型`* const T/* mut T`; 切片类型`[T]`; 数组类型`[T;N]`; 引用类型`&T/&mut T`; trait约束类型`T:trait`; 泛型元组`(T, U...)`; 泛型复合类型`struct <T>; enum <T>; union<T>` 及具体类型 `u8/u16/i8/bool/f32/&str/String...`     
+二级子层： 对一级子层的T赋以具体类型 如：`* const u8; [i32]`，或者将一级子层中的T再次做一级子层的具化，例如：`* const [T]; [*const T]; &(*const T); * const T where T:trait; struct <T:trait>` 
+
+可以一直递归下去，但没有太多的意义。
+显然，针对基层类型实现的方法和trait可以应用到层级高的泛型类型中。
+例如：
+```rust
+impl <T> Option<T> {...}
+impl<T, U> Option<(T, U)> {...}
+impl<T: Copy> Option<&T> {...}
+impl<T: Default> Option<T> {...}
+```
+以上是标准库对Option<T> 的不同泛型进行的方法实现定义。一般先针对基层泛型实现方法及trait，然后再针对高层次的泛型做方法及trait实现。  
+
+类似的实现再试举如下几例：  
+```rust
+impl <T:?Sized> *const T {...}
+impl <T:?Sized> *const [T] {...}
+impl <T:?Sized> *mut T{ ...}
+impl <T:?Sized> *mut [T] {...}
+impl <T> [T] { ...}
+impl <T, const N:usize> [T;N]{...}
+impl AsRef<[u8]> for str {...}
+impl AsRef<str> for str {...}
+```
+
+RUST中，可以定义新的trait, 并根据需要在已定义的类型上实现新的trait。这就显然比其他的面对对象的语言具备更好的可扩展性。
+
 # RUST标准库内存模块代码分析
 内存模块的代码路径举例如下(以作者电脑上的路径):
 %USER%\.rustup\toolchains\nightly-x86_64-pc-windows-msvc\lib\rustlib\src\rust\library\core\src\alloc\*.*
@@ -1284,18 +1342,25 @@ intrinsic库函数是指由编译器内置实现的函数，一般如下特点�
 ## 小结
 intrinsic函数库是从编译器层面完成跨CPU架构的一个手段，intrinsic通常被上层的库所封装。但在操作系统编程和框架编程时，仍然会不可避免的需要接触。
 
-# RUST基本类型代码初分析
+# RUST基本类型代码分析(一)
 原生数据类型，Option类型，Result类型的某些代码是分析其他模块的基础，因此先对这些类型的部分代码做个基础分析。
 
 ## 整形数据类型
 代码目录如下：
 %USER%\.rustup\toolchains\nightly-x86_64-pc-windows-msvc\lib\rustlib\src\rust\library\core\src\num
 
+整形数据类型标准函数库主要包括：
+1. 整形位操作函数：左移，右移，为1的位数目，为0的位数目，头部为0的位数目，尾部为0的位数目，头部为1的位数目，尾部为1的位数目，循环左移，循环右移
+2. 整形字节序函数：字节序反转，位序反转，大小端变换
+3. 数学函数：针对溢出做各种不同处理的加减乘除，传统的整形数学库函数如对数，幂，绝对值，取两者大值及两者小值
+   
+整形有有符号整形，无符号整形，大整形(大于计算机字长的整形)，但基本内容都是实现以上方法
 ### 无符号整形类型相关库代码分析
-标准库用宏简化了无符号整形类型的代码部分。 本节给出若干价值较大的函数，如大小端转换，其他代码则做一个分类简略。代码如下：
+标准库用宏简化的对不同位长的无符号整形的方法实现。本文着重介绍若干不易注意的方法，如大小端转换，对数学方法仅给出加法做为代表。代码如下：
 ```rust
 macro_rules! uint_impl {
     ($SelfT:ty, $ActualT:ident, $SignedT:ident, $BITS:expr, $MaxV:expr,
+        //以下主要是rust doc文档需要
         $rot:expr, $rot_op:expr, $rot_result:expr, $swap_op:expr, $swapped:expr,
         $reversed:expr, $le_bytes:expr, $be_bytes:expr,
         $to_xe_bytes_doc:expr, $from_xe_bytes_doc:expr) => {
@@ -1481,14 +1546,16 @@ impl u16 {
 ...
 ```
 
-### 有符号整形数据
-与无符号整形数据类似，略。
+RUST整形库代码逻辑并不复杂，宏也很简单。但因为RUST将其他语言的独立的数学库函数，单独的大小端变换等集成入整形(浮点类型)，有可能造成出于习惯而无法找到相应的函数。
 
 ## RUST Option类型标准库代码分析
 代码路径：
 %USER%\.rustup\toolchains\nightly-x86_64-pc-windows-msvc\lib\rustlib\src\rust\library\core\src\option.rs
 
+Option<T> 主要用来在编程中，类型T的变量可以不存在，代表一种异常。以往会选择T类型的一个值代表不存在的异常情况，从而导致异常情况处理只能依赖于程序员，采用Option<T>后，对异常情况的处理会由编译器负责。
 在初始化时无法确定T类型的值时，除了MaybeUninit<T>外，还可以用Option<T>来声明变量并初始化为None。
+
+Option<T>主要是解封装方法及Try trait。但Option<T>更酷的打开方式应该是用以map为代表的方法来完成函数链式调用。
 
 Option<T>的若干重点方法源代码如下：
 ```rust
@@ -1768,6 +1835,8 @@ fn main() {
 ## RUST Result类型标准库代码分析
 代码路径：
 %USER%\.rustup\toolchains\nightly-x86_64-pc-windows-msvc\lib\rustlib\src\rust\library\core\src\result.rs
+Result<T,E>采用了与Option<T>类似的思路来处理函数或方法返回值存在异常的情况。
+Result<T,E>的Try trait十分重要，另外，以map为代表的函数同样打开函数链式调用的通道。
 Result<T,E>值得关注方法的源代码如下：
 ```rust
 
@@ -1959,97 +2028,14 @@ impl<T, E> Result<Option<T>, E> {
 
 # RUST标准库的基础Trait
 
-## RUST中直接针对泛型实现方法定义和Trait
-实现方法或Trait时，可以针对泛型来做实现，并可以给泛型添加约束。可以添加的泛型约束有：
-`*const T/*mut T`: 泛型的裸指针（可变/不可变）类型，
-`&T/&mut T` 泛型的引用(可变/不可变)类型，
-`[T]` 泛型的切片类型，
-`&[T]/&mut [T]` 泛型的切片引用（可变/不可变）类型，
-`(T,U,V)` 泛型的元组（可变/不可变）类型，
-`Fn/FnOnce/FnMut/` 函数类型， 
-实现特定的Trait约束的泛型类型。
-对某个具有泛型的类型结构体实现方法和Trait时，也可以对类型结构体的泛型做出如上所述的约束。
-举例说明：
-```rust
-//基本上为所有的类型实现了Borrow<T> Trait
-impl<T: ?Sized> Borrow<T> for T {
-    fn borrow(&self) -> &T {
-        self
-    }
-}
-//为所有的引用类型实现Receiver Trait
-impl<T: ?Sized> Receiver for &T {}
-
-//为所有可变引用类型实现Receiver Trait
-impl<T: ?Sized> Receiver for &mut T {}
-
-//为所有不可变裸指针类型实现Clone Trait
-impl<T: ?Sized> Clone for *const T {
-     fn clone(&self) -> Self {
-         *self
-     }
- }
-//为可变裸指针类型实现Clone Trait
-impl<T: ?Sized> Clone for *mut T {
-     fn clone(&self) -> Self {
-         *self
-     }
-}
-
-//为切片类型[T]实现AsRef<[T]> Trait
-impl<T> AsRef<[T]> for [T] {
-    fn as_ref(&self) -> &[T] {
-        self
-    }
-}
-
-// 切片的方法 具体实现的摘要
-// [T;N]代表数组类型，[T]代表切片类型，
-// 下面是针对所有切片类型的统一方法。
-impl<T> [T] {
-    pub const fn len(&self) -> usize {
-        //使用* const T的元数据获得len
-        unsafe { crate::ptr::PtrRepr { const_ptr: self }.components.metadata }
-    }
-
-    pub const fn is_empty(&self) -> bool {
-        self.len() == 0
-    }
-    
-    //以下代码展示了RUST代码的极简洁及易理解
-    pub const fn first(&self) -> Option<&T> {
-        //从以下代码可以学习及体会RUST的编码技巧。利用绑定语法完成
-        //空切片的判断。同时，因为不能从切片中转移所有权，
-        // let [first, ..] = self 实际上是 let [ref x, ..] = self的一种简化表示
-        if let [first, ..] = self { Some(first) } else { None }
-    }
-
-    pub const fn split_first(&self) -> Option<(&T, &[T])> {
-        //利用绑定语义，极简高效的完成数组分离，秒杀其他语言
-        if let [first, tail @ ..] = self { Some((first, tail)) } else { None }
-    }
-
-    ...
-    ...
-}
-
-//如果T实现了Default Trait, 则为Box<T>实现Default Trait
-impl<T: Default> Default for Box<T> {
-    /// Creates a `Box<T>`, with the `Default` value for T.
-    fn default() -> Self {
-        box T::default()
-    }
-}
-```
-有效使用针对约束的泛型实现方法和Trait可以大幅的减少代码，对受约束的泛型实现方法及Trait是RUST提供的强大的泛型语法武器。
-
 ## 编译器内置Trait代码分析
 代码路径：
 %USER%\.rustup\toolchains\nightly-x86_64-pc-windows-msvc\lib\rustlib\src\rust\library\core\src\marker.rs
 
-代码量很少，下文给出一些RUST标准库文档没有说明的地方
+marker trait是没有实现体，是一种特殊的类型性质，这类性质无法用类型成员来表达，因此用trait来实现是最合适的。
+
 ```rust
-//Send Trait
+//线程之间可移动
 pub unsafe auto trait Send {
     // empty.
 }
@@ -2058,13 +2044,13 @@ impl<T: ?Sized> !Send for *const T {}
 impl<T: ?Sized> !Send for *mut T {}
 
 mod impls {
-    // 实现Sync的类型的类型不可变引用支持Send
+    // 实现Sync的类型的不可变引用类型支持Send
     unsafe impl<T: Sync + ?Sized> Send for &T {}
-    // 实现Send的类型的类型可变引用支持 Send
+    // 实现Send的类型的可变引用类型支持 Send
     unsafe impl<T: Send + ?Sized> Send for &mut T {}
 }
 
-// Sync Trait
+// 线程间可共享
 pub unsafe auto trait Sync {
     // Empty
 }
@@ -2072,6 +2058,7 @@ pub unsafe auto trait Sync {
 impl<T: ?Sized> !Sync for *const T {}
 impl<T: ?Sized> !Sync for *mut T {}
 
+//类型内存大小固定
 pub trait Sized {
     // Empty.
 }
@@ -2083,7 +2070,6 @@ pub trait Unsize<T: ?Sized> {
 }
 
 //模式匹配表达式匹配时编译器需要使用的Trait，如果一个结构实现了PartialEq，该Trait会自动被实现。
-//推测这个结构应该是内存按位比较
 pub trait StructuralPartialEq {
     // Empty.
 }
@@ -2169,7 +2155,7 @@ RUST中，所有的运算符号都可以重载。对于Ops运算符，RUST都可
 关系运算符的代码稍微复杂，这里给出较完整的代码。
 ```rust
 //"==" "!="的实现Trait，对于在整个类型定义域内存在值无法满足相等条件的，就只实现该Trait的类型
-//例如浮点类型 “NaN != NaN" , 实质上，在代码上，只需要实现这个Trait
+//例如浮点类型 “NaN != NaN" , 实质上，在代码上，对于相等/不等判断只需要实现这个Trait即可
 //可以为一个类型实现不同与此类型的PartialEq
 pub trait PartialEq<Rhs: ?Sized = Self> {
     /// “==” 重载方法
@@ -2748,7 +2734,7 @@ where
 }
 ```
 SliceIndex Trait 被设计同时满足Index及切片类型的一些方法的需求。因为这些需求在逻辑上是同领域的。集中在SliceIndex Trait模块性更好。如：
-`[T]::get<I:SliceIndex>(&self, I)->Option<&I::Output>` 就是直接掉用SliceIndex中的方法来实现。
+`[T]::get<I:SliceIndex>(&self, I)->Option<&I::Output>` 就是直接调用SliceIndex中的方法来实现成员获取。
 
 ```rust
 mod private_slice_index {
@@ -3010,6 +2996,7 @@ impl<I: Iterator + ?Sized> Iterator for &mut I {
 
 %USER%\.rustup\toolchains\nightly-x86_64-pc-windows-msvc\lib\rustlib\src\rust\library\core\src\iter\range.rs
 
+Range被直接实现Iterator trait，没有iter()这样生成迭代器的调用。
 定义如下：
 ```rust 
 impl<A: Step> Iterator for ops::Range<A> {
@@ -3036,6 +3023,29 @@ impl<A: Step> Iterator for ops::Range<A> {
     
 }
 ```
+Range Iterator的具体实现RangeIteratorImpl trait
+```rust
+impl<A: Step> RangeIteratorImpl for ops::Range<A> {
+    type Item = A;
+
+    default fn spec_next(&mut self) -> Option<A> {
+        if self.start < self.end {
+            //self.start.clone()是为了不转移self.start的所有权
+            let n =
+                Step::forward_checked(self.start.clone(), 1).expect("`Step` invariants not upheld");
+            //mem::replace将self.start赋值为n，返回self.start的值，这个方式适用于任何类型，且处理了所有权问题
+            //mem::replace是效率最高的代码方式
+            Some(mem::replace(&mut self.start, n))
+        } else {
+            None
+        }
+    }
+
+    ...
+}
+```
+由上面的代码可以看出，每一次next实际都对Range本身做出了修改。
+
 只有基于实现`Step Trait`的类型的Range才支持了Iterator, 而代码关键是Step Trait的方法，
  `Step Trait`的定义如下：
 ```rust
@@ -3071,39 +3081,89 @@ pub trait Step: Clone + PartialOrd + Sized {
 }
 ```
 照此，可以实现一个自定义类型的类型, 并支持Step Trait，如此，即可使用Range符号的Iterator。例如，一个二维的点的range,例如Range<(i32, i32)>的变量((0,0)..(10,10)), 三维的点的range，数列等。
-一个为所有的无符号类型整数实现的Step Trait中的一个函数：
+
+一下是为所有证书类型实现Step的宏：
 ```rust
-                fn forward_checked(start: Self, n: usize) -> Option<Self> {
-                    match Self::try_from(n) {
-                        Ok(n) => start.checked_add(n),
-                        Err(_) => None, // if n is out of range, `unsigned_start + n` is too
+
+macro_rules! step_identical_methods {
+    () => {
+        unsafe fn forward_unchecked(start: Self, n: usize) -> Self {
+            // 调用代码需要保证加法不会越界.
+            unsafe { start.unchecked_add(n as Self) }
+        }
+
+        unsafe fn backward_unchecked(start: Self, n: usize) -> Self {
+            // 调用代码需要保证减法不会越界.
+            unsafe { start.unchecked_sub(n as Self) }
+        }
+
+        fn forward(start: Self, n: usize) -> Self {
+            // debug 情况下 以下代码会panic，release以下代码会被优化掉
+            if Self::forward_checked(start, n).is_none() {
+                let _ = Self::MAX + 1;
+            }
+            // release中的加法 
+            start.wrapping_add(n as Self)
+        }
+
+        fn backward(start: Self, n: usize) -> Self {
+            // debug情况，以下代码会panic，release挥别优化掉.
+            if Self::backward_checked(start, n).is_none() {
+                let _ = Self::MIN - 1;
+            }
+            // release下的用法
+            start.wrapping_sub(n as Self)
+        }
+    };
+}
+
+macro_rules! step_integer_impls {
+    {
+        //比CPU字长小的无符号整数类型及有符号整数类型
+        narrower than or same width as usize:
+            $( [ $u_narrower:ident $i_narrower:ident ] ),+;
+        //比CPU字长大的无符号整数类型及有符号整数类型
+        wider than usize:
+            $( [ $u_wider:ident $i_wider:ident ] ),+;
+    } => {
+        $(
+            //为所有比CPU字长小的无符号整数类型的Step实现
+            impl Step for $u_narrower {
+                //通用实现
+                step_identical_methods!();
+
+                fn steps_between(start: &Self, end: &Self) -> Option<usize> {
+                    if *start <= *end {
+                        // u_nrrower类型字长必须小于usize字长
+                        Some((*end - *start) as usize)
+                    } else {
+                        None
                     }
                 }
-```
-从这个函数中可以看到，使用了try_from做了不同的无符号整数类型之间的变换，checked_add来规避溢出，都是RUST的安全性的具体体现，这是使用rust编码与其他语言编码的不同之处,在编码的时候即强制消除了易忽视的整数变量溢出bug产生。
 
-Range Iterator的底层实现Trait RangeIteratorImpl
-```rust
-impl<A: Step> RangeIteratorImpl for ops::Range<A> {
-    type Item = A;
+                fn forward_checked(start: Self, n: usize) -> Option<Self> {
+                    //将类型转换可能不成功显化，这是需要养成的RUST的特有思维
+                    match Self::try_from(n) {
+                        //checked_add完成溢出检查
+                        Ok(n) => start.checked_add(n),
+                        Err(_) => None, 
+                    }
+                }
 
-    default fn spec_next(&mut self) -> Option<A> {
-        if self.start < self.end {
-            //self.start.clone()是为了不转移self.start的所有权
-            let n =
-                Step::forward_checked(self.start.clone(), 1).expect("`Step` invariants not upheld");
-            //mem::replace将self.start赋值为n，返回self.start的值，这个方式适用于任何类型，且处理了所有权问题
-            //mem::replace是效率最高的代码方式
-            Some(mem::replace(&mut self.start, n))
-        } else {
-            None
-        }
+                fn backward_checked(start: Self, n: usize) -> Option<Self> {
+                    match Self::try_from(n) {
+                        Ok(n) => start.checked_sub(n),
+                        Err(_) => None, // if n is out of range, `unsigned_start - n` is too
+                    }
+                }
+            }
+            
+            //略
+            ...
     }
-
-    ...
 }
 ```
-上面代码的重点就是rust代码中对所有权的要求导致的代码实现的额外注意点。RUST的所有权导致了代码逻辑有时会非常独特。
+Range实现Iterator的代码不复杂，但是从类型转换及加减法的处理上深刻的体现了RUST的安全理念。
 
 ## slice的Iterator实现
 代码路径：  
@@ -3112,7 +3172,7 @@ impl<A: Step> RangeIteratorImpl for ops::Range<A> {
 首先定义了适合&[T]的Iter结构：
 ```rust
 pub struct Iter<'a, T: 'a> {
-    //当前元素的指针
+    //当前元素的指针，与end用不同的类型表示
     ptr: NonNull<T>,
     //尾元素指针，用ptr == end以快速检测iterator是否为空
     end: *const T, 
@@ -3120,23 +3180,36 @@ pub struct Iter<'a, T: 'a> {
     _marker: PhantomData<&'a T>, 
 }
 
-impl<'a, T> Iter<'a, T> {
-    pub(super) fn new(slice: &'a [T]) -> Self {
-        let ptr = slice.as_ptr();
-        // SAFETY: Similar to `IterMut::new`.
+pub struct IterMut<'a, T: 'a> {
+    ptr: NonNull<T>,
+    end: *mut T, 
+    _marker: PhantomData<&'a mut T>,
+}
+```
+这里，一个疑惑就是为什么不用下标及切片长度来作为Iter结构。这里主要是因为可变的Iterator实现无法支持。
+例如，给出如下结构：
+```rust
+pub struct IterMut <'a, T:'a> {
+    current: usize,
+    len: usize,
+    slice: 'a mut &[T]
+}
+```
+显然，当IterMut结构是可变借用时，无法再返回一个内部成员的借用用作迭代器的迭代返回值。
+```rust
+impl<'a, T> IterMut<'a, T> {
+    pub(super) fn new(slice: &'a mut [T]) -> Self {
+        let ptr = slice.as_mut_ptr();
         unsafe {
-            assume(!ptr.is_null()); 
+            assume(!ptr.is_null());
 
             let end = if mem::size_of::<T>() == 0 {
-                //如果切片元素是0字节类型，end 为 首地址加 切片长度字节。即每个元素一个字节
-                (ptr as *const u8).wrapping_add(slice.len()) as *const T 
+                (ptr as *mut u8).wrapping_add(slice.len()) as *mut T
             } else {
-                //end为slice.len() * mem::<T>::size_of()
-                ptr.add(slice.len()) 
+                ptr.add(slice.len())
             };
-            
-            //PhantomData会做类型推断，带入ptr的&T的类型和生命周期
-            Self { ptr: NonNull::new_unchecked(ptr as *mut T), end, _marker: PhantomData }
+
+            Self { ptr: NonNull::new_unchecked(ptr), end, _marker: PhantomData }
         }
     }
     
@@ -3144,19 +3217,9 @@ impl<'a, T> Iter<'a, T> {
     ...
 }
 //用宏来实现切片的Iterator trait
-iterator! {struct Iter -> *const T, &'a T, const, {/* no mut */}, {
-    fn is_sorted_by<F>(self, mut compare: F) -> bool
-    where
-        Self: Sized,
-        F: FnMut(&Self::Item, &Self::Item) -> Option<Ordering>,
-    {
-        self.as_slice().windows(2).all(|w| {
-            compare(&&w[0], &&w[1]).map(|o| o != Ordering::Greater).unwrap_or(false)
-        })
-    }
-}}
+iterator! {struct IterMut -> *mut T, &'a mut T, mut, {mut}, {}}
 
-//宏定义
+//上面的宏定义
 macro_rules! iterator {
     (
         struct $name:ident -> $ptr:ty,
@@ -3183,8 +3246,8 @@ macro_rules! iterator {
             }
         }
         
-        //具体的方法实现 针对上例就是 
-        // $name 即 Iter
+        //具体的方法实现 
+        // $name 即 IterMut
         impl<'a, T> $name<'a, T> {
             // 从Iterator获得切片.
             fn make_slice(&self) -> &'a [T] {
@@ -3221,7 +3284,7 @@ macro_rules! iterator {
         }
 
         //Iterator的实现, 即
-        //impl<'a, T> Iterator for Iter<'a, T>
+        //impl<'a, T> Iterator for IterMut<'a, T>
         impl<'a, T> Iterator for $name<'a, T> {
             // $elem即&'a T
             type Item = $elem;
@@ -3324,7 +3387,7 @@ macro_rules! len {
 
 
 ```
-基本上，切片Iterator的实现大量的使用了裸指针运算以便简化所有权的复杂操作及提高效率。限于篇幅，本节仅仅给出了最一般的slice的Iterator。Slice还有大量的Iterator的适配器实现，但分析基础与本节的例子基本原理一致。
+对于切片，RUST的所有权，借用等规定导致其迭代器实际上是一个非常好的编码训练工具，代码粗略看一遍后值得自己将其实现一遍，可以有效提高对RUST的认识和编码水平。
 
 ## <a id="str_iter">字符串Iterator代码分析</a>
 题外话，&str.len()返回字符串切片字节占用数，&str.chars().count()返回字符数目。
@@ -3415,27 +3478,27 @@ pub trait Unsize<T: ?Sized> {
 ```rust
 pub struct IntoIter<T, const N: usize> {
     /// data是迭代中的数组.
-    ///
     /// 这个数组中，只有data[alive]是有效的，访问其他的部分，即data[..alive.start]
     /// 及data[end..]会发生UB
-    /// 
+    /// [MaybeUninit<T>;N]的用法需要体会，
     data: [MaybeUninit<T>; N],
 
-    /// 表明数组中有效的范围.
-    ///
+    /// 表明数组中有效的成员的下标范围.
     /// 必须满足:
     /// - `alive.start <= alive.end`
     /// - `alive.end <= N`
     alive: Range<usize>,
 }
 ```
-从后继的代码可以看出，一旦使用了Iterator, 数组便被IntoIter所代替。
+上面这个结构是因为需要对array内成员做消费设计的。因为数组成员不支持所有权转移，所以采用了这种设计方式。数组的Iterator实现是理解所有权的一个极佳例子。
+
+### into_iter实现
 ```rust
 impl<T, const N: usize> IntoIter<T, N> {
     pub fn new(array: [T; N]) -> Self {
         // 
         // 因为RUST特性目前还不支持数组的transmute，所以用了内存跨类型的transmute_copy，此函数将从栈中申请一块内存。
-        // 拷贝完毕后，原数组的所有权已经转移到data中，且data也完成了初始化。此时，需要调用mem::forget反应所有权已经失去。
+        // 拷贝完毕后，原数组的所有权已经转移到data，data内数据事实上已经初始化，但仍然还是MaybeUninit<T>的类型。此时，需要对原数组调用mem::forget反应所有权已经失去。
         // mem::forget不会导致内存泄漏。
         unsafe {
             let iter = Self { data: mem::transmute_copy(&array), alive: 0..N };
@@ -3445,9 +3508,10 @@ impl<T, const N: usize> IntoIter<T, N> {
     }
 
     pub fn as_slice(&self) -> &[T] {
-        // SAFETY: We know that all elements within `alive` are properly initialized.
+        // 仅针对有效的部分返回切片引用。已经消费的不返回。
         unsafe {
             //此处调用SliceIndex::<Range>::get_unchecked
+            //slice是&[MaybeUninit<T>]类型
             let slice = self.data.get_unchecked(self.alive.clone());
             MaybeUninit::slice_assume_init_ref(slice)
         }
@@ -3456,6 +3520,7 @@ impl<T, const N: usize> IntoIter<T, N> {
     pub fn as_mut_slice(&mut self) -> &mut [T] {
         unsafe {
             //此处调用SliceIndex::<Range>::get_unchecked_mut
+            //slice 是 & mut [MaybeUninit<T>]类型
             let slice = self.data.get_unchecked_mut(self.alive.clone());
             MaybeUninit::slice_assume_init_mut(slice)
         }
@@ -3465,7 +3530,7 @@ impl<T, const N: usize> IntoIter<T, N> {
 impl<T, const N: usize> Iterator for IntoIter<T, N> {
     type Item = T;
     fn next(&mut self) -> Option<Self::Item> {
-        // 下面使用Range的Iterator特性实现next. alive的start会变化，从而导致start之前的数组元素无法再被访问。
+        // 下面使用Range的Iterator特性实现next. alive的start会变化，从而导致start之前的数组元素无法再被访问。因为已经被消费掉。
         // Option::map完成下标值传递。
         self.alive.next().map(|idx| {
             // SliceIndex::<usize>::get_unchecked, MaybeUninit::<T>::assume_init_read()
@@ -3479,58 +3544,58 @@ impl<T, const N: usize> Iterator for IntoIter<T, N> {
 }
 
 impl<T, const N: usize> Drop for IntoIter<T, N> {
-    // 因为IntoIter使用的内存是调用MaybeUninit::uninit()从栈中获得的, 感觉不释放似乎也没有内存泄漏问题。
-    // 此处的必要性还需要再思考。
+    // 这里没有被消费掉的成员必须显示释放掉。
     fn drop(&mut self) {
-        // as_mut_slice()获得所有具有所有权的元素，这些元素需要调用drop来释放。这里，data变量中的元素始终封装在MaybeUninit
+        // as_mut_slice()获得所有具有所有权的元素，这些元素需要调用drop来释放。这里，data变量中的元素始终封装在MaybeUninit<T>中
         unsafe { ptr::drop_in_place(self.as_mut_slice()) }
     }
 }
 
 ```
-以上需要特别注意所有权的转移和内存drop调用，这是RUST需要特别注意训练的点。
+数组的Iterator最关键的点就是如何将数组成员的所有权取出，这是RUST语法带来的额外的麻烦和复杂性。最终的解决办法显示了RUST编码的所有权转移的一些通用的底层技巧。
+
 ```rust
 impl<T, const N: usize> IntoIterator for [T; N] {
     type Item = T;
     type IntoIter = IntoIter<T, N>;
 
-    /// Creates a consuming iterator, that is, one that moves each value out of
-    /// the array (from start to end). The array cannot be used after calling
-    /// this unless `T` implements `Copy`, so the whole array is copied.
     /// 创建消费型的iterator, 如果T不实现`Copy`, 则调用此函数后，数组不可再被访问。
     fn into_iter(self) -> Self::IntoIter {
         IntoIter::new(self)
     }
 }
+```
+以上创建消费数组成员的Iterator。
 
-#[stable(feature = "rust1", since = "1.0.0")]
+### iter(), iter_mut()实现
+下面的数组成员引用的Iterator实质上是将数组强制转换为切片类型，应用切片类型的迭代器。
+```rust
 impl<'a, T, const N: usize> IntoIterator for &'a [T; N] {
     type Item = &'a T;
     type IntoIter = Iter<'a, T>;
     
-    //调用了slice::iter(), &[T;N]实质是slice结构[T]
     fn into_iter(self) -> Iter<'a, T> {
+        //点号导致self强制转换成[T], 然后调用切片类型的iter
         self.iter()
     }
 }
 
-#[stable(feature = "rust1", since = "1.0.0")]
 impl<'a, T, const N: usize> IntoIterator for &'a mut [T; N] {
     type Item = &'a mut T;
     type IntoIter = IterMut<'a, T>;
     
-    //同上
+    
     fn into_iter(self) -> IterMut<'a, T> {
+        //self被强制转换为切片类型
         self.iter_mut()
     }
 }
 ```
-对于数组类型，iterator的实现耗费了大量的资源并有很多内存操作。对于数组，尽可能的使用引用的Iterator。
-
 
 ## Iterator的适配器代码分析
 
 ### Map 适配器代码分析
+
 Map相关代码如下：
 ```rust
 
@@ -3565,7 +3630,9 @@ impl<I, F> Map<I, F> {
         Map { iter, f }
     }
 }
-
+```
+Map适配器结构相当直接而简单。
+```rust
 //针对Map实现Iterator
 impl<B, I: Iterator, F> Iterator for Map<I, F>
 where
@@ -3607,7 +3674,9 @@ pub trait Iterator {
 
 
 pub struct Chain<A, B> {
+    //迭代器A
     a: Option<A>,
+    //迭代器B
     b: Option<B>,
 }
 impl<A, B> Chain<A, B> {
@@ -3669,13 +3738,13 @@ where
 
 ```
 ### 其他
-Iterator的adapter还有很多，如StedBy, Filter, Zip, Intersperse等等。具体请参考标准库手册。基本上所有的adapter都是遵循Adapter的设计模式来实现的。
+Iterator的adapter还有很多，如StedBy, Filter, Zip, Intersperse等等。具体请参考标准库手册。基本上所有的adapter都是遵循Adapter的设计模式来实现的。且每一个适配器的结构及代码逻辑都是比较简单且易理解的。
 ### 小结
-RUST的Iterater的adapter是突出的体现RUST的语法优越性的特性，借助Trait和强大的泛型机制，与c/c++/java/python/go相比较，RUST以很少的代码在标准库就实现了最丰富的adapter。而其他语言往往需要语言基础之上的框架去支持，会导致额外的学习努力。
-函数式编程的基础框架之一便是基于Iterator和闭包实现丰富的adapter。这也凸显了RUST在语言级别对函数式编程的良好支持。
+RUST的Iterater的adapter是突出的体现RUST的语法优越性的特性，借助Trait和强大的泛型机制，与c/c++/java相比较，RUST以很少的代码在标准库就实现了最丰富的adapter。而其他语言标准库往往不存在这些适配器，需要其他库来实现。
+Iterator的adapter实现了强大的基于Iterator的函数式编程基础设施。函数式编程的基础框架之一便是基于Iterator和闭包实现丰富的adapter。这也凸显了RUST在语言级别对函数式编程的良好支持。
 
 ## Option的Iterator实现代码分析
-Option实现Iterator是比较令人疑惑的，毕竟用Iterator肯定代码更多，逻辑也复杂。主要目的应该是为了重用Iterator构建的各种adapter，及为了函数式编程的需要。仅分析了IntoIterator Trait所涉及的结构及方法
+Option实现Iterator是比较令人疑惑的，毕竟用Iterator肯定代码更多，逻辑也复杂。主要目的应该是为了重用Iterator构建的各种adapter，及为了函数式编程的需要。仅分析IntoIterator Trait所涉及的结构及方法
 相关类型结构定义：
 ```rust
 //into_iter的结构
@@ -3694,7 +3763,7 @@ impl<T> IntoIterator for Option<T> {
     type Item = T;
     type IntoIter = IntoIter<T>;
 
-    //创建Iterator的实现结构体，所有权传入
+    //创建Iterator的实现结构体，self所有权传入结构体
     fn into_iter(self) -> IntoIter<T> {
         IntoIter { inner: Item { opt: self } }
     }
@@ -3705,6 +3774,7 @@ impl<A> Iterator for Item<A> {
     type Item = A;
 
     fn next(&mut self) -> Option<A> {
+        //所有权传出，并用None替换原变量的值
         self.opt.take()
     }
 
@@ -3716,7 +3786,7 @@ impl<A> Iterator for Item<A> {
     }
 }
 
-//变量Iterator, 
+//消费变量的Iterator实现
 impl<A> Iterator for IntoIter<A> {
     type Item = A;
 
@@ -3729,10 +3799,10 @@ impl<A> Iterator for IntoIter<A> {
     }
 }
 ```   
-`
+
 Result<T,E>的 Iterator与Option<T>的Iterator非常相似，略
 
-# RUST基本类型标准库代码分析
+# RUST基本类型代码分析(二)
 ## 整形类型标准库代码分析
 ### NonZero数据类型
 `NonZeroU8, NonZeroU16，NonZeroU32, NonZeroU64, NonZeroU128, NonZeroUsize`
@@ -3871,7 +3941,7 @@ add_impl! { usize u8 u16 u32 u64 u128 isize i8 i16 i32 i64 i128 f32 f64 }
 配合ops::Try，以上函数主要是在语言级别更好的支持函数式编程
 
 ## RUST字符(char)类型标准库代码分析
-RUST的字符标准库主要是编程中常用到的字符相关操作,所有标准库的函数都可以作为RUST的熟悉训练，本节摘录一些显示RUST编码特点的内容。
+RUST的字符标准库主要是编程中常用到的字符相关操作,所有标准库的函数都可以作为RUST的训练，本节摘录一些显示RUST编码特点的内容。
 
 由字符串转换为字符类型：
 见如下代码：
@@ -4135,7 +4205,7 @@ RUST的字符模块的其他转换函数与EscapeUnicode采用了类似的设计
     //目前I的类型仅支持：
     // usize, ..(RangeFull), start..(RangeFrom), start..end(Range)
     // start..=end(RangeInclusive), ..end(RangeTo), ..=end(RangeToInclusive)  
-    // get函数更习惯用str[usize],或者str[Range]来完成 
+    // get函数不会panic,但更习惯用str[usize],或者str[Range]来完成 
     pub fn get<I: SliceIndex<str>>(&self, i: I) -> Option<&I::Output> {
         i.get(self)
     }
@@ -4168,7 +4238,7 @@ RUST的字符模块的其他转换函数与EscapeUnicode采用了类似的设计
     //其他可以用Index实现的get_xxx函数及split_at函数，略
     ...
 ```
-下面通过字符串的查找函数给出RUST具体的良好的程序结构设计的一个例子：
+下面通过字符串的查找函数给出RUST良好的程序结构设计的一个例子：
 ```rust
     //字符串查找函数，可以用模式匹配查找子串
     //支持如下例子中的查找    
@@ -4192,17 +4262,19 @@ RUST的字符模块的其他转换函数与EscapeUnicode采用了类似的设计
 1. 良好的扩展性，即使是原生类型，也可以直接在其上增加自定义Trait, 从而得到最直观的代码表现，而其他语言如C++/Java是无法在已经定义好的类型上做扩充的。只能创建新类型来实现对已有类型的功能扩展。不但在代码上不直观及冗余，也造成了额外的学习负担。
 2. Trait语义的强大，即使对于闭包类型，也可以实现Trait。
    
-RUST对于所有需要字符串查找功能做基础的字符串方法做了统一的设计：
-1. 设计Pattern Trait。只要支持这个Pattern Trait的类型，即可支持字符串查找到该类型。
-2. 对于不同类型的搜索，显然有部分算法或逻辑可以共享，同时，也可能有多种实现算法。为了提高代码的共享性及提供扩展性，应独立一个Trait来实现对搜索算法的抽象。
-3. 搜索算法应该支持Iterator以共享Iterator的基础库及支持函数式编程
-   
 ```rust
     pub fn find<'a, P: Pattern<'a>>(&'a self, pat: P) -> Option<usize> {
         //利用Pattern Trait支持了众多类型的查找
         pat.into_searcher(self).next_match().map(|(i, _)| i)
     }
-    
+```
+要设计这样一个find方法:
+1. 显然，参数需要是一个泛型，但泛型应该支持同样的接口，即Pattern trait
+2. 需要利用find的输入泛型参数，self来构造一个结构，并以这个结构为基础来实现方法完成查找。Pattern trait 的类型显然不可能作为这个结构(字符，字符切片，字符数组，闭包函数，字符串). 这个结构只能由Pattern trait的方法构造，事实上，Pattern trait最重要的工作就是构造这个结构。
+3. 2构造的结构应该支持统一的接口，真正的实现查找
+
+具体的实现定义如下：
+```rust    
     //模式 Trait 定义及公共行为
     pub trait Pattern<'a>: Sized {
         /// 与具体类型相适配的搜索算法的实现类型，类型必须实现Searcher Trait
@@ -4216,41 +4288,12 @@ RUST对于所有需要字符串查找功能做基础的字符串方法做了统�
             self.into_searcher(haystack).next_match().is_some()
         }
 
-        /// 模式是否匹配str起始字节
-        fn is_prefix_of(self, haystack: &'a str) -> bool {
-            matches!(self.into_searcher(haystack).next(), SearchStep::Match(0, _))
-        }
-
-        /// 模式是否匹配str尾部字节
-        fn is_suffix_of(self, haystack: &'a str) -> bool
-        where
-            Self::Searcher: ReverseSearcher<'a>,
-        {
-            matches!(self.into_searcher(haystack).next_back(), SearchStep::Match(_, j) if haystack.len() == j)
-        }
-
-        /// 如果模式匹配str的起始字节，返回将匹配部分去掉的str的其余部分
-        fn strip_prefix_of(self, haystack: &'a str) -> Option<&'a str> {
-            if let SearchStep::Match(start, len) = self.into_searcher(haystack).next() {
-                unsafe { Some(haystack.get_unchecked(len..)) }
-            } else {
-                None
-            }
-        }
-
-        /// 返回去掉匹配的尾部字节的str的其余部分
-        fn strip_suffix_of(self, haystack: &'a str) -> Option<&'a str>
-        where
-            Self::Searcher: ReverseSearcher<'a>,
-        {
-            if let SearchStep::Match(start, end) = self.into_searcher(haystack).next_back() {
-                unsafe { Some(haystack.get_unchecked(..start)) }
-            } else {
-                None
-            }
-        }
+        //略
+        ...
     }
-    
+```
+以下为Searcher trait定义。
+```rust    
     //Pattern匹配搜索算法的具体实现Trait
     pub unsafe trait Searcher<'a> {
         /// Searcher针对的字符串
@@ -4296,28 +4339,34 @@ RUST对于所有需要字符串查找功能做基础的字符串方法做了统�
         /// 字符串已经遍历完毕
         Done,
     }
- 
+```
+下面为单字符的Pattern trait的系列实现，仅展示一下相应的逻辑关系。
+```rust
     //针对char类型的Searcher Trait具现化类型
-    pub struct CharSearcher<'a> {
-        //略
-    }
+    pub struct CharSearcher<'a> { /*略*/ }
     //实现Searcher Trait
     unsafe impl<'a> Searcher<'a> for CharSearcher<'a> {
         //略
         ...
     }
-    // 针对char 的Patter实现, 支持如 "abc".find('a') 的形态
+
+    // 针对char 的Pattern实现, 支持如 "abc".find('a') 的形态
     impl<`a, `b> Pattern<`a> for char { 
         type Searcher = CharSearcher
         
         //略
         ...
     }
-
+```
+下面为多字符的Pattern trait的实现，因为是比较典型的设计，所以重点的进行分析：
+首先，设计字符匹配的trait，并在闭包，字符数组及其引用，字符切片类型中实现
+```rust
     //支持  "abc".find(&['a','b'])的形态
     //      "abc".find(&['a','b'][..]) 的形态 &['a','b'][..] 实质是&[char]类型，注意与&str类型的区别
     //      "abc".find(|ch| ch > 'a' && ch < 'c') 的形态
-    //利用MultiCharEq Trait 综合[char; N], &[char], FnMut(char)->bool 
+    
+    //利用MultiCharEq trait 综合[char; N], &[char], FnMut(char)->bool 
+    //字符匹配操作
     trait MultiCharEq {
         fn matches(&mut self, c: char) -> bool;
     }
@@ -4352,8 +4401,10 @@ RUST对于所有需要字符串查找功能做基础的字符串方法做了统�
             self.iter().any(|&m| m == c)
         }
     }
-    
-    // 实现Pattern Trait的类型结构定义
+ ```
+然后是基于泛型的统一的Pattern trait和Searcher的实现
+ ```rust   
+    //利用输入类型构造一个泛型结构
     struct MultiCharEqPattern<C: MultiCharEq>(C);
 
     //与MultiCharEqPattern相匹配的Searcher Trait具现的结构体
@@ -4363,29 +4414,53 @@ RUST对于所有需要字符串查找功能做基础的字符串方法做了统�
         char_indices: super::CharIndices<'a>,
     }
     
-    // 实现Pattern Trait
+    // 实现Pattern
     impl<'a, C: MultiCharEq> Pattern<'a> for MultiCharEqPattern<C> {
         type Searcher = MultiCharEqSearcher<'a, C>;
         
-        //略
+        //创建泛型Searcher结构
+        fn into_searcher(self, haystack: &'a str) -> MultiCharEqSearcher<'a, C> {
+            MultiCharEqSearcher { haystack, char_eq: self.0, char_indices: haystack.char_indices()}
+        }
     }
 
-    // 实现Searcher Trait
+    //针对泛型Searcher结构实现Searcher trait
     unsafe impl<'a, C: MultiCharEq> Searcher<'a> for MultiCharEqSearcher<'a, C> {
-        //略
-        ...
-        ...
-    }
+        fn haystack(&self) -> &'a str {
+            self.haystack
+        }
 
-    impl<'a, C: MultiCharEq> DoubleEndedSearcher<'a> for MultiCharEqSearcher<'a, C> {}
+        fn next(&mut self) -> SearchStep {
+            let s = &mut self.char_indices;
+            //pre_len用来计算char在字符串中占用了几个字节
+            let pre_len = s.iter.iter.len();
+            if let Some((i, c)) = s.next() {
+                let len = s.iter.iter.len();
+                //计算当前字符占用的字节数
+                let char_len = pre_len - len;
+                if self.char_eq.matches(c) {
+                    return SearchStep::Match(i, i + char_len);
+                } else {
+                    return SearchStep::Reject(i, i + char_len);
+                }
+            }
+            SearchStep::Done
+        }
+    }
+```
+下面是如何将MultiCharEqPattern及MultiCharEqSearcher应用在各类型的Pattern实现中。
+```rust
 
     /////////////////////////////////////////////////////////////////////////////
-    //利用宏简化
+    //利用宏简化代码
     macro_rules! pattern_methods {
         ($t:ty, $pmap:expr, $smap:expr) => {
             type Searcher = $t;
 
             fn into_searcher(self, haystack: &'a str) -> $t {
+                //这里实际上是用self创建了MultiCharEqPattern(self)
+                //随后用MutiEqPattern(self)创建MultiCharEqSearcher
+                //然后封装MultiCharEqSearcher，创建一个与self类型关联的Searcher类型的Searcher
                 ($smap)(($pmap)(self).into_searcher(haystack))
             }
 
@@ -4420,45 +4495,40 @@ RUST对于所有需要字符串查找功能做基础的字符串方法做了统�
     // 利用宏简化代码
     macro_rules! searcher_methods {
         (forward) => {
-            #[inline]
             fn haystack(&self) -> &'a str {
                 self.0.haystack()
             }
-            #[inline]
             fn next(&mut self) -> SearchStep {
+                //实质是MultiCharEqSearcher<>::next
                 self.0.next()
             }
-            #[inline]
             fn next_match(&mut self) -> Option<(usize, usize)> {
                 self.0.next_match()
             }
-            #[inline]
             fn next_reject(&mut self) -> Option<(usize, usize)> {
                 self.0.next_reject()
             }
         };
         (reverse) => {
-            #[inline]
             fn next_back(&mut self) -> SearchStep {
                 self.0.next_back()
             }
-            #[inline]
             fn next_match_back(&mut self) -> Option<(usize, usize)> {
                 self.0.next_match_back()
             }
-            #[inline]
             fn next_reject_back(&mut self) -> Option<(usize, usize)> {
                 self.0.next_reject_back()
             }
         };
     }
 
-    /// 针对[char; N]的Searcher结构，`<[char; N] as Pattern<'a>>::Searcher`.
+    //下面这个结构比较清晰的说明了 Pattern, MultiCharEqPattern, MultiCharEqSearcher的关系
+    //使得代码更清晰
     pub struct CharArraySearcher<'a, const N: usize>(
         <MultiCharEqPattern<[char; N]> as Pattern<'a>>::Searcher,
     );
 
-    /// 针对&[char;N]的Searcher结构， `<&[char; N] as Pattern<'a>>::Searcher`.
+    /// 针对&[char;N]的Pattern, MultiCharEqPattern, MultiCharEqSearcher的关系
     pub struct CharArrayRefSearcher<'a, 'b, const N: usize>(
         <MultiCharEqPattern<&'b [char; N]> as Pattern<'a>>::Searcher,
     );
@@ -4539,10 +4609,12 @@ RUST对于所有需要字符串查找功能做基础的字符串方法做了统�
         pattern_methods!(CharPredicateSearcher<'a, F>, MultiCharEqPattern, CharPredicateSearcher);
     }
 ```
-从以上代码再次给出了一个经典涉及给语言自带类型增加复杂Trait的设计模式。
-给原生类型增加Trait时，往往要做结构的扩展，这些扩展是无法在Trait中实现的，因此通常在Trait中定义一个关联类型，这一关联类型通常用Trait来约束。在slice的Index Trait实现及以上代码都采用了这种模式。
+多字符搜索代码不复杂，但结构设计则可圈可点。而且似乎是不得不这样做设计。RUST利用泛型及trait能够自然的得到比较好的设计结果。
+我们针对泛型做一个方法时，自然会对泛型用一个共用的trait——Pattern来约束。因为方法实现需要不同于泛型但紧密关联的另一个结构体，那这个结构体类型便自然的形成trait里的一个关联类型Searcher。而这个关联类型也自然应该用另一个trait——Searcher来约束。
+Searcher的变量应该在Pattern里面生成出来。Searcher trait应该提供查找的方法。
+这就是RUST语法自然导致好的设计的一个例子。
 
-以下对字符串搜索给出一些详细的解释，主要说明TwoWay算法
+以下对子字符串搜索给出一些详细的解释，主要说明TwoWay算法
 ```rust
  
     //针对str实现的pattern， 支持如"abc".find("ab")的形态
@@ -4554,33 +4626,7 @@ RUST对于所有需要字符串查找功能做基础的字符串方法做了统�
             StrSearcher::new(haystack, self)
         }
         
-        fn is_prefix_of(self, haystack: &'a str) -> bool {
-            //典型的函数式编程
-            haystack.as_bytes().starts_with(self.as_bytes())
-        }
-        
-        fn strip_prefix_of(self, haystack: &'a str) -> Option<&'a str> {
-            if self.is_prefix_of(haystack) {
-                // RangeFrom语法的强大及直观
-                unsafe { Some(haystack.get_unchecked(self.as_bytes().len()..)) }
-            } else {
-                None
-            }
-        }
-
-        fn is_suffix_of(self, haystack: &'a str) -> bool {
-            haystack.as_bytes().ends_with(self.as_bytes())
-        }
-
-        fn strip_suffix_of(self, haystack: &'a str) -> Option<&'a str> {
-            if self.is_suffix_of(haystack) {
-                let i = haystack.len() - self.as_bytes().len();
-                // SAFETY: suffix was just verified to exist.
-                unsafe { Some(haystack.get_unchecked(..i)) }
-            } else {
-                None
-            }
-        }
+        //略
     }
 
     pub struct StrSearcher<'a, 'b> {
@@ -4766,12 +4812,10 @@ RUST对于所有需要字符串查找功能做基础的字符串方法做了统�
             }
         }
 
-        #[inline]
         fn byteset_create(bytes: &[u8]) -> u64 {
             bytes.iter().fold(0, |a, &b| (1 << (b & 0x3f)) | a)
         }
 
-        #[inline]
         fn byteset_contains(&self, byte: u8) -> bool {
             (self.byteset >> ((byte & 0x3f) as usize)) & 1 != 0
         }
@@ -4849,153 +4893,9 @@ RUST对于所有需要字符串查找功能做基础的字符串方法做了统�
             }
         }
 
-        // 尾部开始比较的函数, 与next完全相同，不多做分析
-        fn next_back<S>(&mut self, haystack: &[u8], needle: &[u8], long_period: bool) -> S::Output
-        where
-            S: TwoWayStrategy,
-        {
-            let old_end = self.end;
-            'search: loop {
-                //wrapping_sub确保不出现panic，同时get会取到None值，不用再额外的代码做判断
-                let front_byte = match haystack.get(self.end.wrapping_sub(needle.len())) {
-                    Some(&b) => b,
-                    None => {
-                        self.end = 0;
-                        return S::rejecting(0, old_end);
-                    }
-                };
+        // 略
 
-                if S::use_early_reject() && old_end != self.end {
-                    return S::rejecting(self.end, old_end);
-                }
-
-                // Quickly skip by large portions unrelated to our substring
-                if !self.byteset_contains(front_byte) {
-                    self.end -= needle.len();
-                    if !long_period {
-                        self.memory_back = needle.len();
-                    }
-                    continue 'search;
-                }
-
-                // See if the left part of the needle matches
-                let crit = if long_period {
-                    self.crit_pos_back
-                } else {
-                    cmp::min(self.crit_pos_back, self.memory_back)
-                };
-                for i in (0..crit).rev() {
-                    if needle[i] != haystack[self.end - needle.len() + i] {
-                        self.end -= self.crit_pos_back - i;
-                        if !long_period {
-                            self.memory_back = needle.len();
-                        }
-                        continue 'search;
-                    }
-                }
-
-                // See if the right part of the needle matches
-                let needle_end = if long_period { needle.len() } else { self.memory_back };
-                for i in self.crit_pos_back..needle_end {
-                    if needle[i] != haystack[self.end - needle.len() + i] {
-                        self.end -= self.period;
-                        if !long_period {
-                            self.memory_back = self.period;
-                        }
-                        continue 'search;
-                    }
-                }
-
-                // We have found a match!
-                let match_pos = self.end - needle.len();
-                // Note: sub self.period instead of needle.len() to have overlapping matches
-                self.end -= needle.len();
-                if !long_period {
-                    self.memory_back = needle.len();
-                }
-
-                return S::matching(match_pos, match_pos + needle.len());
-            }
-        }
-
-        // 
-        // 
-        fn maximal_suffix(arr: &[u8], order_greater: bool) -> (usize, usize) {
-            let mut left = 0; // Corresponds to i in the paper
-            let mut right = 1; // Corresponds to j in the paper
-            let mut offset = 0; // Corresponds to k in the paper, but starting at 0
-            // to match 0-based indexing.
-            let mut period = 1; // Corresponds to p in the paper
-
-            while let Some(&a) = arr.get(right + offset) {
-                // `left` will be inbounds when `right` is.
-                let b = arr[left + offset];
-                if (a < b && !order_greater) || (a > b && order_greater) {
-                    // Suffix is smaller, period is entire prefix so far.
-                    // 保持向前，增加周期长度
-                    right += offset + 1;
-                    offset = 0;
-                    period = right - left;
-                } else if a == b {
-                    // Advance through repetition of the current period.
-                    if offset + 1 == period {
-                        right += offset + 1;
-                        offset = 0;
-                    } else {
-                        offset += 1;
-                    }
-                } else {
-                    // Suffix is larger, start over from current location.
-                    // 找到最小值或最大值，从当前位置计算周期长度
-                    left = right;
-                    right += 1;
-                    offset = 0;
-                    period = 1;
-                }
-            }
-            (left, period)
-        }
-
-        fn reverse_maximal_suffix(arr: &[u8], known_period: usize, order_greater: bool) -> usize {
-            let mut left = 0; // Corresponds to i in the paper
-            let mut right = 1; // Corresponds to j in the paper
-            let mut offset = 0; // Corresponds to k in the paper, but starting at 0
-            // to match 0-based indexing.
-            let mut period = 1; // Corresponds to p in the paper
-            let n = arr.len();
-
-            while right + offset < n {
-                let a = arr[n - (1 + right + offset)];
-                let b = arr[n - (1 + left + offset)];
-                if (a < b && !order_greater) || (a > b && order_greater) {
-                    // Suffix is smaller, period is entire prefix so far.
-                    right += offset + 1;
-                    offset = 0;
-                    period = right - left;
-                } else if a == b {
-                    // Advance through repetition of the current period.
-                    if offset + 1 == period {
-                        right += offset + 1;
-                        offset = 0;
-                    } else {
-                        offset += 1;
-                    }
-                } else {
-                    // Suffix is larger, start over from current location.
-                    left = right;
-                    right += 1;
-                    offset = 0;
-                    period = 1;
-                }
-                if period == known_period {
-                    break;
-                }
-            }
-            debug_assert!(period <= known_period);
-            left
-        }
     }
-
     // TwoWayStrategy allows the algorithm to either skip non-matches as quickly
     // as possible, or to work in a mode where it emits Rejects relatively quickly.
     trait TwoWayStrategy {
@@ -5011,15 +4911,12 @@ RUST对于所有需要字符串查找功能做基础的字符串方法做了统�
     impl TwoWayStrategy for MatchOnly {
         type Output = Option<(usize, usize)>;
 
-        #[inline]
         fn use_early_reject() -> bool {
             false
         }
-        #[inline]
         fn rejecting(_a: usize, _b: usize) -> Self::Output {
             None
         }
-        #[inline]
         fn matching(a: usize, b: usize) -> Self::Output {
             Some((a, b))
         }
@@ -5031,20 +4928,17 @@ RUST对于所有需要字符串查找功能做基础的字符串方法做了统�
     impl TwoWayStrategy for RejectAndMatch {
         type Output = SearchStep;
 
-        #[inline]
         fn use_early_reject() -> bool {
             true
         }
-        #[inline]
         fn rejecting(a: usize, b: usize) -> Self::Output {
             SearchStep::Reject(a, b)
         }
-        #[inline]
         fn matching(a: usize, b: usize) -> Self::Output {
             SearchStep::Match(a, b)
         }
     }
-```end
+```
 以上对字符串查找的方法进行了分析，利用Pattern的还有以下的方法：
 ```rust    
     //生成一个支持Iterator的结构完成split
@@ -5118,9 +5012,10 @@ where
 %USER%\.rustup\toolchains\nightly-x86_64-pc-windows-msvc\lib\rustlib\src\rust\library\core\src\option.rs  
 Borrow Trait代码定义如下：
 ```rust
-//实现Borrow Trait的类型一般是封装结构，如智能指针Box<T>，Rc<T>, String，Cell, RefCell等，通过borrow将内部变量的引用提供给
-//外部。通常的情况下，这些也都实现了Deref，AsRef等Trait把内部变量暴露出来，所以这些Trait之间有些重复。但Borrow Trait 更主要的
-//场景是在RefCell等结构中提供内部可变性，这是Deref, AsRef等Trait无能为力的区域。后继分析相关类型时再给出进一步分析。
+//实现Borrow Trait的类型一般是封装结构，如智能指针Box<T>，Rc<T>, String，Cell, RefCell等，通过borrow将
+//内部变量的引用提供给外部。通常的情况下，这些也都实现了Deref，AsRef等Trait把内部变量暴露出来，所以这些
+//Trait之间有些重复。但Borrow Trait 更主要的场景是在RefCell等结构中提供内部可变性，这是Deref, AsRef等
+//Trait无能为力的区域。后继分析相关类型时再给出进一步分析。
 pub trait Borrow<Borrowed: ?Sized> {
     fn borrow(&self) -> &Borrowed;
 }
@@ -5168,8 +5063,8 @@ impl<T: ?Sized> BorrowMut<T> for &mut T {
 %USER%\.rustup\toolchains\nightly-x86_64-pc-windows-msvc\lib\rustlib\src\rust\library\core\src\cell.rs  
 
 Cell模块提供了内部可变性的功能。对应于以下场景：
-一个变量存在多个引用，且通过这些引用都可以修改此变量。例如linux中netdev的引用即存在于全局的网络设备链表中，又存在于网卡设备驱动中。
-RUST的可变引用与不可变引用不能同时共存，这导致了无法通过普通的引用语法完成上述场景。RUST提供的方案是Cell方案。思路很简单，提供一个封装结构，此封装结构以非可变引用存在于各需要的其他结构变量中。然后在这个封装结构的基础上，利用unsafe 代码完成内部变量的改变。
+一个变量存在多个引用，希望通过这些引用都可以修改此变量。
+RUST的可变引用与不可变引用不能同时共存，这导致了无法通过普通的引用语法完成上述场景。RUST提供的方案是Cell方案。思路很简单，提供一个封装结构，此封装结构以非可变引用存在于其他类型结构体成员变量中。然后在这个封装结构的基础上，利用unsafe 代码完成内部变量的改变。
 Cell模块类型的层次如下：
 1. UnsafeCell<T>主要提供了获取内部变量原生可变指针的方法。
 2. Cell<T>基于UnsafeCell<T>的基础上实现了安全的内部可变性, Cell<T>的多个不可变引用都可以用set方法改变内部的T类型变量。Cell<T>本身没有可变引用及不可变引用的区别，与RUST的内存安全性理念有些不符合。程序员使用RefCell<T>完成内部可变性是更合适的方案。
@@ -5215,15 +5110,17 @@ impl<T> const From<T> for UnsafeCell<T> {
     }
 }
 ```
-可以看到，UnsafeCell的get函数返回了裸指针，从这点看，UnsafeCell逃脱RUST对引用安全检查的方法实际上就是个通常的unsafe 的裸指针操作，没有任何神秘性可言。
+可以看到，UnsafeCell的get函数返回了裸指针，UnsafeCell逃脱RUST对引用安全检查的方法实际上就是个通常的unsafe 的裸指针操作，没有任何神秘性可言。
 
-Cell<T> 内部包装UnsafeCell<T>， 利用UnsafeCell<T>的方法获得原始指针后，用unsafe代码对内部变量进行赋值，从而绕开了RUST语言编译器对引用的约束。Cell<T>的赋值没有任何限制，实际上和直接使用裸指针赋值是等同的，但因为没有裸指针直接暴露，所以还是保证了不会出现悬垂指针。
+Cell<T> 内部包装UnsafeCell<T>， 利用UnsafeCell<T>的方法获得裸指针后，用unsafe代码对内部变量进行赋值，从而绕开了RUST语言编译器对引用的约束。Cell<T>的赋值没有任何限制，实际上和直接使用裸指针赋值是等同的，但因为没有直接暴露裸指针，所以保证了不会出现悬垂指针。
 ```rust
 #[repr(transparent)]
 pub struct Cell<T: ?Sized> {
     value: UnsafeCell<T>,
 }
-
+```
+Cell<T>创建方法：
+```rust
 impl<T> const From<T> for Cell<T> {
     fn from(t: T) -> Cell<T> {
         Cell::new(t)
@@ -5234,12 +5131,15 @@ impl<T> Cell<T> {
     pub const fn new(value: T) -> Cell<T> {
         Cell { value: UnsafeCell::new(value) }
     }
-
+```
+Cell<T> 改变内部变量的方法:
+```rust
     
     pub fn set(&self, val: T) {
         //实际调用mem::replace
         let old = self.replace(val);
-        //因为原有的值可能是MaybeUninit,所以此处调用drop以确保万无一失
+        //这里不调用drop, old也应该因为生命周期终结被释放。
+        //此处调用drop以确保万无一失
         drop(old);
     }
 
@@ -5254,25 +5154,36 @@ impl<T> Cell<T> {
         }
     }
 
+    //此函数也会将原有的值及所有权返回
     pub fn replace(&self, val: T) -> T {
         // 利用unsafe粗暴将指针转变为可变引用，然后赋值，此处必须用
         // replace，原有值的所有权需要有交代。
         mem::replace(unsafe { &mut *self.value.get() }, val)
     }
-
+```
+获取内部值的解封装方法:
+```rust
     pub const fn into_inner(self) -> T {
         //解封装
         self.value.into_inner()
     }
 }
 
+impl<T: Default> Cell<T> {
+    //take后，变量所有权已经转移出来
+    pub fn take(&self) -> T {
+        self.replace(Default::default())
+    }
+}
+
 impl<T: Copy> Cell<T> {
     pub fn get(&self) -> T {
-        //如果不是Copy Trait类型，这个仍然会回传浅拷贝，但就会有悬垂指针问题
-        //主要是对unsafe code的封装 
+        //只适合于Copy Trait类型，否则会导致所有权转移，引发UB
         unsafe { *self.value.get() }
     }
-    
+```
+对函数式编程支持的方法
+```rust    
     //函数式编程，因为T支持Copy，所以没有所有权问题 
     pub fn update<F>(&self, f: F) -> T
     where
@@ -5285,6 +5196,9 @@ impl<T: Copy> Cell<T> {
     }
 }
 
+```
+获取内部变量指针的方法：
+```rust
 impl<T: ?Sized> Cell<T> {
     //通常应该不使用这个机制，安全隐患非常大
     pub const fn as_ptr(&self) -> *mut T {
@@ -5300,14 +5214,9 @@ impl<T: ?Sized> Cell<T> {
         unsafe { &*(t as *mut T as *const Cell<T>) }
     }
 }
-
-impl<T: Default> Cell<T> {
-    //take后，变量所有权已经转移出来
-    pub fn take(&self) -> T {
-        self.replace(Default::default())
-    }
-}
-
+```
+切片类型相关方法
+```rust
 //Unsized Trait实现
 impl<T: CoerceUnsized<U>, U> CoerceUnsized<Cell<U>> for Cell<T> {}
 
@@ -5325,18 +5234,21 @@ impl<T, const N: usize> Cell<[T; N]> {
     }
 }
 ```
+
 以下为RefCell<T>类型相关的结构， 删除了一些和debug相关的内容，使代码简化及理解简单
 ```rust
 /// 满足以下需求：
 
 pub struct RefCell<T: ?Sized> {
     //用以标识对外是否有可变引用，是否有不可变引用，有多少个不可变引用
+    //是引用计数的实现体
     borrow: Cell<BorrowFlag>,
     //包装内部的变量
     value: UnsafeCell<T>,
 }
-
-
+```
+引用计数类型BorrowFlag的定义：
+```rust
 // 正整数表示RefCell执行borrow()调用生成的不可变引用"Ref"的数目
 // 负整数表示RefCell执行borrow_mut()调用生成的可变引用"RefMut"的数目
 // 多个RefMut存在的条件是在多个RefMut指向同一个"RefCell"的不同部分的情况，如多个RefMut指向
@@ -5355,14 +5267,15 @@ fn is_reading(x: BorrowFlag) -> bool {
     x > UNUSED
 }
 
-//用Cell来实现被多个Ref类型所引用，获取计数及修改计数
+//对RefCell<T>中成员变量borrow的引用封装类型，计数逻辑的负责类型
 struct BorrowRef<'b> {
     borrow: &'b Cell<BorrowFlag>,
 }
 
 impl<'b> BorrowRef<'b> {
+    //每次new，代表对RefCell<T>产生了一个新的引用，需增加引用计数
     fn new(borrow: &'b Cell<BorrowFlag>) -> Option<BorrowRef<'b>> {
-        // b是Copy的量
+        // 引用计数加1，
         let b = borrow.get().wrapping_add(1);
         if !is_reading(b) {
             // 1.如果有borrow_mut()调用且生命周期没有终结
@@ -5375,27 +5288,19 @@ impl<'b> BorrowRef<'b> {
         }
     }
 }
-// Ref 生命周期结束的时候调用
+
+// Drop，代表对RefCell<T>的引用生命周期结束，需减少引用计数
 impl Drop for BorrowRef<'_> {
-    #[inline]
     fn drop(&mut self) {
         let borrow = self.borrow.get();
-        //一定应该在正整数
+        //一定应该是正整数
         debug_assert!(is_reading(borrow));
         //不可变引用计数减一
         self.borrow.set(borrow - 1);
     }
 }
-
-//RefCell borrow()调用
-pub struct Ref<'b, T: ?Sized + 'b> {
-    //不可变引用
-    value: &'b T,
-    //不可变引用的计数
-    borrow: BorrowRef<'b>,
-}
-
 impl Clone for BorrowRef<'_> {
+    //每次clone实际上增加了对RefCell<T>的不可变引用，
     fn clone(&self) -> Self {
         //不可变引用计数加1
         let borrow = self.borrow.get();
@@ -5405,7 +5310,17 @@ impl Clone for BorrowRef<'_> {
         BorrowRef { borrow: self.borrow }
     }
 }
-
+```
+下面是从RefCell<T>取得不可变引用的具体实现类型及逻辑。
+```rust
+//RefCell<T> borrow()调用获取的类型
+pub struct Ref<'b, T: ?Sized + 'b> {
+    //对RefCell<T>中value的引用
+    value: &'b T,
+    //对RefCell<T>中borrow引用的封装
+    borrow: BorrowRef<'b>,
+}
+//Deref将获得内部value
 impl<T: ?Sized> Deref for Ref<'_, T> {
     type Target = T;
 
@@ -5415,15 +5330,14 @@ impl<T: ?Sized> Deref for Ref<'_, T> {
 }
 
 impl<'b, T: ?Sized> Ref<'b, T> {
-    /// 不必通过RefCell,仅仅用Ref来增加一个不可变引用的方法
-    /// 不选择实现Clone Trait，是因为要用RefCell<T>.borrow().clone来复制
+    /// 与再执行RefCell<T>::borrow等价。但用clone可以在不必有RefCell<T>的情况下增加引用
+    /// 不选择实现Clone Trait，是因为要用RefCell<T>.borrow().clone()来复制
     /// RefCell<T>
     pub fn clone(orig: &Ref<'b, T>) -> Ref<'b, T> {
         Ref { value: orig.value, borrow: orig.borrow.clone() }
     }
 
     //通常的情况下，F的返回引用与Ref中的引用是强相关的，即获得返回引用等同于获得Ref中value的引用
-    //通常返回引用便是T类型结构体中某一个成员的引用，此时当然应增加计数
     pub fn map<U: ?Sized, F>(orig: Ref<'b, T>, f: F) -> Ref<'b, U>
     where
         F: FnOnce(&T) -> &U,
@@ -5450,9 +5364,10 @@ impl<'b, T: ?Sized> Ref<'b, T> {
     }
 }
 
-#[unstable(feature = "coerce_unsized", issue = "27732")]
 impl<'b, T: ?Sized + Unsize<U>, U: ?Sized> CoerceUnsized<Ref<'b, U>> for Ref<'b, T> {}
-
+```
+以下是borrow_mut()的相关结构及逻辑:
+```rust
 //作用与BorrowRef相同
 struct BorrowRefMut<'b> {
     borrow: &'b Cell<BorrowFlag>,
@@ -5493,7 +5408,7 @@ impl<'b> BorrowRefMut<'b> {
     }
 }
 
-//从RefCell<T> borrow_mut出可变引用
+//从RefCell<T> borrow_mut返回的结构体
 pub struct RefMut<'b, T: ?Sized + 'b> {
     //可变引用
     value: &'b mut T,
@@ -5501,6 +5416,7 @@ pub struct RefMut<'b, T: ?Sized + 'b> {
     borrow: BorrowRefMut<'b>,
 }
 
+//Deref后返回内部变量的引用
 impl<T: ?Sized> Deref for RefMut<'_, T> {
     type Target = T;
 
@@ -5508,13 +5424,16 @@ impl<T: ?Sized> Deref for RefMut<'_, T> {
         self.value
     }
 }
-
+//DerefMut返回内部变量可变引用
 impl<T: ?Sized> DerefMut for RefMut<'_, T> {
     fn deref_mut(&mut self) -> &mut T {
         self.value
     }
 }
-
+```
+对RefCell<T>的方法实现：
+变量创建方法：
+```rust
 impl<T> RefCell<T> {
     pub const fn new(value: T) -> RefCell<T> {
         RefCell {
@@ -5523,6 +5442,9 @@ impl<T> RefCell<T> {
             borrow: Cell::new(UNUSED),
         }
     }
+```
+解封装方法：
+```rust
 
     //实际会消费RefCell，并将内部变量返回，此时，如果
     //执行过borrow()/borrow_mut() 并生命周期未终结，
@@ -5531,7 +5453,9 @@ impl<T> RefCell<T> {
     pub const fn into_inner(self) -> T {
         self.value.into_inner()
     }
-
+```
+改变内部值的方法：
+```rust
     //将原有内部变量替换为新值，既然是RefCell, 通常应使用borrow_mut
     //获得可变引用，再对值做修改，下面函数实际也是用borrow_mut完成，
     //但更多应该是用在泛型中
@@ -5551,7 +5475,9 @@ impl<T> RefCell<T> {
         mem::swap(&mut *self.borrow_mut(), &mut *other.borrow_mut())
     }
 }
-
+```
+下面实际上已经实现了Borrow trait,
+```rust
 impl<T: ?Sized> RefCell<T> {
     //Borrow Trait实现
     pub fn borrow(&self) -> Ref<'_, T> {
@@ -5591,7 +5517,9 @@ impl<T: ?Sized> RefCell<T> {
             }),
         }
     }
-
+```
+直接获取内部变量指针：
+```rust
     //此函数如果没有绝对的安全把握，不要用
     pub fn as_ptr(&self) -> *mut T {
         self.value.get()
@@ -5601,14 +5529,18 @@ impl<T: ?Sized> RefCell<T> {
     pub fn get_mut(&mut self) -> &mut T {
         self.value.get_mut()
     }
-    
-    //在leak操作后，做计数器恢复，
+```
+其他方法：
+```rust    
+    //在leak操作后，做leak的逆操作，实际上对计数器进行了恢复，
     pub fn undo_leak(&mut self) -> &mut T {
         *self.borrow.get_mut() = UNUSED;
         self.get_mut()
     }
 
+    //规避计数器计数的方法，与borrow操作近似
     pub unsafe fn try_borrow_unguarded(&self) -> Result<&T, BorrowError> {
+        //如果没有borrow_mut(),则返回引用
         if !is_writing(self.borrow.get()) {
             Ok(unsafe { &*self.value.get() })
         } else {
@@ -5617,7 +5549,9 @@ impl<T: ?Sized> RefCell<T> {
         }
     }
 }
-
+```
+内部值获取方法：
+```rust
 impl<T: Default> RefCell<T> {
     //对RefCell<T>应该不使用这个函数，尤其是在有borrow()/borrow_mut()
     //且生命周期没有终结时
@@ -5625,6 +5559,9 @@ impl<T: Default> RefCell<T> {
         self.replace(Default::default())
     }
 }
+```
+系统编译器内嵌trait实现：
+```rust
 //支持线程间转移
 unsafe impl<T: ?Sized> Send for RefCell<T> where T: Send {}
 //不支持线程间共享
@@ -5667,70 +5604,143 @@ impl<T> const From<T> for RefCell<T> {
 
 impl<T: CoerceUnsized<U>, U> CoerceUnsized<RefCell<U>> for RefCell<T> {}
 ```
+RefCell<T>的代码实现，是理解RUST解决问题的思维的好例子。 编程中，RefCell的计数器是针对RUST语法的一个精巧的设计，利用drop的自动调用，编程只需要关注new，这就节省了程序员极大的精力，也规避了错误的发生。borrow_mut()机制则解决了多个可修改借用。
+利用RUST的非安全个性和自动drop的机制，可以自行设计出RefCell<T>这样的标准库解决方案，而不是借助于编译器。这是RUST的一个突出特点，也是其能与C一样成为系统级语言的原因。
 ## Pin及UnPin
+Pin<T>主要解决需要程序员在编程时要时刻注意处理可能的变量地址改变的情况。利用Pin<T>，程序员只需要在初始的时候注意到这个场景并定义好。后继就可以不必再关心。
+Pin是一个对指针&mut T的包装结构，包装后因为&mut T的独占性。封装结构外，不可能再存在变量的引用及不可变引用。所有的引用都只能使用Pin<T>来完成，导致RUST的需要引用的一些内存操作无法进行，如实质上是指针交换的调用mem::swap，从而保证了指针指向的变量在代码中会被固定在某个内存位置。当然，编译器也不会再做优化。
 
-Pin是一个对指针&mut T的包装结构，包装后指针&mut T所有权转移进Pin，外界不再存在&mut T，只能直接使用Pin<T>来代替&mut T，导致RUST的一些内存操作无法进行，如实质上是指针交换的调用mem::swap，从而保证了指针指向的变量被固定在某个内存位置。
-
-实现Unpin Trait的类型不受Pin的约束，RUST能够通过浅拷贝就完成类型结构复制的类型基本上都实现了Unpin Trait。
+实现Unpin Trait的类型不受Pin的约束，RUST中实现Copy trait的类型基本上都实现了Unpin Trait。
+结构定义
 ```rust
 #[repr(transparent)]
 #[derive(Copy, Clone)]
 pub struct Pin<P> {
     pointer: P,
 }
-
-impl<P: Deref, Q: Deref> PartialEq<Pin<Q>> for Pin<P>
-where
-    P::Target: PartialEq<Q::Target>,
-{
-    fn eq(&self, other: &Pin<Q>) -> bool {
-        //会将self及other先做解引用至P::Target
-        P::Target::eq(self, other)
-    }
-
-    fn ne(&self, other: &Pin<Q>) -> bool {
-        P::Target::ne(self, other)
-    }
-}
-
+```
+Pin变量创建：
+```rust
 impl<P: Deref<Target: Unpin>> Pin<P> {
-    // Unpin类型调用new创建Pin<T>
+    // 支持Unpin类型可以用new创建Pin<T>
     pub const fn new(pointer: P) -> Pin<P> {
         unsafe { Pin::new_unchecked(pointer) }
     }
+    ...
+}
 
+impl<P: Deref> Pin<P> {
+    //实现Deref的类型，用下面的行为创建Pin<T>, 调用者应该保证P可以被Pin，
+    pub const unsafe fn new_unchecked(pointer: P) -> Pin<P> {
+        Pin { pointer }
+    }
+    ...
+}
+```
+Pin自身的new方法仅针对Pin实际上不起作用的Unpin类型。对于其他不支持Unpin的类型，通常使用智能指针提供的Pin创建方法，如Boxed::pin。
+new_unchecked则提供给其他智能指针的安全的创建方法内部使用。
+
+```rust
+impl <P: Deref<Target: Unpin>> Pin<P> {
+    ...
     /// 解封装，取消内存pin操作
     pub const fn into_inner(pin: Pin<P>) -> P {
         pin.pointer
     }
 }
 
-impl<P: Deref> Pin<P> {
-    //调用者应该保证P可以被Pin，
-    pub const unsafe fn new_unchecked(pointer: P) -> Pin<P> {
-        Pin { pointer }
-    }
-
-    /// 不能再返回对类型的直接饮用，必须用Pin<>来返回，以保证
-    /// 内存被Pin
-    pub fn as_ref(&self) -> Pin<&P::Target> {
-        // SAFETY: see documentation on this function
-        unsafe { Pin::new_unchecked(&*self.pointer) }
-    }
+impl <P:Deref> Pin<P> {
+    ...
     
-    //已经解封装
+    //对应于new_unchecked
     pub const unsafe fn into_inner_unchecked(pin: Pin<P>) -> P {
         pin.pointer
     }
 }
-
-impl<P: DerefMut> Pin<P> {
-    //必须返回Pin 
-    pub fn as_mut(&mut self) -> Pin<&mut P::Target> {
+```
+指针转换
+```rust
+impl<P: Deref> Pin<P> {
+    ...
+    /// 需要返回一个Pin的引用，以为P自身就是指针，返回P是不合理及不安全的，所以此函数被用来
+    /// 返回Pin住的解引用的指针类型
+    pub fn as_ref(&self) -> Pin<&P::Target> {
         // SAFETY: see documentation on this function
+        unsafe { Pin::new_unchecked(&*self.pointer) }
+    }
+}
+impl <P:DerefMut> Pin<P> { 
+    ...  
+    /// 需要返回一个Pin的可变引用，以为P自身就是指针，所以此函数被用来返回Pin住的解引用的指针类型
+    pub fn as_mut(&mut self) -> Pin<&mut P::Target> {
         unsafe { Pin::new_unchecked(&mut *self.pointer) }
     }
+}
+impl <'a, T:?Sized> Pin<&'a T> {
+    //&T 不会导致在安全RUST领域的类如mem::replace之类的地址改变操作
+    pub const fn get_ref(self) -> &'a T {
+        self.pointer
+    }
+}
 
+impl<'a, T: ?Sized> Pin<&'a mut T> {
+    //不可变引用可以随意返回，不会影响Pin的语义
+    pub const fn into_ref(self) -> Pin<&'a T> {
+        Pin { pointer: self.pointer }
+    }
+
+    //Unpin的可变引用可以返回，Pin对Unpin类型无作用
+    pub const fn get_mut(self) -> &'a mut T
+    where
+        T: Unpin,
+    {
+        self.pointer
+    }
+
+    //后门，要确定安全，会导致Pin失效
+    pub const unsafe fn get_unchecked_mut(self) -> &'a mut T {
+        self.pointer
+    }
+    ...
+}
+
+impl<T: ?Sized> Pin<&'static T> {
+    pub const fn static_ref(r: &'static T) -> Pin<&'static T> {
+        unsafe { Pin::new_unchecked(r) }
+    }
+}
+
+impl<'a, P: DerefMut> Pin<&'a mut Pin<P>> {
+    pub fn as_deref_mut(self) -> Pin<&'a mut P::Target> {
+        unsafe { self.get_unchecked_mut() }.as_mut()
+    }
+}
+
+impl<T: ?Sized> Pin<&'static mut T> {
+    pub const fn static_mut(r: &'static mut T) -> Pin<&'static mut T> {
+        // SAFETY: The 'static borrow guarantees the data will not be
+        // moved/invalidated until it gets dropped (which is never).
+        unsafe { Pin::new_unchecked(r) }
+    }
+}
+
+impl<P: Deref> Deref for Pin<P> {
+    type Target = P::Target;
+    fn deref(&self) -> &P::Target {
+        Pin::get_ref(Pin::as_ref(self))
+    }
+}
+//只有Unpin才支持对mut的DerefMut trait，不支持Unpin的，不能用DerefMut，以保证Pin
+impl<P: DerefMut<Target: Unpin>> DerefMut for Pin<P> {
+    fn deref_mut(&mut self) -> &mut P::Target {
+        Pin::get_mut(Pin::as_mut(self))
+    }
+}
+
+```
+内部可变性函数：
+```rust
+impl <P:DerefMut> Pin<P> {
     //修改值，实质也提供了内部可变性
     pub fn set(&mut self, value: P::Target)
     where
@@ -5756,150 +5766,62 @@ impl<'a, T: ?Sized> Pin<&'a T> {
         unsafe { Pin::new_unchecked(new_pointer) }
     }
 
-    //&T 不会导致在安全RUST领域的类如mem::replace之类的地址改变操作
-    pub const fn get_ref(self) -> &'a T {
-        self.pointer
-    }
 }
 
 impl<'a, T: ?Sized> Pin<&'a mut T> {
-    //返回一个Pin的引用
-    pub const fn into_ref(self) -> Pin<&'a T> {
-        Pin { pointer: self.pointer }
-    }
-
-    //针对Unpin的类型使用
-    pub const fn get_mut(self) -> &'a mut T
-    where
-        T: Unpin,
-    {
-        self.pointer
-    }
-
-    //后门，最好不使用，错误使用可能会导致Pin失效
-    pub const unsafe fn get_unchecked_mut(self) -> &'a mut T {
-        self.pointer
-    }
-
+    
     pub unsafe fn map_unchecked_mut<U, F>(self, func: F) -> Pin<&'a mut U>
     where
         U: ?Sized,
         F: FnOnce(&mut T) -> &mut U,
     {
-        // SAFETY: the caller is responsible for not moving the
-        // value out of this reference.
+        // 这个可能导致Pin住的内容移动，调用者要保证不出问题
         let pointer = unsafe { Pin::get_unchecked_mut(self) };
         let new_pointer = func(pointer);
-        // SAFETY: as the value of `this` is guaranteed to not have
-        // been moved out, this call to `new_unchecked` is safe.
         unsafe { Pin::new_unchecked(new_pointer) }
     }
 }
-
-impl<T: ?Sized> Pin<&'static T> {
-    pub const fn static_ref(r: &'static T) -> Pin<&'static T> {
-        // SAFETY: The 'static borrow guarantees the data will not be
-        // moved/invalidated until it gets dropped (which is never).
-        unsafe { Pin::new_unchecked(r) }
-    }
-}
-
-impl<'a, P: DerefMut> Pin<&'a mut Pin<P>> {
-    pub fn as_deref_mut(self) -> Pin<&'a mut P::Target> {
-        unsafe { self.get_unchecked_mut() }.as_mut()
-    }
-}
-
-impl<T: ?Sized> Pin<&'static mut T> {
-    pub const fn static_mut(r: &'static mut T) -> Pin<&'static mut T> {
-        // SAFETY: The 'static borrow guarantees the data will not be
-        // moved/invalidated until it gets dropped (which is never).
-        unsafe { Pin::new_unchecked(r) }
-    }
-}
-
-#[stable(feature = "pin", since = "1.33.0")]
-impl<P: Deref> Deref for Pin<P> {
-    type Target = P::Target;
-    fn deref(&self) -> &P::Target {
-        Pin::get_ref(Pin::as_ref(self))
-    }
-}
-
-#[stable(feature = "pin", since = "1.33.0")]
-impl<P: DerefMut<Target: Unpin>> DerefMut for Pin<P> {
-    fn deref_mut(&mut self) -> &mut P::Target {
-        Pin::get_mut(Pin::as_mut(self))
-    }
-}
-
-impl<P: Receiver> Receiver for Pin<P> {}
-
-impl<P, U> CoerceUnsized<Pin<U>> for Pin<P> where P: CoerceUnsized<U> {}
-
-#[stable(feature = "pin", since = "1.33.0")]
-impl<P, U> DispatchFromDyn<Pin<U>> for Pin<P> where P: DispatchFromDyn<U> {}
 ```
-
+利用Pin的封装及基于trait约束的方法实现，使得指针pin在内存中的需求得以实现。是RUST利用封装语义完成语言需求的又一经典案例
 ## Lazy<T>分析
 
-OnceCell仅能赋值一次，而且仅仅提供不可变引用。
+OnceCell是一种内部可变的类型，其用于初始化没有初始值，仅支持赋值一次的类型。
 ```rust
 pub struct OnceCell<T> {
-    // Invariant: written to at most once.
+    // Option<T>支持None作为初始化的值
     inner: UnsafeCell<Option<T>>,
 }
-
-impl<T> Default for OnceCell<T> {
-    fn default() -> Self {
-        Self::new()
-    }
-}
-
-impl<T: Clone> Clone for OnceCell<T> {
-    fn clone(&self) -> OnceCell<T> {
-        let res = OnceCell::new();
-        if let Some(value) = self.get() {
-            match res.set(value.clone()) {
-                Ok(()) => (),
-                Err(_) => unreachable!(),
-            }
-        }
-        res
-    }
-}
-
-impl<T: PartialEq> PartialEq for OnceCell<T> {
-    fn eq(&self, other: &Self) -> bool {
-        self.get() == other.get()
-    }
-}
-
+```
+OnceCell封装UnsafeCell以支持内部可变性。
+创建方法:
+``` rust
 impl<T> const From<T> for OnceCell<T> {
     fn from(value: T) -> Self {
         OnceCell { inner: UnsafeCell::new(Some(value)) }
     }
 }
-
 impl<T> OnceCell<T> {
     /// 初始化为空，
     pub const fn new() -> OnceCell<T> {
         //注意，此时给UnsafeCell分配了一个T类型的地址空间
         OnceCell { inner: UnsafeCell::new(None) }
     }
-
+```
+获取内部引用
+```rust
     pub fn get(&self) -> Option<&T> {
-        // 生成一个与内部变量的引用，
+        // 生成一个内部变量的引用，
         unsafe { &*self.inner.get() }.as_ref()
     }
 
-    /// 直接用返回结果取可以&mut T，然后再对mut T赋值会突破只赋值一次
+    /// 直接用返回结果取可以&mut T，然后再解封装后用可变引用即可改变内部封装变量的值，会突破只赋值一次
     /// 的既定语义，此函数最好不使用
     pub fn get_mut(&mut self) -> Option<&mut T> {
-        // SAFETY: Safe because we have unique access
         unsafe { &mut *self.inner.get() }.as_mut()
     }
-
+```
+对内部值进行修改方法：
+```rust
     /// 通过此函数仅能给OnceCell内部变量做一次赋值
     pub fn set(&self, value: T) -> Result<(), T> {
         // SAFETY: Safe because we cannot have overlapping mutable borrows
@@ -5918,7 +5840,7 @@ impl<T> OnceCell<T> {
     where
         F: FnOnce() -> T,
     {
-        //Ok::<T,!>(f()) 即类型生成，类似Ok::<i32,!>(3)
+        //Ok::<T,!>(f()) 即Result类型初始化，例如Ok::<i32,!>(3)
         match self.get_or_try_init(|| Ok::<T, !>(f())) {
             Ok(val) => val,
         }
@@ -5945,11 +5867,11 @@ impl<T> OnceCell<T> {
         assert!(self.set(val).is_ok(), "reentrant init");
         Ok(self.get().unwrap())
     }
-
+```
+解封装方法：
+```rust
     //消费了OnceCell,并且返回内部变量
     pub fn into_inner(self) -> Option<T> {
-        // Because `into_inner` takes `self` by value, the compiler statically verifies
-        // that it is not currently borrowed. So it is safe to move out `Option<T>`.
         self.inner.into_inner()
     }
 
@@ -5958,17 +5880,47 @@ impl<T> OnceCell<T> {
         mem::take(self).into_inner()
     }
 }
+```
+OnceCell<T>对trait的实现：
+```rust
+impl<T> Default for OnceCell<T> {
+    fn default() -> Self {
+        Self::new()
+    }
+}
 
+impl<T: Clone> Clone for OnceCell<T> {
+    fn clone(&self) -> OnceCell<T> {
+        let res = OnceCell::new();
+        if let Some(value) = self.get() {
+            match res.set(value.clone()) {
+                Ok(()) => (),
+                Err(_) => unreachable!(),
+            }
+        }
+        res
+    }
+}
+
+impl<T: PartialEq> PartialEq for OnceCell<T> {
+    fn eq(&self, other: &Self) -> bool {
+        self.get() == other.get()
+    }
+}
+```
+基于OnceCell<T>实现惰性结构Lazy<T>,惰性结构在第一次调用解引用的时候被赋值，随后使用这个值。
+此结构强迫代码区分初始化必须有值及不必赋值的情况。
+```rust
 /// 惰性类型，在第一次使用时进行赋值和初始化
 pub struct Lazy<T, F = fn() -> T> {
     //初始化可以为空
     cell: OnceCell<T>,
-    //支持Lazy多个引用时的内部可变性
+    //对cell做初始化赋值的函数
     init: Cell<Option<F>>,
 }
 
 impl<T, F> Lazy<T, F> {
-    /// 函数作为变量被保存，且可变
+    /// 函数作为变量被保存
     pub const fn new(init: F) -> Lazy<T, F> {
         Lazy { cell: OnceCell::new(), init: Cell::new(Some(init)) }
     }
@@ -5977,6 +5929,7 @@ impl<T, F> Lazy<T, F> {
 impl<T, F: FnOnce() -> T> Lazy<T, F> {
     //完成赋值操作
     pub fn force(this: &Lazy<T, F>) -> &T {
+        //如果cell为空，则用init作初始化赋值，注意这里init的take调用已经将init替换成None，
         this.cell.get_or_init(|| match this.init.take() {
             Some(f) => f(),
             None => panic!("`Lazy` instance has previously been poisoned"),
@@ -6001,7 +5954,7 @@ impl<T: Default> Default for Lazy<T> {
 ```
 
 ## 小结
-从内部可变类型，以及前面的NonNull<T>, Unique<T>, NonZeroSize<T>,可以看到RUST灵活的利用封装结构，提供了一系列在语言之上的功能。
+从内部可变类型，以及前面的NonNull<T>, Unique<T>, NonZeroSize<T>,可以看到RUST灵活的利用封装结构，提供了一系列在语言原生类型增强的功能。
 
 # 智能指针
 
@@ -8174,7 +8127,7 @@ pub Trait Deref{type Target:?Sized; fn deref(&self)->&Self::Target} 这里要注
         unsafe { &mut *mem::ManuallyDrop::new(b).0.as_ptr() }
     }
 ```    
-这里，assume_init实现见上面的具体代码，值得注意的是leak函数，`mem::ManuallyDrop::new(b).0, 因为ManuallyDrop<T>变量可以直接作为<T>的变量使用，所以ManuallyDrop<Box<T>>.0即是Box<T>.0, 也就是Unique<T>. leak将Box从编译器管理移出，并将MaybeUninit<T>指针转化为&mut T, 并重新封装为Unique<T>, 随后的from_raw_in则又将此指针包含入一个新的Box，因此不会造成内存泄漏。但如果此指针用于其他结构。当leak返回的引用被drop时，将无法再引用此块内存。（from_raw_in实质是把Box的两个部分又组合在一起。另外，可以从into_unique的注释中分析出来，Box在栈中实质是Unique指针，A因为是单元结构体，不占用内存。
+这里，assume_init实现见上面的具体代码，值得注意的是leak函数，`mem::ManuallyDrop::new(b).0, 这里对ManuallyDrop<T>变量做了自动Deref操作，所以是调用Box<T>.0, 也就是Unique<T>. leak将Box从编译器管理移出，并将MaybeUninit<T>指针转化为&mut T, 并重新封装为Unique<T>, 随后的from_raw_in则又将此指针包含入一个新的Box，因此不会造成内存泄漏。但如果此指针用于其他结构。当leak返回的引用被drop时，将无法再引用此块内存。（from_raw_in实质是把Box的两个部分又组合在一起。另外，可以从into_unique的注释中分析出来，Box在栈中实质是Unique指针，A因为是单元结构体，不占用内存。
 ```rust
 impl<K, V> LeafNode<K, V> {
     /// Initializes a new `LeafNode` in-place.
