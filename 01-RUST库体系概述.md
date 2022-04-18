@@ -83,3 +83,60 @@ std是在操作系统支撑下运行的只适用于用户态程序的库，core�
 
 ## 小结
 RUST的目标和现代编程语言的特点决定了它的库需要仔细的模块化设计。RUST的alloc库及std库都是基于core库。RUST的库设计非常巧妙和仔细，使得RUST完美的实现了对各种硬件架构平台的兼容，对各种操作系统平台的兼容。
+
+# RUST泛型小议
+RUST是一门生存在泛型的基础之上的语言。其他语言不使用泛型也不影响编程，泛型只是一个语法中的强大工具。与之相对，RUST是离开了泛型就无法完成程序编写，泛型与语法共生。
+
+## 直接针对泛型的方法和trait实现
+其他语言的泛型，是作为类型结构体成员，或是函数的输入/返回参数出现在代码中，是配角。RUST的泛型则可以作为主角，可以直接对泛型实现方法和trait。如：
+```rust
+//T:?Sized基本上就是所有的类型，直接impl <T> Borrow<T>实际上隐含了 T:Sized。所以 T:?Sized比T范围更广阔
+impl<T: ?Sized> Borrow<T> for T {
+    fn borrow(&self) -> &T {
+        self
+    }
+}
+
+impl<T: ?Sized> BorrowMut<T> for T {
+    fn borrow_mut(&mut self) -> &mut T {
+        self
+    }
+}
+```
+以上代码基本上就是对所有的类型都实现了Borrow<T>的trait。  
+直接针对泛型做方法和trait的实现是强大的工具，它的作用：  
+- 针对泛型的代码会更内聚，方法总比函数具备更明显的模块性
+- 逻辑更清晰及系统化更好
+- 具备更好的可扩展性
+- 更好的支持函数式编程
+
+## 泛型的层次关系
+RUST的泛型从一般到特殊会形成一种层次结构，有些类似于面对对象的基类和子类关系： 
+最基层： T  没有任何约束的T是泛型的基类   
+一级子层： 裸指针类型`* const T/* mut T`; 切片类型`[T]`; 数组类型`[T;N]`; 引用类型`&T/&mut T`; trait约束类型`T:trait`; 泛型元组`(T, U...)`; 泛型复合类型`struct <T>; enum <T>; union<T>` 及具体类型 `u8/u16/i8/bool/f32/&str/String...`     
+二级子层： 对一级子层的T赋以具体类型 如：`* const u8; [i32]`，或者将一级子层中的T再次做一级子层的具化，例如：`* const [T]; [*const T]; &(*const T); * const T where T:trait; struct <T:trait>` 
+
+可以一直递归下去，但没有太多的意义。
+显然，针对基层类型实现的方法和trait可以应用到层级高的泛型类型中。
+例如：
+```rust
+impl <T> Option<T> {...}
+impl<T, U> Option<(T, U)> {...}
+impl<T: Copy> Option<&T> {...}
+impl<T: Default> Option<T> {...}
+```
+以上是标准库对Option<T> 的不同泛型进行的方法实现定义。一般先针对基层泛型实现方法及trait，然后再针对高层次的泛型做方法及trait实现。  
+
+类似的实现再试举如下几例：  
+```rust
+impl <T:?Sized> *const T {...}
+impl <T:?Sized> *const [T] {...}
+impl <T:?Sized> *mut T{ ...}
+impl <T:?Sized> *mut [T] {...}
+impl <T> [T] { ...}
+impl <T, const N:usize> [T;N]{...}
+impl AsRef<[u8]> for str {...}
+impl AsRef<str> for str {...}
+```
+
+RUST中，可以定义新的trait, 并根据需要在已定义的类型上实现新的trait。这就显然比其他的面对对象的语言具备更好的可扩展性。
