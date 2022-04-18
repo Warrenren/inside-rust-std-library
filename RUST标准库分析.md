@@ -125,7 +125,7 @@ RUST是一门生存在泛型的基础之上的语言。其他语言不使用泛�
 ## 直接针对泛型的方法和trait实现
 其他语言的泛型，是作为类型结构体成员，或是函数的输入/返回参数出现在代码中，是配角。RUST的泛型则可以作为主角，可以直接对泛型实现方法和trait。如：
 ```rust
-//T:?Sized基本上就是所有的类型
+//T:?Sized基本上就是所有的类型，直接impl <T> Borrow<T>实际上隐含了 T:Sized。所以 T:?Sized比T范围更广阔
 impl<T: ?Sized> Borrow<T> for T {
     fn borrow(&self) -> &T {
         self
@@ -555,7 +555,7 @@ pub struct ManuallyDrop<T: ?Sized> {
     value: T,
 }
 ```
-一个变量被ManuallyDrop获取所有权后，RUST编译器将不再对其自动调用drop操作。因此如果封装入ManuallyDrop的变量实际上需要drop，那必须将ManuallyDrop的变量的所有权在后继转移出去。
+一个变量被ManuallyDrop获取所有权后，RUST编译器将不再对其自动调用drop操作。因此如果封装入ManuallyDrop的变量实际上需要drop，那必须将ManuallyDrop的变量的所有权在后继转移出去。因为对于模块外的代码，value是私有的，所以必须调用方法才能将value的所有权转移出去。
 
 重点关注的一些方法： 
 `ManuallyDrop<T>::new（val:T) -> ManuallyDrop<T>`, 此函数返回ManuallyDrop变量拥有传入的T类型变量所有权，并将此块内存直接用ManuallyDrop封装, 对于val，编译器不再主动做drop操作。 
@@ -1554,6 +1554,8 @@ RUST整形库代码逻辑并不复杂，宏也很简单。但因为RUST将其他
 
 Option<T> 主要用来在编程中，类型T的变量可以不存在，代表一种异常。以往会选择T类型的一个值代表不存在的异常情况，从而导致异常情况处理只能依赖于程序员，采用Option<T>后，对异常情况的处理会由编译器负责。
 在初始化时无法确定T类型的值时，除了MaybeUninit<T>外，还可以用Option<T>来声明变量并初始化为None。
+
+从Option<T>的标准库代码中可以发现，Option<T>实际上是不属于RUST语言最基础的语法的，它是在RUST语言最基础的enum语法的基础上派生出来的一种库类型。这展示了RUST语言的一个设计思维，编译器仅仅做最基础的部分，其他的交由库来解决。实际上，在学习RUST时，很多重要的常用类型都是标准库提供并解决了非常多的需求。如RefCell<T>, Arc<T>等。需要细心地体会和学习RUST如何构建这些基础设施并养成习惯。
 
 Option<T>主要是解封装方法及Try trait。但Option<T>更酷的打开方式应该是用以map为代表的方法来完成函数链式调用。
 
@@ -5074,6 +5076,9 @@ UnsafeCell是RUST的内部可变结构的最底层基础设施，Cell结构和Re
 RUST不提供同时存在两个以上的可变引用的方案。
 ```rust
 
+pub struct UnsafeCell<T: ?Sized> {
+    value: T,
+}
 impl<T> UnsafeCell<T> {
     //创建包装结构
     pub const fn new(value: T) -> UnsafeCell<T> {
@@ -5958,10 +5963,214 @@ impl<T: Default> Default for Lazy<T> {
 
 # 智能指针
 
+## Box<T>代码分析
+除了数组外的智能指针的堆内存申请，一般都先由Box<T>来完成，然后再将申请到的内存转移到智能指针自身的结构中。
+
+以下为Box<T>结构定义及创建方法相关内容：
+```rust
+//Box结构
+pub struct Box<
+    T: ?Sized,
+    //默认的堆内存申请为Global单元结构体，可修改为其他
+    A: Allocator = Global,
+  //用Unique<T>表示对申请的堆内存拥有所有权  
+>(Unique<T>, A);
+```
+Box<T>的创建方法：
+```rust
+//以Global作为默认的堆内存分配器的实现
+impl<T> Box<T> {
+    pub fn new(x: T) -> Self {
+        //box 是关键字，就是实现从堆内存申请内存，写入内容然后形成Box<T>
+        //这个关键字的功能可以从后继的方法中分析出来, 此方法实际等同与new_in(x, Global);
+        box x
+    }
+    ...
+}
+
+//不限定堆内存分配器的更加通用的方法实现
+impl<T, A: Allocator> Box<T, A> {
+
+    //Box::new(x) 实际上的逻辑等同与 Box::new_in(x, Global)
+    pub fn new_in(x: T, alloc: A) -> Self {
+        //new_uninit_in见后面代码分析
+        let mut boxed = Self::new_uninit_in(alloc);
+        unsafe {
+            //实际是MaybeUninit<T>::as_mut_ptr()得到*mut T，::write将x写入申请的堆内存中
+            boxed.as_mut_ptr().write(x);
+            //从Box<MaybeUninit<T>,A>转换为Box<T,A>
+            boxed.assume_init()
+        }
+    }
+
+    //内存部分章节有过分析
+    pub fn new_uninit_in(alloc: A) -> Box<mem::MaybeUninit<T>, A> {
+        //获取Layout以便申请堆内存
+        let layout = Layout::new::<mem::MaybeUninit<T>>();
+        //见后面的代码分析
+        match Box::try_new_uninit_in(alloc) {
+            Ok(m) => m,
+            Err(_) => handle_alloc_error(layout),
+        }
+    }
+
+    //内存申请的真正执行函数
+    pub fn try_new_uninit_in(alloc: A) -> Result<Box<mem::MaybeUninit<T>, A>, AllocError> {
+        //申请内存需要的内存Layout
+        let layout = Layout::new::<mem::MaybeUninit<T>>();
+        //申请内存并完成错误处理，cast将NonNull<[u8]>转换为NonNull<MaybeUninit<T>>
+        //NonNull<MaybeUninit<T>>.as_ptr为 *mut <MaybeUninit<T>>
+        //后继Box的drop会释放此处的内存
+        //from_raw_in即将ptr转换为Unique<T>并形成Box结构变量
+        let ptr = alloc.allocate(layout)?.cast();
+        unsafe { Ok(Box::from_raw_in(ptr.as_ptr(), alloc)) }
+    }
+
+    ...
+}
+
+impl<T, A: Allocator> Box<mem::MaybeUninit<T>, A> {
+    //申请的未初始化内存，初始化后，应该调用这个函数将
+    //Box<MaybeUninit<T>>转换为Box<T>，
+    pub unsafe fn assume_init(self) -> Box<T, A> {
+        //因为类型不匹配，且无法强制转换，所以先将self消费掉并获得
+        //堆内存的裸指针，再用裸指针生成新的Box，完成类型转换V
+        let (raw, alloc) = Box::into_raw_with_allocator(self);
+        unsafe { Box::from_raw_in(raw as *mut T, alloc) }
+    }
+}
+impl<T: ?Sized, A: Allocator> Box<T, A> {
+    //从裸指针构建Box类型，裸指针应该是申请堆内存返回的指针
+    //用这个方法生成Box，当Box被drop时，会引发对裸指针的释放操作
+    pub unsafe fn from_raw_in(raw: *mut T, alloc: A) -> Self {
+        //由裸指针生成Unique，再生成Box
+        Box(unsafe { Unique::new_unchecked(raw) }, alloc)
+    }
+    
+    //此函数会将传入的b:Box消费掉，并将内部的Unique也消费掉，
+    //返回裸指针，此时裸指针指向的内存已经不会再被drop.
+    pub fn into_raw_with_allocator(b: Self) -> (*mut T, A) {
+        let (leaked, alloc) = Box::into_unique(b);
+        (leaked.as_ptr(), alloc)
+    }
+    pub fn into_unique(b: Self) -> (Unique<T>, A) {
+        //对b的alloc做了一份拷贝
+        let alloc = unsafe { ptr::read(&b.1) };
+        //Box::leak(b)返回&mut T可变引用，具体分析见下文
+        //leak(b)生成的&mut T实质上已经不会有Drop调用释放
+        (Unique::from(Box::leak(b)), alloc)
+    }
+
+    //将b消费掉，并将b内的变量取出来返回
+    pub fn leak<'a>(b: Self) -> &'a mut T
+    where
+        A: 'a,
+    {
+        //生成ManuallyDrop<Box<T>>, 消费掉了b，此时不会再对b做Drop调用，导致了一个内存leak
+        //ManuallyDrop<Box<T>>.0 是Box<T>，ManuallyDrop<T>没有.0的语法，因此会先做解引用，是&Box<T>
+        //&Box<T>.0即Unique<T>，Unique<T>.as_ptr获得裸指针，然后利用unsafe代码生成可变引用
+        unsafe { &mut *mem::ManuallyDrop::new(b).0.as_ptr() }
+    }
+    ...
+}
+
+unsafe impl< T: ?Sized, A: Allocator> Drop for Box<T, A> {
+    fn drop(&mut self) {
+        // FIXME: Do nothing, drop is currently performed by compiler.
+    }
+}
+```
+以上是Box的最常用的创建方法的代码。对于所有的堆申请，申请后的内存变量类型是MaybeUninit<T>，然后对MaybeUninit<T>用ptr::write完成初始化，随后再assume_init进入正常变量状态，这是rust的基本套路。
+
+Box<T>的Pin方法：
+```rust
+impl<T> Box<T> {
+    //如果T没有实现Unpin Trait, 则内存不会移动
+    pub fn pin(x: T) -> Pin<Box<T>> {
+        //任意的指针可以Into到Pin,因为Pin实现了任意类型的可变引用的From trait
+        (box x).into()
+    }
+    ...
+}
+impl<T:?Sized> Box<T> {}
+    pub fn into_pin(boxed: Self) -> Pin<Self>
+    where
+        A: 'static,
+    {
+        unsafe { Pin::new_unchecked(boxed) }
+    }
+    ...
+}
+//不限定堆内存分配器的更加通用的方法实现
+impl<T, A: Allocator> Box<T, A> {
+    //生成Box<T>后，在用Into<Pin> Trait生成Pin<Box>
+    pub fn pin_in(x: T, alloc: A) -> Pin<Self>
+    where
+        A: 'static,
+    {
+        Self::new_in(x, alloc).into()
+    }
+
+    ...
+}
+```
+Box<[T]>的方法：
+```rust
+impl<T,A:Allocator> Box<T, A> {
+    //切片
+    pub fn into_boxed_slice(boxed: Self) -> Box<[T], A> {
+        //要转换指针类型，需要先得到裸指针
+        let (raw, alloc) = Box::into_raw_with_allocator(boxed);
+        //将裸指针转换为切片裸指针，再生成Box, 此处因为不知道长度，
+        //只能转换成长度为1的切片指针
+        unsafe { Box::from_raw_in(raw as *mut [T; 1], alloc) }
+    }
+    ...
+}
+
+impl<T, A: Allocator> Box<[T], A> {
+    //使用RawVec作为底层堆内存管理结构，并转换为Box
+    pub fn new_uninit_slice_in(len: usize, alloc: A) -> Box<[mem::MaybeUninit<T>], A> {
+        unsafe { RawVec::with_capacity_in(len, alloc).into_box(len) }
+    }
+
+    //内存清零
+    pub fn new_zeroed_slice_in(len: usize, alloc: A) -> Box<[mem::MaybeUninit<T>], A> {
+        unsafe { RawVec::with_capacity_zeroed_in(len, alloc).into_box(len) }
+    }
+}
+impl<T, A: Allocator> Box<[mem::MaybeUninit<T>], A> {
+    //初始化完毕， 
+    pub unsafe fn assume_init(self) -> Box<[T], A> {
+        let (raw, alloc) = Box::into_raw_with_allocator(self);
+        unsafe { Box::from_raw_in(raw as *mut [T], alloc) }
+    }
+}
+```
+其他方法及trait:
+```rust
+impl<T: Default> Default for Box<T> {
+    /// Creates a `Box<T>`, with the `Default` value for T.
+    fn default() -> Self {
+        box T::default()
+    }
+}
+
+impl<T,A:Allocator> Box<T, A> {
+    //消费掉Box，获取内部变量
+    pub fn into_inner(boxed: Self) -> T {
+        //对Box的*操作就是完成Box接口从堆内存到栈内存拷贝
+        //然后调用Box的drop, 返回栈内存。编译器内置的操作
+        *boxed
+    }
+    ...
+}
+```
+以上即为Box<T>创建及析构的所有相关代码，其中较难理解的是leak方法。在RUST中，惯例对内存申请一般会使用Box<T>来实现，如果需要将申请的内存以另外的智能指针结构做封装，则调用Box::leak将堆指针传递出来
 ## RawVec<T>代码分析
 
 RawVec<T>用于指向一块从堆内存申请出来的某一类型数据的数组buffer，可以未初始化或初始化为零。与数组有关的智能指针底层的内存申请基本上都采用了RawVec<T>
-
+RawVec<T>的结构体，创建及Drop相关方法：
 ```rust
 enum AllocInit {
     /// 内存块没有初始化
@@ -5982,7 +6191,7 @@ impl<T> RawVec<T, Global> {
     //语法上的要求，一些const fn 只能调用const fn，所以这里设定了一个const 变量
     pub const NEW: Self = Self::new();
 
-    // 一些创建函数，但仅仅是对其他函数调用，代码略
+    // 一些创建方法，但仅仅是对其他函数调用，代码略
     pub const fn new() -> Self;
     pub fn with_capacity(capacity: usize) -> Self;
     pub fn with_capacity_zeroed(capacity: usize) -> Self;
@@ -6013,26 +6222,6 @@ impl<T, A: Allocator> RawVec<T, A> {
     //申请给定容量的内存块，内存块初始化为全零
     pub fn with_capacity_zeroed_in(capacity: usize, alloc: A) -> Self {
         Self::allocate_in(capacity, AllocInit::Zeroed, alloc)
-    }
-
-    //将内存块中0到len-1之间的内存块，转换为Box<[MaybeUninit<T>]>类型，len应该小于self.capacity,
-    //由调用者保证
-    pub unsafe fn into_box(self, len: usize) -> Box<[MaybeUninit<T>], A> {
-        debug_assert!(
-            len <= self.capacity(),
-            "`len` must be smaller than or equal to `self.capacity()`"
-        );
-        
-        //RUST不再对self做drop调用
-        let me = ManuallyDrop::new(self);
-        unsafe {
-            //me作为解引用，获取ptr, 然后直接将裸指针强制转换为MaybeUninit<T>，
-            //生成slice的可变引用
-            let slice = slice::from_raw_parts_mut(me.ptr() as *mut MaybeUninit<T>, len);
-            //用Box::from_raw_in生成Box<[MaybeUninit<T>]>, 注意这里需要对me.alloc做个拷贝
-            //因为me已经被forget，所以不能再用原先的alloc.
-            Box::from_raw_in(slice, ptr::read(&me.alloc))
-        }
     }
 
     //堆内存申请函数
@@ -6079,18 +6268,7 @@ impl<T, A: Allocator> RawVec<T, A> {
         Self { ptr: unsafe { Unique::new_unchecked(ptr) }, cap: capacity, alloc }
     }
 
-    pub fn ptr(&self) -> *mut T {
-        self.ptr.as_ptr()
-    }
-
-    pub fn capacity(&self) -> usize {
-        if mem::size_of::<T>() == 0 { usize::MAX } else { self.cap }
-    }
-
-    pub fn allocator(&self) -> &A {
-        &self.alloc
-    }
-
+    //返回与allocator申请到的一致的内存变量
     fn current_memory(&self) -> Option<(NonNull<u8>, Layout)> {
         if mem::size_of::<T>() == 0 || self.cap == 0 {
             None
@@ -6105,8 +6283,61 @@ impl<T, A: Allocator> RawVec<T, A> {
             }
         }
     }
+    ...
+}
+//may_dangle指明T中在释放的时候有可能会出现悬垂指针，但保证不会对悬垂指针做访问，编译器可以放宽strictly alive的规则，
+//PhantomData<T>会针对T类型取消掉may_dangle的作用
+unsafe impl<#[may_dangle] T, A: Allocator> Drop for RawVec<T, A> {
+    /// .
+    fn drop(&mut self) {
+        if let Some((ptr, layout)) = self.current_memory() {
+            //释放内存
+            unsafe { self.alloc.deallocate(ptr, layout) }
+        }
+    }
+}
+```
+RawVec转换为Box<[T],A>:
+```rust
+impl<T, A: Allocator> RawVec<T, A> {
+    //将内存块中0到len-1之间的内存块，转换为Box<[MaybeUninit<T>]>类型，len应该小于self.capacity,
+    //由调用者保证
+    pub unsafe fn into_box(self, len: usize) -> Box<[MaybeUninit<T>], A> {
+        debug_assert!(
+            len <= self.capacity(),
+            "`len` must be smaller than or equal to `self.capacity()`"
+        );
+        
+        //RUST不再对self做drop调用
+        let me = ManuallyDrop::new(self);
+        unsafe {
+            //me作为解引用，获取ptr, 然后直接将裸指针强制转换为MaybeUninit<T>，
+            //生成slice的可变引用
+            let slice = slice::from_raw_parts_mut(me.ptr() as *mut MaybeUninit<T>, len);
+            //用Box::from_raw_in生成Box<[MaybeUninit<T>]>, 注意这里需要对me.alloc做个拷贝
+            //因为me已经被forget，所以不能再用原先的alloc.
+            Box::from_raw_in(slice, ptr::read(&me.alloc))
+        }
+    }
+```
+RawVec<T>内部成员获取方法：
+```rust
+    pub fn ptr(&self) -> *mut T {
+        self.ptr.as_ptr()
+    }
 
-    //确保申请的内存大小满足输入参数，否则的话，扩充内存
+    pub fn capacity(&self) -> usize {
+        if mem::size_of::<T>() == 0 { usize::MAX } else { self.cap }
+    }
+
+    pub fn allocator(&self) -> &A {
+        &self.alloc
+    }
+```
+RawVec内存空间预留，扩充，收缩相关方法：
+```rust
+
+    //保留空间，确保申请的内存大小满足输入参数的规定，否则的话，扩充内存
     pub fn reserve(&mut self, len: usize, additional: usize) {
         #[cold]
         fn do_reserve_and_handle<T, A: Allocator>(
@@ -6143,6 +6374,7 @@ impl<T, A: Allocator> RawVec<T, A> {
         if self.needs_to_grow(len, additional) { self.grow_exact(len, additional) } else { Ok(()) }
     }
 
+    //收缩空间置给定大小
     pub fn shrink_to_fit(&mut self, amount: usize) {
         handle_reserve(self.shrink(amount));
     }
@@ -6169,7 +6401,7 @@ impl<T, A: Allocator> RawVec<T, A> {
         self.cap = Self::capacity_from_bytes(ptr.len());
     }
 
-    // are non-generic over `T`.
+    // 增长到满足len+additional的空间，
     fn grow_amortized(&mut self, len: usize, additional: usize) -> Result<(), TryReserveError> {
         // This is ensured by the calling contexts.
         debug_assert!(additional > 0);
@@ -6196,7 +6428,7 @@ impl<T, A: Allocator> RawVec<T, A> {
         Ok(())
     }
 
-    // 与`grow_amortized`基本一致。
+    // 与`grow_amortized`基本一致。只是要正好是len+additional的大小
     fn grow_exact(&mut self, len: usize, additional: usize) -> Result<(), TryReserveError> {
         if mem::size_of::<T>() == 0 {
             // Since we return a capacity of `usize::MAX` when the type size is
@@ -6212,7 +6444,8 @@ impl<T, A: Allocator> RawVec<T, A> {
         self.set_ptr(ptr);
         Ok(())
     }
-
+    
+    //收缩内存到amount长度
     fn shrink(&mut self, amount: usize) -> Result<(), TryReserveError> {
         assert!(amount <= self.capacity(), "Tried to shrink to a larger capacity");
 
@@ -6226,12 +6459,12 @@ impl<T, A: Allocator> RawVec<T, A> {
                 .shrink(ptr, layout, new_layout)
                 .map_err(|_| AllocError { layout: new_layout, non_exhaustive: () })?
         };
-        //更换指针和容量
+        //更换指针和容量，这里虽然更换了self的内容，但没有改变编译器对self的所有权的认识
         self.set_ptr(ptr);
         Ok(())
     }
 }
-
+//内存增长具体实现
 fn finish_grow<A>(
     new_layout: Result<Layout, LayoutError>,
     current_memory: Option<(NonNull<u8>, Layout)>,
@@ -6262,19 +6495,6 @@ where
     memory.map_err(|_| AllocError { layout: new_layout, non_exhaustive: () }.into())
 }
 
-unsafe impl<#[may_dangle] T, A: Allocator> Drop for RawVec<T, A> {
-    /// Frees the memory owned by the `RawVec` *without* trying to drop its contents.
-    fn drop(&mut self) {
-        if let Some((ptr, layout)) = self.current_memory() {
-            //释放内存
-            unsafe { self.alloc.deallocate(ptr, layout) }
-        }
-    }
-}
-
-// Central function for reserve error handling.
-#[cfg(not(no_global_oom_handling))]
-#[inline]
 fn handle_reserve(result: Result<(), TryReserveError>) {
     match result.map_err(|e| e.kind()) {
         Err(CapacityOverflow) => capacity_overflow(),
@@ -6296,246 +6516,6 @@ fn capacity_overflow() -> ! {
 }
 ```
 
-## Box<T>代码分析
-```rust
-//Box结构
-pub struct Box<
-    T: ?Sized,
-    //默认的堆内存申请为Global，可修改为其他
-    A: Allocator = Global,
-  //用Unique<T>表示对申请的堆内存拥有所有权  
->(Unique<T>, A);
-
-impl<T> Box<T> {
-    pub fn new(x: T) -> Self {
-        //box 是关键字，就是实现从堆内存申请内存，写入内容然后形成Box<T>
-        box x
-    }
-
-    //申请一块未初始化化的T类型的Box，具体实现见后面代码
-    pub fn new_uninit() -> Box<mem::MaybeUninit<T>> {
-        Self::new_uninit_in(Global)
-    }
-    
-    //申请一块清零的T类型的Box，具体见后面的分析
-    pub fn new_zeroed() -> Box<mem::MaybeUninit<T>> {
-        Self::new_zeroed_in(Global)
-    }
-
-    //如果T没有实现Unpin Trait, 则内存不会移动
-    pub fn pin(x: T) -> Pin<Box<T>> {
-        //任意的T类型可以Into到Pin
-        (box x).into()
-    }
-
-    //照顾到内存申请失败的情况
-    pub fn try_new(x: T) -> Result<Self, AllocError> {
-        Self::try_new_in(x, Global)
-    }
-
-    //照顾到内存申请失败的情况
-    pub fn try_new_uninit() -> Result<Box<mem::MaybeUninit<T>>, AllocError> {
-        Box::try_new_uninit_in(Global)
-    }
-
-    //照顾到内存申请失败的情况
-    pub fn try_new_zeroed() -> Result<Box<mem::MaybeUninit<T>>, AllocError> {
-        Box::try_new_zeroed_in(Global)
-    }
-}
-
-//更加通用的方法实现
-impl<T, A: Allocator> Box<T, A> {
-
-    //Box::new(x) 实际上的逻辑等同与 Box::new_in(x, Global)
-    pub fn new_in(x: T, alloc: A) -> Self {
-        //见后面代码分析
-        let mut boxed = Self::new_uninit_in(alloc);
-        unsafe {
-            //ptr::write将x写入申请的堆内存中
-            boxed.as_mut_ptr().write(x);
-            //实际是MaybeUninit::assume_init()
-            boxed.assume_init()
-        }
-    }
-
-    //考虑到内存申请不成功
-    pub fn try_new_in(x: T, alloc: A) -> Result<Self, AllocError> {
-        //见后面代码分析
-        let mut boxed = Self::try_new_uninit_in(alloc)?;
-        unsafe {
-            boxed.as_mut_ptr().write(x);
-            Ok(boxed.assume_init())
-        }
-    }
-
-    //内存部分章节有过分析
-    pub fn new_uninit_in(alloc: A) -> Box<mem::MaybeUninit<T>, A> {
-        //获取Layout以便申请堆内存
-        let layout = Layout::new::<mem::MaybeUninit<T>>();
-        //见后面的代码分析
-        match Box::try_new_uninit_in(alloc) {
-            Ok(m) => m,
-            Err(_) => handle_alloc_error(layout),
-        }
-    }
-
-    //内存申请的真正执行函数
-    pub fn try_new_uninit_in(alloc: A) -> Result<Box<mem::MaybeUninit<T>, A>, AllocError> {
-        //申请内存需要的内存Layout
-        let layout = Layout::new::<mem::MaybeUninit<T>>();
-        //申请内存并完成错误处理，cast将NonNull<[u8]>转换为NonNull<MaybeUninit<T>>
-        //NonNull<MaybeUninit<T>>.as_ptr为 *mut <MaybeUninit<T>>
-        //后继Box的drop会释放此处的内存
-        //from_raw_in请见后面代码分析
-        let ptr = alloc.allocate(layout)?.cast();
-        unsafe { Ok(Box::from_raw_in(ptr.as_ptr(), alloc)) }
-    }
-
-    //与new_uninit_in类似，只是申请的内存会被清零
-    pub fn new_zeroed_in(alloc: A) -> Box<mem::MaybeUninit<T>, A> {
-        let layout = Layout::new::<mem::MaybeUninit<T>>();
-        match Box::try_new_zeroed_in(alloc) {
-            Ok(m) => m,
-            Err(_) => handle_alloc_error(layout),
-        }
-    }
-
-    //与try_new_uninit_in类似，只是申请的堆内存会清零
-    pub fn try_new_zeroed_in(alloc: A) -> Result<Box<mem::MaybeUninit<T>, A>, AllocError> {
-        let layout = Layout::new::<mem::MaybeUninit<T>>();
-        let ptr = alloc.allocate_zeroed(layout)?.cast();
-        unsafe { Ok(Box::from_raw_in(ptr.as_ptr(), alloc)) }
-    }
-
-    //生成Box<T>后，在用Into<Pin> Trait生成Pin<Box>
-    pub fn pin_in(x: T, alloc: A) -> Pin<Self>
-    where
-        A: 'static,
-    {
-        Self::new_in(x, alloc).into()
-    }
-
-    //切片
-    pub fn into_boxed_slice(boxed: Self) -> Box<[T], A> {
-        //要转换指针类型，需要先得到裸指针
-        let (raw, alloc) = Box::into_raw_with_allocator(boxed);
-        //将裸指针转换为切片裸指针，再生成Box, 此处因为不知道长度，
-        //只能转换成长度为1的切片指针
-        unsafe { Box::from_raw_in(raw as *mut [T; 1], alloc) }
-    }
-
-    //消费掉Box，获取内部变量
-    pub fn into_inner(boxed: Self) -> T {
-        //对Box的*操作就是完成Box接口从堆内存到栈内存拷贝
-        //然后调用Box的drop, 返回栈内存。编译器内置的操作
-        *boxed
-    }
-}
-
-impl<T, A: Allocator> Box<mem::MaybeUninit<T>, A> {
-    //申请的未初始化内存，初始化后，应该调用这个函数将
-    //Box<MaybeUninit<T>>转换为Box<T>，
-    pub unsafe fn assume_init(self) -> Box<T, A> {
-        //因为类型不匹配，且无法强制转换，所以先将self消费掉并获得
-        //堆内存的裸指针，再用裸指针生成新的Box，完成类型转换V
-        let (raw, alloc) = Box::into_raw_with_allocator(self);
-        unsafe { Box::from_raw_in(raw as *mut T, alloc) }
-    }
-}
-
-impl<T: ?Sized> Box<T> {
-    //从裸指针raw构建Box类型，raw应该是申请堆内存返回的指针
-    //此时生成的Box生命周期结束时引发的drop会将raw释放掉
-    pub unsafe fn from_raw(raw: *mut T) -> Self {
-        unsafe { Self::from_raw_in(raw, Global) }
-    }
-}
-
-impl<T: ?Sized, A: Allocator> Box<T, A> {
-    //从裸指针构建Box类型，裸指针应该是申请堆内存返回的指针
-    //用这个方法生成Box，当Box被drop时，会引发对裸指针的释放操作
-    pub unsafe fn from_raw_in(raw: *mut T, alloc: A) -> Self {
-        //由裸指针生成Unique，再生成Box
-        Box(unsafe { Unique::new_unchecked(raw) }, alloc)
-    }
-    
-    //见后面代码分析,会消费掉b，返回的裸指针已经不会被drop
-    pub fn into_raw(b: Self) -> *mut T {
-        Self::into_raw_with_allocator(b).0
-    }
-
-    //此函数会将传入的b:Box消费掉，并将内部的Unique也消费掉，
-    //返回裸指针，此时裸指针指向的内存已经不会再被drop.
-    pub fn into_raw_with_allocator(b: Self) -> (*mut T, A) {
-        let (leaked, alloc) = Box::into_unique(b);
-        (leaked.as_ptr(), alloc)
-    }
-
-    pub fn into_unique(b: Self) -> (Unique<T>, A) {
-        //对b的alloc做了一份拷贝
-        let alloc = unsafe { ptr::read(&b.1) };
-        //Box::leak(b)返回&mut T可变引用，具体分析见下文
-        //leak(b)生成的&mut T实质上已经不会有Drop调用释放
-        (Unique::from(Box::leak(b)), alloc)
-    }
-
-    pub fn allocator(b: &Self) -> &A {
-        &b.1
-    }
-
-    //将b消费掉，并将b内的变量取出来返回
-    pub fn leak<'a>(b: Self) -> &'a mut T
-    where
-        A: 'a,
-    {
-        //生成ManuallyDrop<Box<T>>, 消费掉了b
-        //ManuallyDrop<Box<T>>.0 是Box<T>，没有.0的语法，因此会先做解引用，是&b
-        //&b.0即Unique<T>，Unique<T>.as_ptr获得裸指针，然后利用unsafe代码
-        //生成可变引用
-        unsafe { &mut *mem::ManuallyDrop::new(b).0.as_ptr() }
-    }
-
-    pub fn into_pin(boxed: Self) -> Pin<Self>
-    where
-        A: 'static,
-    {
-        unsafe { Pin::new_unchecked(boxed) }
-    }
-}
-
-unsafe impl< T: ?Sized, A: Allocator> Drop for Box<T, A> {
-    fn drop(&mut self) {
-        // FIXME: Do nothing, drop is currently performed by compiler.
-    }
-}
-
-impl<T: Default> Default for Box<T> {
-    /// Creates a `Box<T>`, with the `Default` value for T.
-    fn default() -> Self {
-        box T::default()
-    }
-}
-
-impl<T, A: Allocator> Box<[T], A> {
-    //使用RawVec作为底层堆内存管理结构，并转换为Box
-    pub fn new_uninit_slice_in(len: usize, alloc: A) -> Box<[mem::MaybeUninit<T>], A> {
-        unsafe { RawVec::with_capacity_in(len, alloc).into_box(len) }
-    }
-
-    //内存清零
-    pub fn new_zeroed_slice_in(len: usize, alloc: A) -> Box<[mem::MaybeUninit<T>], A> {
-        unsafe { RawVec::with_capacity_zeroed_in(len, alloc).into_box(len) }
-    }
-}
-impl<T, A: Allocator> Box<[mem::MaybeUninit<T>], A> {
-    //初始化完毕， 
-    pub unsafe fn assume_init(self) -> Box<[T], A> {
-        let (raw, alloc) = Box::into_raw_with_allocator(self);
-        unsafe { Box::from_raw_in(raw as *mut [T], alloc) }
-    }
-}
-```
 ## Cow写时复制结构解析
 
 与Borrow Trait互为逆的ToOwned Trait。 一般满足 T.borrow() 返回 &U，  U.to_owned()返回T
@@ -6544,7 +6524,7 @@ pub trait ToOwned {
     // 必须实现Borrow<Self> Trait， Owned.borrow()->&Self
     type Owned: Borrow<Self>;
 
-    // 从本类型生成Owned类型，一般为生成智能指针
+    // 从本类型生成Owned类型，一般由指针生成原始变量
     fn to_owned(&self) -> Self::Owned;
     
     //替换target的内容，原内容会被drop掉
@@ -6554,22 +6534,22 @@ pub trait ToOwned {
 }
 
 impl<T> ToOwned for T
+//实现了Clone的类型自然实现ToOwned
 where
     T: Clone
 {
     type Owned = T;
     fn to_owned(&self) -> T {
-        //所有权不能改变
+        //创建一个新的T类型的变量
         self.clone()
     }
 
     fn clone_into(&self, target: &mut T) {
-        //所有权不能改变
         target.clone_from(self);
     }
 }
 ```
-Cow解决一类复制问题，在与原有变量没有变化时使用原有变量的引用访问变量，当有变化时时，完成对变量的复制生成新的变量。
+Cow解决一类复制问题: 在与原有变量没有变化时使用原有变量的引用来访问变量，当发生变化时，完成对变量的复制生成新的变量。
 ```rust
 pub enum Cow<'a, B: ?Sized + 'a>
 where
@@ -6578,9 +6558,14 @@ where
     /// 初始类型变量borrow后的指针
     Borrowed( &'a B),
 
-    ///这个是初始类型变量
+    ///当对初始变量修改后，会对初始变量做克隆，然后成为Owned变量
     Owned(<B as ToOwned>::Owned),
 }
+```
+Cow的创建一般用`let a = Cow::Borrowed(&T)这种方式直接完成，因为是写时复制，所以需要用Borrowed()来得到初始值，否则不符合语义要求。
+
+典型的trait实现：
+```rust
 //解引用，会返回&B
 impl<B: ?Sized + ToOwned> const Deref for Cow<'_, B>
 where
@@ -6590,7 +6575,9 @@ where
 
     fn deref(&self) -> &B {
         match *self {
+            //如果是原有的变量，则返回原有变量引用
             Borrowed(borrowed) => borrowed,
+            //如果值已经被修改，则返回包装变量的引用
             Owned(ref owned) => owned.borrow(),
         }
     }
@@ -6603,19 +6590,20 @@ where
     <B as ToOwned>::Owned: 'a,
 {
     fn borrow(&self) -> &B {
-        //会调用deref
+        //利用deref来返回
         &**self
     }
 }
-// Clone Trait，代码有技巧
+
+// Clone的实现，赋值的同样是一个Cow结构，需要满足写时复制的要求。
 impl<B: ?Sized + ToOwned> Clone for Cow<'_, B> {
     fn clone(&self) -> Self {
         match *self {
             //这里是引用，满足Copy，直接赋值
             Borrowed(b) => Borrowed(b),
             //o的类型无法确定支持Copy或Clone，因此需要先得到B，然后由B
-            //调用一个to_owned获得O的拷贝，前文已经实现了对
-            //任意类型的ToOwned Trait
+            //调用一个to_owned获得O的拷贝，对于支持Clone的类型自然支持
+            // ToOwned
             Owned(ref o) => {
                 let b: &B = o.borrow();
                 Owned(b.to_owned())
@@ -6631,7 +6619,9 @@ impl<B: ?Sized + ToOwned> Clone for Cow<'_, B> {
         }
     }
 }
-
+```
+Cow<'a, T>的一些方法
+```rust
 impl<B: ?Sized + ToOwned> Cow<'_, B> {
     pub const fn is_borrowed(&self) -> bool {
         match *self {
@@ -6644,11 +6634,11 @@ impl<B: ?Sized + ToOwned> Cow<'_, B> {
         !self.is_borrowed()
     }
 
-    //得到Owned的变量引用
+    //这个函数说明要对变量进行改变，因此，如果还是原变量的引用，则需要做复制操作
     pub fn to_mut(&mut self) -> &mut <B as ToOwned>::Owned {
         match *self {
             Borrowed(borrowed) => {
-                //此时调用了to_owned，所以必须修改*self为Owned
+                //复制操作，复制原变量后，然后用Owned包装
                 *self = Owned(borrowed.to_owned());
                 match *self {
                     Borrowed(..) => unreachable!(),
@@ -6659,7 +6649,7 @@ impl<B: ?Sized + ToOwned> Cow<'_, B> {
         }
     }
 
-    //得到Owned的变量，消费Cow
+    //此函数也说明后继会修改，但会消费掉Cow
     pub fn into_owned(self) -> <B as ToOwned>::Owned {
         match self {
             Borrowed(borrowed) => borrowed.to_owned(),
@@ -6676,17 +6666,63 @@ impl<'a, T: Clone> From<&'a [T]> for Cow<'a, [T]> {
     }
 }
 ```
+从Cow<'a, T>可以看到RUST基础语法的强大能力，大家可以思考一下如何用其他语言来实现这一写时复制的类型，会发现很难实现。
 ## Vec 分析
-动态数组
+动态数组，结构体及创建，析构方法相关：
 ```rust
 pub struct Vec<T, A: Allocator = Global> {
-    //元素内存
+    //RawVec作为内存基础，这个是整体的容量
     buf: RawVec<T, A>,
-    //数组元素个数
+    //数组元素个数，这是已经使用的成员的数目
     len: usize,
 }
 
-impl<T> Box<T> {
+macro_rules! vec {
+    () => (
+        $crate::vec::Vec::new()
+    );
+    ($elem:expr; $n:expr) => (
+        $crate::vec::from_elem($elem, $n)
+    );
+    ($($x:expr),*) => (
+        //首先生成Box<[T;N]>，然后利用slice的into_vec生成Vec<T>
+        $crate::slice::into_vec(box [$($x),*])
+    );
+    //这里实际上就是完成($x,)=>$x。去掉了','号。 
+    ($($x:expr,)*) => (vec![$($x),*])
+}
+
+impl<T, A: Allocator> ops::Deref for Vec<T, A> {
+    type Target = [T];
+
+    fn deref(&self) -> &[T] {
+        unsafe { slice::from_raw_parts(self.as_ptr(), self.len) }
+    }
+}
+
+impl<T, A: Allocator> ops::DerefMut for Vec<T, A> {
+    fn deref_mut(&mut self) -> &mut [T] {
+        unsafe { slice::from_raw_parts_mut(self.as_mut_ptr(), self.len) }
+    }
+}
+//Vec<T>的Index下标实现,实际上就是切片Index实现
+impl<T, I: SliceIndex<[T]>, A: Allocator> Index<I> for Vec<T, A> {
+    type Output = I::Output;
+
+    
+    fn index(&self, index: I) -> &Self::Output {
+        //&**self会将Vec转换为&[T]
+        Index::index(&**self, index)
+    }
+}
+
+impl<T, I: SliceIndex<[T]>, A: Allocator> IndexMut<I> for Vec<T, A> {
+    fn index_mut(&mut self, index: I) -> &mut Self::Output {
+        IndexMut::index_mut(&mut **self, index)
+    }
+}
+
+impl<T> Vec<T> {
     pub const fn new() -> Self {
         //初始化buf为空
         Vec { buf: RawVec::NEW, len: 0 }
@@ -6696,6 +6732,44 @@ impl<T> Box<T> {
     pub unsafe fn from_raw_parts(ptr: *mut T, length: usize, capacity: usize) -> Self;
 }
 
+//由Box转换为Vec，这是RUST的最令人无语的地方，内存安全导致必须对类型做各种其他语言不需要的复杂的变换
+pub fn into_vec<T, A: Allocator>(b: Box<[T], A>) -> Vec<T, A> {
+    unsafe {
+        let len = b.len();
+        let (b, alloc) = Box::into_raw_with_allocator(b);
+        Vec::from_raw_parts_in(b as *mut T, len, len, alloc)
+    }
+}
+
+//所有支持SpecFromElem trait的类型可以直接转换生成n个初始值为elem的Vec动态数组
+pub fn from_elem_in<T: Clone, A: Allocator>(elem: T, n: usize, alloc: A) -> Vec<T, A> {
+    <T as SpecFromElem>::from_elem(elem, n, alloc)
+}
+
+pub(super) trait SpecFromElem: Sized {
+    fn from_elem<A: Allocator>(elem: Self, n: usize, alloc: A) -> Vec<Self, A>;
+}
+//所有实现了Clone的类型自然支持SpecFromElem trait
+impl<T: Clone> SpecFromElem for T {
+    default fn from_elem<A: Allocator>(elem: Self, n: usize, alloc: A) -> Vec<Self, A> {
+        //见下文分析
+        let mut v = Vec::with_capacity_in(n, alloc);
+        v.extend_with(n, ExtendElement(elem));
+        v
+    }
+}
+//drop方法
+unsafe impl<#[may_dangle] T, A: Allocator> Drop for Vec<T, A> {
+    fn drop(&mut self) {
+        unsafe {
+            //这里的drop_in_place调用会引发Vec<T>内部的成员变量自身的drop，所以只drop有意义的值
+            //成员变量有些可能已经被释放过，会出席悬垂指针，所以用may_dangle来通知编译器
+            ptr::drop_in_place(ptr::slice_from_raw_parts_mut(self.as_mut_ptr(), self.len))
+        }
+        //会自动调用RawVec的drop释放堆内存
+    }
+}
+
 impl<T, A: Allocator> Vec<T, A> {
     //对RawVec做初始化，实际是空值
     pub const fn new_in(alloc: A) -> Self {
@@ -6703,7 +6777,7 @@ impl<T, A: Allocator> Vec<T, A> {
     }
 
     //具体见RawVec的函数说明，这里创建了一个容量为输入参数的RawVec,
-    //但Vec本身的长度为0，标识里面没有真正的成员
+    //但Vec本身的长度为0，标示成员都还没有初始化
     pub fn with_capacity_in(capacity: usize, alloc: A) -> Self {
         Vec { buf: RawVec::with_capacity_in(capacity, alloc), len: 0 }
     }
@@ -6715,9 +6789,10 @@ impl<T, A: Allocator> Vec<T, A> {
     }
 
     //生成原始数据，此处首先要使得self被禁止drop，
-    //后继利用这些原始数据生成新的RawVec会重新启用新的RawVec及Drop
+    //一般后继利用这些原始数据生成新的RawVec，重新启用新RawVec的Drop
     pub fn into_raw_parts(self) -> (*mut T, usize, usize) {
         let mut me = ManuallyDrop::new(self);
+        //me自动解引用后得到Vec
         (me.as_mut_ptr(), me.len(), me.capacity())
     }
 
@@ -6732,9 +6807,27 @@ impl<T, A: Allocator> Vec<T, A> {
     }
 
     pub fn capacity(&self) -> usize {
+        //RawVec的capacity
         self.buf.capacity()
     }
+    pub fn allocator(&self) -> &A {
+        self.buf.allocator()
+    }
+    pub fn len(&self) -> usize {
+        self.len
+    }
+    //极度不安全，最好不要用这个函数改变len
+    pub unsafe fn set_len(&mut self, new_len: usize) {
+        debug_assert!(new_len <= self.capacity());
 
+        self.len = new_len;
+    }
+    pub fn is_empty(&self) -> bool {
+        self.len() == 0
+    }
+```
+Vec容量相关方法：
+```rust
     //在当前的len的基础上扩张输入的参数的内存容量
     //不一定会出发对内存的重新申请，因为RawVec的容量可能是够的
     //容量不能超出usize::MAX
@@ -6742,7 +6835,7 @@ impl<T, A: Allocator> Vec<T, A> {
         self.buf.reserve(self.len, additional);
     }
 
-    //略
+    //精确的扩张容量
     pub fn reserve_exact(&mut self, additional: usize) {
         self.buf.reserve_exact(self.len, additional);
     }
@@ -6752,211 +6845,70 @@ impl<T, A: Allocator> Vec<T, A> {
         self.buf.try_reserve(self.len, additional)
     }
 
-    //略
+    //精确的容量
     pub fn try_reserve_exact(&mut self, additional: usize) -> Result<(), TryReserveError> {
         self.buf.try_reserve_exact(self.len, additional)
     }
 
+    //收缩内部buf容量到正好是Vec长度
     pub fn shrink_to_fit(&mut self) {
-        // The capacity is never less than the length, and there's nothing to do when
-        // they are equal, so we can avoid the panic case in `RawVec::shrink_to_fit`
-        // by only calling it with a greater capacity.
         if self.capacity() > self.len {
             self.buf.shrink_to_fit(self.len);
         }
     }
 
-    /// Shrinks the capacity of the vector with a lower bound.
-    ///
-    /// The capacity will remain at least as large as both the length
-    /// and the supplied value.
-    ///
-    /// If the current capacity is less than the lower limit, this is a no-op.
-    ///
-    /// # Examples
-    ///
-    /// ```
-    /// let mut vec = Vec::with_capacity(10);
-    /// vec.extend([1, 2, 3]);
-    /// assert_eq!(vec.capacity(), 10);
-    /// vec.shrink_to(4);
-    /// assert!(vec.capacity() >= 4);
-    /// vec.shrink_to(0);
-    /// assert!(vec.capacity() >= 3);
-    /// ```
-    #[cfg(not(no_global_oom_handling))]
-    #[stable(feature = "shrink_to", since = "1.56.0")]
+    //收缩容量
     pub fn shrink_to(&mut self, min_capacity: usize) {
         if self.capacity() > min_capacity {
             self.buf.shrink_to_fit(cmp::max(self.len, min_capacity));
         }
     }
-
-    /// Converts the vector into [`Box<[T]>`][owned slice].
-    ///
-    /// Note that this will drop any excess capacity.
-    ///
-    /// [owned slice]: Box
-    ///
-    /// # Examples
-    ///
-    /// ```
-    /// let v = vec![1, 2, 3];
-    ///
-    /// let slice = v.into_boxed_slice();
-    /// ```
-    ///
-    /// Any excess capacity is removed:
-    ///
-    /// ```
-    /// let mut vec = Vec::with_capacity(10);
-    /// vec.extend([1, 2, 3]);
-    ///
-    /// assert_eq!(vec.capacity(), 10);
-    /// let slice = vec.into_boxed_slice();
-    /// assert_eq!(slice.into_vec().capacity(), 3);
-    /// ```
-    #[cfg(not(no_global_oom_handling))]
-    #[stable(feature = "rust1", since = "1.0.0")]
+    //在有变量存在的情况下做收缩
+    pub fn truncate(&mut self, len: usize) {
+        unsafe {
+            if len > self.len {
+                return;
+            }
+            //计算需要删除的容量
+            let remaining_len = self.len - len;
+            //形成需要删除的部分的切片类型
+            let s = ptr::slice_from_raw_parts_mut(self.as_mut_ptr().add(len), remaining_len);
+            //修改Vec的长度。
+            self.len = len;
+            //调用drop_in_place，使得切片能够对内部的成员调用drop以完成删除
+            //注意，此时不涉及Vec内部的buf删除，仅仅是删除Vec的成员
+            ptr::drop_in_place(s);
+        }
+    }
+```
+将Vec<T>转换成其他类型
+```rust
+    //转换为Box<[T], A>类型。
     pub fn into_boxed_slice(mut self) -> Box<[T], A> {
         unsafe {
+            //此处重要，进入Box后，堆内存的容量必须是切片长度的内存，否则释放会引发问题
             self.shrink_to_fit();
+            //本Vec的Drop需要禁止，由Box负责内存释放
             let me = ManuallyDrop::new(self);
+            //这里将RawVec做了一个拷贝，实际上是将RawVec所有权转移出来，必须的
+            //拷贝是效率高的做法
             let buf = ptr::read(&me.buf);
             let len = me.len();
+            //用RawVec生成Box
             buf.into_box(len).assume_init()
         }
     }
 
-    /// Shortens the vector, keeping the first `len` elements and dropping
-    /// the rest.
-    ///
-    /// If `len` is greater than the vector's current length, this has no
-    /// effect.
-    ///
-    /// The [`drain`] method can emulate `truncate`, but causes the excess
-    /// elements to be returned instead of dropped.
-    ///
-    /// Note that this method has no effect on the allocated capacity
-    /// of the vector.
-    ///
-    /// # Examples
-    ///
-    /// Truncating a five element vector to two elements:
-    ///
-    /// ```
-    /// let mut vec = vec![1, 2, 3, 4, 5];
-    /// vec.truncate(2);
-    /// assert_eq!(vec, [1, 2]);
-    /// ```
-    ///
-    /// No truncation occurs when `len` is greater than the vector's current
-    /// length:
-    ///
-    /// ```
-    /// let mut vec = vec![1, 2, 3];
-    /// vec.truncate(8);
-    /// assert_eq!(vec, [1, 2, 3]);
-    /// ```
-    ///
-    /// Truncating when `len == 0` is equivalent to calling the [`clear`]
-    /// method.
-    ///
-    /// ```
-    /// let mut vec = vec![1, 2, 3];
-    /// vec.truncate(0);
-    /// assert_eq!(vec, []);
-    /// ```
-    ///
-    /// [`clear`]: Vec::clear
-    /// [`drain`]: Vec::drain
-    #[stable(feature = "rust1", since = "1.0.0")]
-    pub fn truncate(&mut self, len: usize) {
-        // This is safe because:
-        //
-        // * the slice passed to `drop_in_place` is valid; the `len > self.len`
-        //   case avoids creating an invalid slice, and
-        // * the `len` of the vector is shrunk before calling `drop_in_place`,
-        //   such that no value will be dropped twice in case `drop_in_place`
-        //   were to panic once (if it panics twice, the program aborts).
-        unsafe {
-            // Note: It's intentional that this is `>` and not `>=`.
-            //       Changing it to `>=` has negative performance
-            //       implications in some cases. See #78884 for more.
-            if len > self.len {
-                return;
-            }
-            let remaining_len = self.len - len;
-            let s = ptr::slice_from_raw_parts_mut(self.as_mut_ptr().add(len), remaining_len);
-            self.len = len;
-            ptr::drop_in_place(s);
-        }
-    }
-
-    /// Extracts a slice containing the entire vector.
-    ///
-    /// Equivalent to `&s[..]`.
-    ///
-    /// # Examples
-    ///
-    /// ```
-    /// use std::io::{self, Write};
-    /// let buffer = vec![1, 2, 3, 5, 8];
-    /// io::sink().write(buffer.as_slice()).unwrap();
-    /// ```
-    #[inline]
-    #[stable(feature = "vec_as_slice", since = "1.7.0")]
     pub fn as_slice(&self) -> &[T] {
+        //会自动解引用
         self
     }
 
-    /// Extracts a mutable slice of the entire vector.
-    ///
-    /// Equivalent to `&mut s[..]`.
-    ///
-    /// # Examples
-    ///
-    /// ```
-    /// use std::io::{self, Read};
-    /// let mut buffer = vec![0; 3];
-    /// io::repeat(0b101).read_exact(buffer.as_mut_slice()).unwrap();
-    /// ```
-    #[inline]
-    #[stable(feature = "vec_as_slice", since = "1.7.0")]
     pub fn as_mut_slice(&mut self) -> &mut [T] {
         self
     }
 
-    /// Returns a raw pointer to the vector's buffer.
-    ///
-    /// The caller must ensure that the vector outlives the pointer this
-    /// function returns, or else it will end up pointing to garbage.
-    /// Modifying the vector may cause its buffer to be reallocated,
-    /// which would also make any pointers to it invalid.
-    ///
-    /// The caller must also ensure that the memory the pointer (non-transitively) points to
-    /// is never written to (except inside an `UnsafeCell`) using this pointer or any pointer
-    /// derived from it. If you need to mutate the contents of the slice, use [`as_mut_ptr`].
-    ///
-    /// # Examples
-    ///
-    /// ```
-    /// let x = vec![1, 2, 4];
-    /// let x_ptr = x.as_ptr();
-    ///
-    /// unsafe {
-    ///     for i in 0..x.len() {
-    ///         assert_eq!(*x_ptr.add(i), 1 << i);
-    ///     }
-    /// }
-    /// ```
-    ///
-    /// [`as_mut_ptr`]: Vec::as_mut_ptr
-    #[stable(feature = "vec_as_ptr", since = "1.37.0")]
-    #[inline]
     pub fn as_ptr(&self) -> *const T {
-        // We shadow the slice method of the same name to avoid going through
-        // `deref`, which creates an intermediate reference.
         let ptr = self.buf.ptr();
         unsafe {
             assume(!ptr.is_null());
@@ -6964,254 +6916,48 @@ impl<T, A: Allocator> Vec<T, A> {
         ptr
     }
 
-    /// Returns an unsafe mutable pointer to the vector's buffer.
-    ///
-    /// The caller must ensure that the vector outlives the pointer this
-    /// function returns, or else it will end up pointing to garbage.
-    /// Modifying the vector may cause its buffer to be reallocated,
-    /// which would also make any pointers to it invalid.
-    ///
-    /// # Examples
-    ///
-    /// ```
-    /// // Allocate vector big enough for 4 elements.
-    /// let size = 4;
-    /// let mut x: Vec<i32> = Vec::with_capacity(size);
-    /// let x_ptr = x.as_mut_ptr();
-    ///
-    /// // Initialize elements via raw pointer writes, then set length.
-    /// unsafe {
-    ///     for i in 0..size {
-    ///         *x_ptr.add(i) = i as i32;
-    ///     }
-    ///     x.set_len(size);
-    /// }
-    /// assert_eq!(&*x, &[0, 1, 2, 3]);
-    /// ```
-    #[stable(feature = "vec_as_ptr", since = "1.37.0")]
-    #[inline]
     pub fn as_mut_ptr(&mut self) -> *mut T {
-        // We shadow the slice method of the same name to avoid going through
-        // `deref_mut`, which creates an intermediate reference.
         let ptr = self.buf.ptr();
         unsafe {
             assume(!ptr.is_null());
         }
         ptr
     }
-
-    /// Returns a reference to the underlying allocator.
-    #[unstable(feature = "allocator_api", issue = "32838")]
-    #[inline]
-    pub fn allocator(&self) -> &A {
-        self.buf.allocator()
-    }
-
-    /// Forces the length of the vector to `new_len`.
-    ///
-    /// This is a low-level operation that maintains none of the normal
-    /// invariants of the type. Normally changing the length of a vector
-    /// is done using one of the safe operations instead, such as
-    /// [`truncate`], [`resize`], [`extend`], or [`clear`].
-    ///
-    /// [`truncate`]: Vec::truncate
-    /// [`resize`]: Vec::resize
-    /// [`extend`]: Extend::extend
-    /// [`clear`]: Vec::clear
-    ///
-    /// # Safety
-    ///
-    /// - `new_len` must be less than or equal to [`capacity()`].
-    /// - The elements at `old_len..new_len` must be initialized.
-    ///
-    /// [`capacity()`]: Vec::capacity
-    ///
-    /// # Examples
-    ///
-    /// This method can be useful for situations in which the vector
-    /// is serving as a buffer for other code, particularly over FFI:
-    ///
-    /// ```no_run
-    /// # #![allow(dead_code)]
-    /// # // This is just a minimal skeleton for the doc example;
-    /// # // don't use this as a starting point for a real library.
-    /// # pub struct StreamWrapper { strm: *mut std::ffi::c_void }
-    /// # const Z_OK: i32 = 0;
-    /// # extern "C" {
-    /// #     fn deflateGetDictionary(
-    /// #         strm: *mut std::ffi::c_void,
-    /// #         dictionary: *mut u8,
-    /// #         dictLength: *mut usize,
-    /// #     ) -> i32;
-    /// # }
-    /// # impl StreamWrapper {
-    /// pub fn get_dictionary(&self) -> Option<Vec<u8>> {
-    ///     // Per the FFI method's docs, "32768 bytes is always enough".
-    ///     let mut dict = Vec::with_capacity(32_768);
-    ///     let mut dict_length = 0;
-    ///     // SAFETY: When `deflateGetDictionary` returns `Z_OK`, it holds that:
-    ///     // 1. `dict_length` elements were initialized.
-    ///     // 2. `dict_length` <= the capacity (32_768)
-    ///     // which makes `set_len` safe to call.
-    ///     unsafe {
-    ///         // Make the FFI call...
-    ///         let r = deflateGetDictionary(self.strm, dict.as_mut_ptr(), &mut dict_length);
-    ///         if r == Z_OK {
-    ///             // ...and update the length to what was initialized.
-    ///             dict.set_len(dict_length);
-    ///             Some(dict)
-    ///         } else {
-    ///             None
-    ///         }
-    ///     }
-    /// }
-    /// # }
-    /// ```
-    ///
-    /// While the following example is sound, there is a memory leak since
-    /// the inner vectors were not freed prior to the `set_len` call:
-    ///
-    /// ```
-    /// let mut vec = vec![vec![1, 0, 0],
-    ///                    vec![0, 1, 0],
-    ///                    vec![0, 0, 1]];
-    /// // SAFETY:
-    /// // 1. `old_len..0` is empty so no elements need to be initialized.
-    /// // 2. `0 <= capacity` always holds whatever `capacity` is.
-    /// unsafe {
-    ///     vec.set_len(0);
-    /// }
-    /// ```
-    ///
-    /// Normally, here, one would use [`clear`] instead to correctly drop
-    /// the contents and thus not leak memory.
-    #[inline]
-    #[stable(feature = "rust1", since = "1.0.0")]
-    pub unsafe fn set_len(&mut self, new_len: usize) {
-        debug_assert!(new_len <= self.capacity());
-
-        self.len = new_len;
-    }
-
-    /// Removes an element from the vector and returns it.
-    ///
-    /// The removed element is replaced by the last element of the vector.
-    ///
-    /// This does not preserve ordering, but is *O*(1).
-    ///
-    /// # Panics
-    ///
-    /// Panics if `index` is out of bounds.
-    ///
-    /// # Examples
-    ///
-    /// ```
-    /// let mut v = vec!["foo", "bar", "baz", "qux"];
-    ///
-    /// assert_eq!(v.swap_remove(1), "bar");
-    /// assert_eq!(v, ["foo", "qux", "baz"]);
-    ///
-    /// assert_eq!(v.swap_remove(0), "foo");
-    /// assert_eq!(v, ["baz", "qux"]);
-    /// ```
-    #[inline]
-    #[stable(feature = "rust1", since = "1.0.0")]
-    pub fn swap_remove(&mut self, index: usize) -> T {
-        #[cold]
-        #[inline(never)]
-        fn assert_failed(index: usize, len: usize) -> ! {
-            panic!("swap_remove index (is {}) should be < len (is {})", index, len);
-        }
-
-        let len = self.len();
-        if index >= len {
-            assert_failed(index, len);
-        }
-        unsafe {
-            // We replace self[index] with the last element. Note that if the
-            // bounds check above succeeds there must be a last element (which
-            // can be self[index] itself).
-            let value = ptr::read(self.as_ptr().add(index));
-            let base_ptr = self.as_mut_ptr();
-            ptr::copy(base_ptr.add(len - 1), base_ptr.add(index), 1);
-            self.set_len(len - 1);
-            value
-        }
-    }
-
-    /// Inserts an element at position `index` within the vector, shifting all
-    /// elements after it to the right.
-    ///
-    /// # Panics
-    ///
-    /// Panics if `index > len`.
-    ///
-    /// # Examples
-    ///
-    /// ```
-    /// let mut vec = vec![1, 2, 3];
-    /// vec.insert(1, 4);
-    /// assert_eq!(vec, [1, 4, 2, 3]);
-    /// vec.insert(4, 5);
-    /// assert_eq!(vec, [1, 4, 2, 3, 5]);
-    /// ```
-    #[cfg(not(no_global_oom_handling))]
-    #[stable(feature = "rust1", since = "1.0.0")]
+```
+插入与删除方法：
+```rust
+    //在index的位置插入一个变量
     pub fn insert(&mut self, index: usize, element: T) {
         #[cold]
         #[inline(never)]
         fn assert_failed(index: usize, len: usize) -> ! {
             panic!("insertion index (is {}) should be <= len (is {})", index, len);
         }
-
+        //如果index大于len，出错
         let len = self.len();
         if index > len {
             assert_failed(index, len);
         }
 
-        // space for the new element
+        //如果预留的空间不够，则至少扩充1个成员空间
         if len == self.buf.capacity() {
             self.reserve(1);
         }
 
         unsafe {
-            // infallible
-            // The spot to put the new value
             {
+                //获得index的成员内存地址
                 let p = self.as_mut_ptr().add(index);
-                // Shift everything over to make space. (Duplicating the
-                // `index`th element into two consecutive places.)
+                //此处将index之后所有成员内存向后偏移一个地址，最高的效率
                 ptr::copy(p, p.offset(1), len - index);
-                // Write it in, overwriting the first copy of the `index`th
-                // element.
+                //将变量写入index的成员地址
                 ptr::write(p, element);
             }
+            //修改长度
             self.set_len(len + 1);
         }
     }
 
-    /// Removes and returns the element at position `index` within the vector,
-    /// shifting all elements after it to the left.
-    ///
-    /// Note: Because this shifts over the remaining elements, it has a
-    /// worst-case performance of O(n). If you don't need the order of elements
-    /// to be preserved, use [`swap_remove`] instead.
-    ///
-    /// [`swap_remove`]: Vec::swap_remove
-    ///
-    /// # Panics
-    ///
-    /// Panics if `index` is out of bounds.
-    ///
-    /// # Examples
-    ///
-    /// ```
-    /// let mut v = vec![1, 2, 3];
-    /// assert_eq!(v.remove(1), 2);
-    /// assert_eq!(v, [1, 3]);
-    /// ```
-    #[stable(feature = "rust1", since = "1.0.0")]
-    #[track_caller]
     pub fn remove(&mut self, index: usize) -> T {
         #[cold]
         #[inline(never)]
@@ -7220,775 +6966,80 @@ impl<T, A: Allocator> Vec<T, A> {
             panic!("removal index (is {}) should be < len (is {})", index, len);
         }
 
+        //如果index大于Vec的长度，出错
         let len = self.len();
         if index >= len {
             assert_failed(index, len);
         }
         unsafe {
-            // infallible
             let ret;
             {
-                // the place we are taking from.
+                // 得到index的成员地址
                 let ptr = self.as_mut_ptr().add(index);
-                // copy it out, unsafely having a copy of the value on
-                // the stack and in the vector at the same time.
+                // 将成员变量拷贝出来，并转移了所有权
                 ret = ptr::read(ptr);
 
-                // Shift everything down to fill in that spot.
+                // 将index+1后的所有成员内存拷贝到前面一个地址
                 ptr::copy(ptr.offset(1), ptr, len - index - 1);
             }
+            //改变长度
             self.set_len(len - 1);
+            //将删除的变量及所有权返回。
             ret
         }
     }
 
-    /// Retains only the elements specified by the predicate.
-    ///
-    /// In other words, remove all elements `e` such that `f(&e)` returns `false`.
-    /// This method operates in place, visiting each element exactly once in the
-    /// original order, and preserves the order of the retained elements.
-    ///
-    /// # Examples
-    ///
-    /// ```
-    /// let mut vec = vec![1, 2, 3, 4];
-    /// vec.retain(|&x| x % 2 == 0);
-    /// assert_eq!(vec, [2, 4]);
-    /// ```
-    ///
-    /// Because the elements are visited exactly once in the original order,
-    /// external state may be used to decide which elements to keep.
-    ///
-    /// ```
-    /// let mut vec = vec![1, 2, 3, 4, 5];
-    /// let keep = [false, true, true, false, true];
-    /// let mut iter = keep.iter();
-    /// vec.retain(|_| *iter.next().unwrap());
-    /// assert_eq!(vec, [2, 3, 5]);
-    /// ```
-    #[stable(feature = "rust1", since = "1.0.0")]
-    pub fn retain<F>(&mut self, mut f: F)
-    where
-        F: FnMut(&T) -> bool,
-    {
-        self.retain_mut(|elem| f(elem));
-    }
-
-    /// Retains only the elements specified by the predicate, passing a mutable reference to it.
-    ///
-    /// In other words, remove all elements `e` such that `f(&mut e)` returns `false`.
-    /// This method operates in place, visiting each element exactly once in the
-    /// original order, and preserves the order of the retained elements.
-    ///
-    /// # Examples
-    ///
-    /// ```
-    /// #![feature(vec_retain_mut)]
-    ///
-    /// let mut vec = vec![1, 2, 3, 4];
-    /// vec.retain_mut(|x| if *x > 3 {
-    ///     false
-    /// } else {
-    ///     *x += 1;
-    ///     true
-    /// });
-    /// assert_eq!(vec, [2, 3, 4]);
-    /// ```
-    #[unstable(feature = "vec_retain_mut", issue = "90829")]
-    pub fn retain_mut<F>(&mut self, mut f: F)
-    where
-        F: FnMut(&mut T) -> bool,
-    {
-        let original_len = self.len();
-        // Avoid double drop if the drop guard is not executed,
-        // since we may make some holes during the process.
-        unsafe { self.set_len(0) };
-
-        // Vec: [Kept, Kept, Hole, Hole, Hole, Hole, Unchecked, Unchecked]
-        //      |<-              processed len   ->| ^- next to check
-        //                  |<-  deleted cnt     ->|
-        //      |<-              original_len                          ->|
-        // Kept: Elements which predicate returns true on.
-        // Hole: Moved or dropped element slot.
-        // Unchecked: Unchecked valid elements.
-        //
-        // This drop guard will be invoked when predicate or `drop` of element panicked.
-        // It shifts unchecked elements to cover holes and `set_len` to the correct length.
-        // In cases when predicate and `drop` never panick, it will be optimized out.
-        struct BackshiftOnDrop<'a, T, A: Allocator> {
-            v: &'a mut Vec<T, A>,
-            processed_len: usize,
-            deleted_cnt: usize,
-            original_len: usize,
-        }
-
-        impl<T, A: Allocator> Drop for BackshiftOnDrop<'_, T, A> {
-            fn drop(&mut self) {
-                if self.deleted_cnt > 0 {
-                    // SAFETY: Trailing unchecked items must be valid since we never touch them.
-                    unsafe {
-                        ptr::copy(
-                            self.v.as_ptr().add(self.processed_len),
-                            self.v.as_mut_ptr().add(self.processed_len - self.deleted_cnt),
-                            self.original_len - self.processed_len,
-                        );
-                    }
-                }
-                // SAFETY: After filling holes, all items are in contiguous memory.
-                unsafe {
-                    self.v.set_len(self.original_len - self.deleted_cnt);
-                }
-            }
-        }
-
-        let mut g = BackshiftOnDrop { v: self, processed_len: 0, deleted_cnt: 0, original_len };
-
-        // process_one return a bool indicates whether the processing element should be retained.
-        #[inline(always)]
-        fn process_one<F, T, A: Allocator, const DELETED: bool>(
-            f: &mut F,
-            g: &mut BackshiftOnDrop<'_, T, A>,
-        ) -> bool
-        where
-            F: FnMut(&mut T) -> bool,
-        {
-            // SAFETY: Unchecked element must be valid.
-            let cur = unsafe { &mut *g.v.as_mut_ptr().add(g.processed_len) };
-            if !f(cur) {
-                // Advance early to avoid double drop if `drop_in_place` panicked.
-                g.processed_len += 1;
-                g.deleted_cnt += 1;
-                // SAFETY: We never touch this element again after dropped.
-                unsafe { ptr::drop_in_place(cur) };
-                // We already advanced the counter.
-                return false;
-            }
-            if DELETED {
-                // SAFETY: `deleted_cnt` > 0, so the hole slot must not overlap with current element.
-                // We use copy for move, and never touch this element again.
-                unsafe {
-                    let hole_slot = g.v.as_mut_ptr().add(g.processed_len - g.deleted_cnt);
-                    ptr::copy_nonoverlapping(cur, hole_slot, 1);
-                }
-            }
-            g.processed_len += 1;
-            return true;
-        }
-
-        // Stage 1: Nothing was deleted.
-        while g.processed_len != original_len {
-            if !process_one::<F, T, A, false>(&mut f, &mut g) {
-                break;
-            }
-        }
-
-        // Stage 2: Some elements were deleted.
-        while g.processed_len != original_len {
-            process_one::<F, T, A, true>(&mut f, &mut g);
-        }
-
-        // All item are processed. This can be optimized to `set_len` by LLVM.
-        drop(g);
-    }
-
-    /// Removes all but the first of consecutive elements in the vector that resolve to the same
-    /// key.
-    ///
-    /// If the vector is sorted, this removes all duplicates.
-    ///
-    /// # Examples
-    ///
-    /// ```
-    /// let mut vec = vec![10, 20, 21, 30, 20];
-    ///
-    /// vec.dedup_by_key(|i| *i / 10);
-    ///
-    /// assert_eq!(vec, [10, 20, 30, 20]);
-    /// ```
-    #[stable(feature = "dedup_by", since = "1.16.0")]
-    #[inline]
-    pub fn dedup_by_key<F, K>(&mut self, mut key: F)
-    where
-        F: FnMut(&mut T) -> K,
-        K: PartialEq,
-    {
-        self.dedup_by(|a, b| key(a) == key(b))
-    }
-
-    /// Removes all but the first of consecutive elements in the vector satisfying a given equality
-    /// relation.
-    ///
-    /// The `same_bucket` function is passed references to two elements from the vector and
-    /// must determine if the elements compare equal. The elements are passed in opposite order
-    /// from their order in the slice, so if `same_bucket(a, b)` returns `true`, `a` is removed.
-    ///
-    /// If the vector is sorted, this removes all duplicates.
-    ///
-    /// # Examples
-    ///
-    /// ```
-    /// let mut vec = vec!["foo", "bar", "Bar", "baz", "bar"];
-    ///
-    /// vec.dedup_by(|a, b| a.eq_ignore_ascii_case(b));
-    ///
-    /// assert_eq!(vec, ["foo", "bar", "baz", "bar"]);
-    /// ```
-    #[stable(feature = "dedup_by", since = "1.16.0")]
-    pub fn dedup_by<F>(&mut self, mut same_bucket: F)
-    where
-        F: FnMut(&mut T, &mut T) -> bool,
-    {
-        let len = self.len();
-        if len <= 1 {
-            return;
-        }
-
-        /* INVARIANT: vec.len() > read >= write > write-1 >= 0 */
-        struct FillGapOnDrop<'a, T, A: core::alloc::Allocator> {
-            /* Offset of the element we want to check if it is duplicate */
-            read: usize,
-
-            /* Offset of the place where we want to place the non-duplicate
-             * when we find it. */
-            write: usize,
-
-            /* The Vec that would need correction if `same_bucket` panicked */
-            vec: &'a mut Vec<T, A>,
-        }
-
-        impl<'a, T, A: core::alloc::Allocator> Drop for FillGapOnDrop<'a, T, A> {
-            fn drop(&mut self) {
-                /* This code gets executed when `same_bucket` panics */
-
-                /* SAFETY: invariant guarantees that `read - write`
-                 * and `len - read` never overflow and that the copy is always
-                 * in-bounds. */
-                unsafe {
-                    let ptr = self.vec.as_mut_ptr();
-                    let len = self.vec.len();
-
-                    /* How many items were left when `same_bucket` paniced.
-                     * Basically vec[read..].len() */
-                    let items_left = len.wrapping_sub(self.read);
-
-                    /* Pointer to first item in vec[write..write+items_left] slice */
-                    let dropped_ptr = ptr.add(self.write);
-                    /* Pointer to first item in vec[read..] slice */
-                    let valid_ptr = ptr.add(self.read);
-
-                    /* Copy `vec[read..]` to `vec[write..write+items_left]`.
-                     * The slices can overlap, so `copy_nonoverlapping` cannot be used */
-                    ptr::copy(valid_ptr, dropped_ptr, items_left);
-
-                    /* How many items have been already dropped
-                     * Basically vec[read..write].len() */
-                    let dropped = self.read.wrapping_sub(self.write);
-
-                    self.vec.set_len(len - dropped);
-                }
-            }
-        }
-
-        let mut gap = FillGapOnDrop { read: 1, write: 1, vec: self };
-        let ptr = gap.vec.as_mut_ptr();
-
-        /* Drop items while going through Vec, it should be more efficient than
-         * doing slice partition_dedup + truncate */
-
-        /* SAFETY: Because of the invariant, read_ptr, prev_ptr and write_ptr
-         * are always in-bounds and read_ptr never aliases prev_ptr */
-        unsafe {
-            while gap.read < len {
-                let read_ptr = ptr.add(gap.read);
-                let prev_ptr = ptr.add(gap.write.wrapping_sub(1));
-
-                if same_bucket(&mut *read_ptr, &mut *prev_ptr) {
-                    // Increase `gap.read` now since the drop may panic.
-                    gap.read += 1;
-                    /* We have found duplicate, drop it in-place */
-                    ptr::drop_in_place(read_ptr);
-                } else {
-                    let write_ptr = ptr.add(gap.write);
-
-                    /* Because `read_ptr` can be equal to `write_ptr`, we either
-                     * have to use `copy` or conditional `copy_nonoverlapping`.
-                     * Looks like the first option is faster. */
-                    ptr::copy(read_ptr, write_ptr, 1);
-
-                    /* We have filled that place, so go further */
-                    gap.write += 1;
-                    gap.read += 1;
-                }
-            }
-
-            /* Technically we could let `gap` clean up with its Drop, but
-             * when `same_bucket` is guaranteed to not panic, this bloats a little
-             * the codegen, so we just do it manually */
-            gap.vec.set_len(gap.write);
-            mem::forget(gap);
-        }
-    }
-
-    /// Appends an element to the back of a collection.
-    ///
-    /// # Panics
-    ///
-    /// Panics if the new capacity exceeds `isize::MAX` bytes.
-    ///
-    /// # Examples
-    ///
-    /// ```
-    /// let mut vec = vec![1, 2];
-    /// vec.push(3);
-    /// assert_eq!(vec, [1, 2, 3]);
-    /// ```
-    #[cfg(not(no_global_oom_handling))]
-    #[inline]
-    #[stable(feature = "rust1", since = "1.0.0")]
+    //在尾部插入一个元素
     pub fn push(&mut self, value: T) {
-        // This will panic or abort if we would allocate > isize::MAX bytes
-        // or if the length increment would overflow for zero-sized types.
+        //如果预留空间不够，则扩充一个空间
         if self.len == self.buf.capacity() {
             self.reserve(1);
         }
         unsafe {
+            //获取当前尾部成员后面的内存地址
             let end = self.as_mut_ptr().add(self.len);
+            //将变量写入内存地址
             ptr::write(end, value);
+            //长度加1
             self.len += 1;
         }
     }
-
-    /// Removes the last element from a vector and returns it, or [`None`] if it
-    /// is empty.
-    ///
-    /// # Examples
-    ///
-    /// ```
-    /// let mut vec = vec![1, 2, 3];
-    /// assert_eq!(vec.pop(), Some(3));
-    /// assert_eq!(vec, [1, 2]);
-    /// ```
-    #[inline]
-    #[stable(feature = "rust1", since = "1.0.0")]
+     
+    //取出尾部成员
     pub fn pop(&mut self) -> Option<T> {
         if self.len == 0 {
             None
         } else {
             unsafe {
                 self.len -= 1;
+                //将尾部成员变量读出并连同所有权共同返回，此处因为self.len已经减1，后继drop时不会再对
+                //原尾部成员drop。所以尾部成员的所有权已经被处理掉了
                 Some(ptr::read(self.as_ptr().add(self.len())))
             }
         }
     }
 
-    /// Moves all the elements of `other` into `Self`, leaving `other` empty.
-    ///
-    /// # Panics
-    ///
-    /// Panics if the number of elements in the vector overflows a `usize`.
-    ///
-    /// # Examples
-    ///
-    /// ```
-    /// let mut vec = vec![1, 2, 3];
-    /// let mut vec2 = vec![4, 5, 6];
-    /// vec.append(&mut vec2);
-    /// assert_eq!(vec, [1, 2, 3, 4, 5, 6]);
-    /// assert_eq!(vec2, []);
-    /// ```
-    #[cfg(not(no_global_oom_handling))]
-    #[inline]
-    #[stable(feature = "append", since = "1.4.0")]
-    pub fn append(&mut self, other: &mut Self) {
-        unsafe {
-            self.append_elements(other.as_slice() as _);
-            other.set_len(0);
-        }
-    }
-
-    /// Appends elements to `Self` from other buffer.
-    #[cfg(not(no_global_oom_handling))]
-    #[inline]
-    unsafe fn append_elements(&mut self, other: *const [T]) {
-        let count = unsafe { (*other).len() };
-        self.reserve(count);
-        let len = self.len();
-        unsafe { ptr::copy_nonoverlapping(other as *const T, self.as_mut_ptr().add(len), count) };
-        self.len += count;
-    }
-
-    /// Creates a draining iterator that removes the specified range in the vector
-    /// and yields the removed items.
-    ///
-    /// When the iterator **is** dropped, all elements in the range are removed
-    /// from the vector, even if the iterator was not fully consumed. If the
-    /// iterator **is not** dropped (with [`mem::forget`] for example), it is
-    /// unspecified how many elements are removed.
-    ///
-    /// # Panics
-    ///
-    /// Panics if the starting point is greater than the end point or if
-    /// the end point is greater than the length of the vector.
-    ///
-    /// # Examples
-    ///
-    /// ```
-    /// let mut v = vec![1, 2, 3];
-    /// let u: Vec<_> = v.drain(1..).collect();
-    /// assert_eq!(v, &[1]);
-    /// assert_eq!(u, &[2, 3]);
-    ///
-    /// // A full range clears the vector
-    /// v.drain(..);
-    /// assert_eq!(v, &[]);
-    /// ```
-    #[stable(feature = "drain", since = "1.6.0")]
-    pub fn drain<R>(&mut self, range: R) -> Drain<'_, T, A>
-    where
-        R: RangeBounds<usize>,
-    {
-        // Memory safety
-        //
-        // When the Drain is first created, it shortens the length of
-        // the source vector to make sure no uninitialized or moved-from elements
-        // are accessible at all if the Drain's destructor never gets to run.
-        //
-        // Drain will ptr::read out the values to remove.
-        // When finished, remaining tail of the vec is copied back to cover
-        // the hole, and the vector length is restored to the new length.
-        //
-        let len = self.len();
-        let Range { start, end } = slice::range(range, ..len);
-
-        unsafe {
-            // set self.vec length's to start, to be safe in case Drain is leaked
-            self.set_len(start);
-            // Use the borrow in the IterMut to indicate borrowing behavior of the
-            // whole Drain iterator (like &mut T).
-            let range_slice = slice::from_raw_parts_mut(self.as_mut_ptr().add(start), end - start);
-            Drain {
-                tail_start: end,
-                tail_len: len - end,
-                iter: range_slice.iter(),
-                vec: NonNull::from(self),
-            }
-        }
-    }
-
-    /// Clears the vector, removing all values.
-    ///
-    /// Note that this method has no effect on the allocated capacity
-    /// of the vector.
-    ///
-    /// # Examples
-    ///
-    /// ```
-    /// let mut v = vec![1, 2, 3];
-    ///
-    /// v.clear();
-    ///
-    /// assert!(v.is_empty());
-    /// ```
-    #[inline]
-    #[stable(feature = "rust1", since = "1.0.0")]
+    //删除所有成员
     pub fn clear(&mut self) {
+        //重用
         self.truncate(0)
     }
-
-    /// Returns the number of elements in the vector, also referred to
-    /// as its 'length'.
-    ///
-    /// # Examples
-    ///
-    /// ```
-    /// let a = vec![1, 2, 3];
-    /// assert_eq!(a.len(), 3);
-    /// ```
-    #[inline]
-    #[stable(feature = "rust1", since = "1.0.0")]
-    pub fn len(&self) -> usize {
-        self.len
-    }
-
-    /// Returns `true` if the vector contains no elements.
-    ///
-    /// # Examples
-    ///
-    /// ```
-    /// let mut v = Vec::new();
-    /// assert!(v.is_empty());
-    ///
-    /// v.push(1);
-    /// assert!(!v.is_empty());
-    /// ```
-    #[stable(feature = "rust1", since = "1.0.0")]
-    pub fn is_empty(&self) -> bool {
-        self.len() == 0
-    }
-
-    /// Splits the collection into two at the given index.
-    ///
-    /// Returns a newly allocated vector containing the elements in the range
-    /// `[at, len)`. After the call, the original vector will be left containing
-    /// the elements `[0, at)` with its previous capacity unchanged.
-    ///
-    /// # Panics
-    ///
-    /// Panics if `at > len`.
-    ///
-    /// # Examples
-    ///
-    /// ```
-    /// let mut vec = vec![1, 2, 3];
-    /// let vec2 = vec.split_off(1);
-    /// assert_eq!(vec, [1]);
-    /// assert_eq!(vec2, [2, 3]);
-    /// ```
-    #[cfg(not(no_global_oom_handling))]
-    #[inline]
-    #[must_use = "use `.truncate()` if you don't need the other half"]
-    #[stable(feature = "split_off", since = "1.4.0")]
-    pub fn split_off(&mut self, at: usize) -> Self
-    where
-        A: Clone,
-    {
-        #[cold]
-        #[inline(never)]
-        fn assert_failed(at: usize, len: usize) -> ! {
-            panic!("`at` split index (is {}) should be <= len (is {})", at, len);
-        }
-
-        if at > self.len() {
-            assert_failed(at, self.len());
-        }
-
-        if at == 0 {
-            // the new vector can take over the original buffer and avoid the copy
-            return mem::replace(
-                self,
-                Vec::with_capacity_in(self.capacity(), self.allocator().clone()),
-            );
-        }
-
-        let other_len = self.len - at;
-        let mut other = Vec::with_capacity_in(other_len, self.allocator().clone());
-
-        // Unsafely `set_len` and copy items to `other`.
-        unsafe {
-            self.set_len(at);
-            other.set_len(other_len);
-
-            ptr::copy_nonoverlapping(self.as_ptr().add(at), other.as_mut_ptr(), other.len());
-        }
-        other
-    }
-
-    /// Resizes the `Vec` in-place so that `len` is equal to `new_len`.
-    ///
-    /// If `new_len` is greater than `len`, the `Vec` is extended by the
-    /// difference, with each additional slot filled with the result of
-    /// calling the closure `f`. The return values from `f` will end up
-    /// in the `Vec` in the order they have been generated.
-    ///
-    /// If `new_len` is less than `len`, the `Vec` is simply truncated.
-    ///
-    /// This method uses a closure to create new values on every push. If
-    /// you'd rather [`Clone`] a given value, use [`Vec::resize`]. If you
-    /// want to use the [`Default`] trait to generate values, you can
-    /// pass [`Default::default`] as the second argument.
-    ///
-    /// # Examples
-    ///
-    /// ```
-    /// let mut vec = vec![1, 2, 3];
-    /// vec.resize_with(5, Default::default);
-    /// assert_eq!(vec, [1, 2, 3, 0, 0]);
-    ///
-    /// let mut vec = vec![];
-    /// let mut p = 1;
-    /// vec.resize_with(4, || { p *= 2; p });
-    /// assert_eq!(vec, [2, 4, 8, 16]);
-    /// ```
-    #[cfg(not(no_global_oom_handling))]
-    #[stable(feature = "vec_resize_with", since = "1.33.0")]
-    pub fn resize_with<F>(&mut self, new_len: usize, f: F)
-    where
-        F: FnMut() -> T,
-    {
-        let len = self.len();
-        if new_len > len {
-            self.extend_with(new_len - len, ExtendFunc(f));
-        } else {
-            self.truncate(new_len);
-        }
-    }
-
-    /// Consumes and leaks the `Vec`, returning a mutable reference to the contents,
-    /// `&'a mut [T]`. Note that the type `T` must outlive the chosen lifetime
-    /// `'a`. If the type has only static references, or none at all, then this
-    /// may be chosen to be `'static`.
-    ///
-    /// As of Rust 1.57, this method does not reallocate or shrink the `Vec`,
-    /// so the leaked allocation may include unused capacity that is not part
-    /// of the returned slice.
-    ///
-    /// This function is mainly useful for data that lives for the remainder of
-    /// the program's life. Dropping the returned reference will cause a memory
-    /// leak.
-    ///
-    /// # Examples
-    ///
-    /// Simple usage:
-    ///
-    /// ```
-    /// let x = vec![1, 2, 3];
-    /// let static_ref: &'static mut [usize] = x.leak();
-    /// static_ref[0] += 1;
-    /// assert_eq!(static_ref, &[2, 2, 3]);
-    /// ```
-    #[cfg(not(no_global_oom_handling))]
-    #[stable(feature = "vec_leak", since = "1.47.0")]
-    #[inline]
+    
+    //leak方法，此方法后，需要再次将返回值转换到RavVec，否则会内存泄漏
     pub fn leak<'a>(self) -> &'a mut [T]
     where
         A: 'a,
     {
+        //本Vec变量不再被drop
         let mut me = ManuallyDrop::new(self);
+        //生成可变切片引用，此引用没有后继处理的话会造成内存泄漏
         unsafe { slice::from_raw_parts_mut(me.as_mut_ptr(), me.len) }
     }
-
-    /// Returns the remaining spare capacity of the vector as a slice of
-    /// `MaybeUninit<T>`.
-    ///
-    /// The returned slice can be used to fill the vector with data (e.g. by
-    /// reading from a file) before marking the data as initialized using the
-    /// [`set_len`] method.
-    ///
-    /// [`set_len`]: Vec::set_len
-    ///
-    /// # Examples
-    ///
-    /// ```
-    /// #![feature(vec_spare_capacity, maybe_uninit_extra)]
-    ///
-    /// // Allocate vector big enough for 10 elements.
-    /// let mut v = Vec::with_capacity(10);
-    ///
-    /// // Fill in the first 3 elements.
-    /// let uninit = v.spare_capacity_mut();
-    /// uninit[0].write(0);
-    /// uninit[1].write(1);
-    /// uninit[2].write(2);
-    ///
-    /// // Mark the first 3 elements of the vector as being initialized.
-    /// unsafe {
-    ///     v.set_len(3);
-    /// }
-    ///
-    /// assert_eq!(&v, &[0, 1, 2]);
-    /// ```
-    #[unstable(feature = "vec_spare_capacity", issue = "75017")]
-    #[inline]
-    pub fn spare_capacity_mut(&mut self) -> &mut [MaybeUninit<T>] {
-        // Note:
-        // This method is not implemented in terms of `split_at_spare_mut`,
-        // to prevent invalidation of pointers to the buffer.
-        unsafe {
-            slice::from_raw_parts_mut(
-                self.as_mut_ptr().add(self.len) as *mut MaybeUninit<T>,
-                self.buf.capacity() - self.len,
-            )
-        }
-    }
-
-    /// Returns vector content as a slice of `T`, along with the remaining spare
-    /// capacity of the vector as a slice of `MaybeUninit<T>`.
-    ///
-    /// The returned spare capacity slice can be used to fill the vector with data
-    /// (e.g. by reading from a file) before marking the data as initialized using
-    /// the [`set_len`] method.
-    ///
-    /// [`set_len`]: Vec::set_len
-    ///
-    /// Note that this is a low-level API, which should be used with care for
-    /// optimization purposes. If you need to append data to a `Vec`
-    /// you can use [`push`], [`extend`], [`extend_from_slice`],
-    /// [`extend_from_within`], [`insert`], [`append`], [`resize`] or
-    /// [`resize_with`], depending on your exact needs.
-    ///
-    /// [`push`]: Vec::push
-    /// [`extend`]: Vec::extend
-    /// [`extend_from_slice`]: Vec::extend_from_slice
-    /// [`extend_from_within`]: Vec::extend_from_within
-    /// [`insert`]: Vec::insert
-    /// [`append`]: Vec::append
-    /// [`resize`]: Vec::resize
-    /// [`resize_with`]: Vec::resize_with
-    ///
-    /// # Examples
-    ///
-    /// ```
-    /// #![feature(vec_split_at_spare, maybe_uninit_extra)]
-    ///
-    /// let mut v = vec![1, 1, 2];
-    ///
-    /// // Reserve additional space big enough for 10 elements.
-    /// v.reserve(10);
-    ///
-    /// let (init, uninit) = v.split_at_spare_mut();
-    /// let sum = init.iter().copied().sum::<u32>();
-    ///
-    /// // Fill in the next 4 elements.
-    /// uninit[0].write(sum);
-    /// uninit[1].write(sum * 2);
-    /// uninit[2].write(sum * 3);
-    /// uninit[3].write(sum * 4);
-    ///
-    /// // Mark the 4 elements of the vector as being initialized.
-    /// unsafe {
-    ///     let len = v.len();
-    ///     v.set_len(len + 4);
-    /// }
-    ///
-    /// assert_eq!(&v, &[1, 1, 2, 4, 8, 12, 16]);
-    /// ```
-    #[unstable(feature = "vec_split_at_spare", issue = "81944")]
-    #[inline]
-    pub fn split_at_spare_mut(&mut self) -> (&mut [T], &mut [MaybeUninit<T>]) {
-        // SAFETY:
-        // - len is ignored and so never changed
-        let (init, spare, _) = unsafe { self.split_at_spare_mut_with_len() };
-        (init, spare)
-    }
-
-    /// Safety: changing returned .2 (&mut usize) is considered the same as calling `.set_len(_)`.
-    ///
-    /// This method provides unique access to all vec parts at once in `extend_from_within`.
-    unsafe fn split_at_spare_mut_with_len(
-        &mut self,
-    ) -> (&mut [T], &mut [MaybeUninit<T>], &mut usize) {
-        let Range { start: ptr, end: spare_ptr } = self.as_mut_ptr_range();
-        let spare_ptr = spare_ptr.cast::<MaybeUninit<T>>();
-        let spare_len = self.buf.capacity() - self.len;
-
-        // SAFETY:
-        // - `ptr` is guaranteed to be valid for `len` elements
-        // - `spare_ptr` is pointing one element past the buffer, so it doesn't overlap with `initialized`
-        unsafe {
-            let initialized = slice::from_raw_parts_mut(ptr, self.len);
-            let spare = slice::from_raw_parts_mut(spare_ptr, spare_len);
-
-            (initialized, spare, &mut self.len)
-        }
-    }
+    ...
 }
 ```
+Vec<T>的所有难点实际上都在RUST的各种指针类型转换及内存读写的所有权处理上。这也是所有的RUST的数据结构基础类型实现上相对比其他语言需要额外理解的复杂之处。    
 
-
-
-
-RUST的字符和C有很多概念上的不同，因为RUST是系统语言的关系，不能象其他面对对象语言一样仅使用字符的函数即可，必须理解其内部操作基础。
-1.Unicode及UTF-8字符串编码, 这导致RUST的字符与字符串的关系与C完全不同，
 
 # RUST不采用类的理
 面对对象语言如C++,Java以类为中心，并以类的继承为最基本的一个设计理念。但继承实际上是极易被错误使用，并导致整个软件结构混乱的根源之一。
@@ -8001,9 +7052,9 @@ struct xxx {
 }
 ```
 这个模式中，利用struct内部的函数指针实现了不同实体可以对外提供若干相同的方法，更好的实现了抽象。
-以类为基础的语言，强化了成员和方法组合成对象的设计理念。用继承的方式来实现函数指针的多态性。但如果认真分析，会发现函数指针的多态性实际上更匹配的实现是在类中定义一个接口类的变量，变化这个变量来实现多态性。设计模式就充分的展示了这一原则。也就是常说的"使用组合而不是继承"
+以类为基础的语言，强化了成员和方法组合成对象的设计理念。用继承的方式来实现函数指针的多态性。但如果认真分析，会发现函数指针的多态性实际上更匹配的实现是在类中定义一个接口类的变量，变化这个变量来实现多态性。二十三种设计模式就充分的展示了这一原则。也就是常说的"使用组合而不是继承"
 
-为了去除继承的滥用，RUST，Go等语言都不在使用类作为语言核心。取代的是使用结构+接口的模式。继承只能在接口进行。
+为了去除继承的滥用，RUST，Go等语言都不再使用类作为语言核心。取代的是使用结构+接口的模式。继承只能在接口进行。
 
 RUST接口类的类似实现:
 1.单元结构体，程序中使用直接用单元结构体的名字，实例即其本身。
@@ -8026,264 +7077,3 @@ let A = xxx<RealizeSomeTrait1>{   };
 let A = xxx {.., behavior : RealizeSomeTrait1}
 ```
 如果用泛型，则struct xxx实质会变成多个类型，无法对调用它的代码完成抽象化；用dyn Trait则不存在这个问题。
-
-# RUST标准库各类型通用的Trait理解
-## Trait的泛型实现定义
-举例：
-
-impl<T: ?Sized> const Deref for &T {
-    ...
-}
-上例针对所有的 &T 实现了Deref Trait.
-
-impl<T> const From<T> for T {
-    fn from(t: T) -> T {
-        t
-    }
-}
-上例针对所有的T实现了从T到T的From Trait.
-对于针对泛型的Trait实现或方法实现，查找的时候遵循先特殊再一般的原则
-
-## 编译器内部宏实现的Trait分析
-Sized
-?Sized 
-Unsize<T:?Sized>
-前两个Trait容易理解，Unsize Trait是指一个类型能够被转换为动态大小类型时，需要实现此Trait，如数组转换为切片类型， 实现Trait的类型转换为 dyn Trait类型等，
-
-Copy
-Copy基于Clone, 但Clone Trait 不是由编译器实现的，而是在std库中对相关类型进行了实现。
-Clone {fn clone(&self)->Self; fn clone_from(&mut self, source:&Self)}
-
-
-
-
-### 符号重载 Trait
-pub Trait Deref{type Target:?Sized; fn deref(&self)->&Self::Target} 这里要注意 deref(&self)返回的还是一个引用, *T = *T.deref(), deref 仅仅完成了从一个类型的引用到另一个类型的引用而已。
-
-
-以Clone来举例
-```rust
-    pub trait Clone: Sized {
-        fn clone(&self) -> Self;
-
-        fn clone_from(&mut self, source: &Self) {
-            *self = source.clone()
-        }
-    }
-```
-在标准库中，Clone对所有的primitive type, Never Type, * const T, * mut T，&T, &mut T，String都做了实现。
-
-# RUST库结构解析
-## Box 堆内存指针结构
-从Box中可以了解Rust是如何将堆指针从未初始化内存导向初始化内存并导向内存安全的引用。这是Rust编程的一个典型的复杂点。
-### 获取堆内存的过程
-首先
-```rust
-    pub fn try_new_in(x: T, alloc: A) -> Result<Self, AllocError> {
-        let mut boxed = Self::try_new_uninit_in(alloc)?;
-        unsafe {
-            boxed.as_mut_ptr().write(x);
-            Ok(boxed.assume_init())
-        }
-    }
-```
-这里，boxed.as_mut_ptr().write(x)中自动实现了一个解引用。实际是 *(boxed<MaybeUninit<T>>).as_mut_ptr().write(x);也即MaybeUninit::<T>::write(x);
-```rust
-    pub fn try_new_uninit_in(alloc: A) -> Result<Box<mem::MaybeUninit<T>, A>, AllocError> {
-        let layout = Layout::new::<mem::MaybeUninit<T>>();
-        let ptr = alloc.allocate(layout)?.cast();
-        unsafe { Ok(Box::from_raw_in(ptr.as_ptr(), alloc)) }
-    }
-    pub unsafe fn from_raw_in(raw: *mut T, alloc: A) -> Self {
-        Box(unsafe { Unique::new_unchecked(raw) }, alloc)
-    }
-```
-以上，Box必须先以MaybeUninit<T>类型来申请堆内存，alloc.allocate(layout)申请的实际上是NonNull<[u8]>类型，?对Result做判断并取出NonNull<[u8]>类型， 用cast()转换为MaybeUninit<T>指针类型，然后利用MaybeUninit<T>指针生成Unique<MaybeUninit<T>>类型，再生成Box类型。此时，类型是Box<MaybeUninit<T>, A> 离Box<T, A>还有相当的距离。
-    随后，将T的内容写入Boxed申请的内存。然后调用assume_init()将boxed的内存重新置于RUST编译器的认知范围。 
-```rust
-    pub unsafe fn assume_init(self) -> Box<T, A> {
-        let (raw, alloc) = Box::into_raw_with_allocator(self);
-        unsafe { Box::from_raw_in(raw as *mut T, alloc) }
-    }
-    
-    pub fn into_raw_with_allocator(b: Self) -> (*mut T, A) {
-        let (leaked, alloc) = Box::into_unique(b);
-        (leaked.as_ptr(), alloc)
-    }
-
-    pub fn into_unique(b: Self) -> (Unique<T>, A) {
-        // Box is recognized as a "unique pointer" by Stacked Borrows, but internally it is a
-        // raw pointer for the type system. Turning it directly into a raw pointer would not be
-        // recognized as "releasing" the unique pointer to permit aliased raw accesses,
-        // so all raw pointer methods have to go through `Box::leak`. Turning *that* to a raw pointer
-        // behaves correctly.
-        let alloc = unsafe { ptr::read(&b.1) };
-        (Unique::from(Box::leak(b)), alloc)
-    }
-    pub fn leak<'a>(b: Self) -> &'a mut T
-    where
-        A: 'a,
-    {
-        unsafe { &mut *mem::ManuallyDrop::new(b).0.as_ptr() }
-    }
-```    
-这里，assume_init实现见上面的具体代码，值得注意的是leak函数，`mem::ManuallyDrop::new(b).0, 这里对ManuallyDrop<T>变量做了自动Deref操作，所以是调用Box<T>.0, 也就是Unique<T>. leak将Box从编译器管理移出，并将MaybeUninit<T>指针转化为&mut T, 并重新封装为Unique<T>, 随后的from_raw_in则又将此指针包含入一个新的Box，因此不会造成内存泄漏。但如果此指针用于其他结构。当leak返回的引用被drop时，将无法再引用此块内存。（from_raw_in实质是把Box的两个部分又组合在一起。另外，可以从into_unique的注释中分析出来，Box在栈中实质是Unique指针，A因为是单元结构体，不占用内存。
-```rust
-impl<K, V> LeafNode<K, V> {
-    /// Initializes a new `LeafNode` in-place.
-    unsafe fn init(this: *mut Self) {
-        // As a general policy, we leave fields uninitialized if they can be, as this should
-        // be both slightly faster and easier to track in Valgrind.
-        unsafe {
-            // parent_idx, keys, and vals are all MaybeUninit
-            ptr::addr_of_mut!((*this).parent).write(None);
-            ptr::addr_of_mut!((*this).len).write(0);
-        }
-    }=-
-    /// Creates a new boxed `LeafNode`.
-    fn new() -> Box<Self> {
-        unsafe {
-            let mut leaf = Box::new_uninit();
-            LeafNode::init(leaf.as_mut_ptr());
-            leaf.assume_init()
-        }
-    }
-}
-```
-以上为另一个例子，使用Box来初始化的情况。
-
-以上操作相当复杂, 而且不易理解，所以Rust针对Box引入了关键字*box*，直接使用 box x便会完成以上的所有操作。Box完成堆内存分配和赋值后，再将Box完成的堆内存给其他需要堆内存的结构使用。
-编译器实现了Box类型的drop。
-
-
-### Cow (copy on write)写时复制结构
-主要就是利用Borrwo及Owned的Trait完成写时复制的设计，任意类型，如果想要写时复制, 就可以用Cow进行包装。
-```rust
-pub enum Cow<'a, B: ?Sized + 'a>
-where
-    B: ToOwned,
-{
-    /// Borrowed data.
-    #[stable(feature = "rust1", since = "1.0.0")]
-    Borrowed(#[stable(feature = "rust1", since = "1.0.0")] &'a B),
-
-    /// Owned data.
-    #[stable(feature = "rust1", since = "1.0.0")]
-    Owned(#[stable(feature = "rust1", since = "1.0.0")] <B as ToOwned>::Owned),
-}
-```
-此结构的难点在于理解Borrow和ToOwned概念。
-
-## 从内存获取T的数组内存 RawVec
-RawVec是除了Box外有一个直接调用Allocator申请内存的数据结构：
-
-```rust
-    #[cfg(not(no_global_oom_handling))]
-    fn allocate_in(capacity: usize, init: AllocInit, alloc: A) -> Self {
-        if mem::size_of::<T>() == 0 {
-            Self::new_in(alloc)
-        } else {
-            // We avoid `unwrap_or_else` here because it bloats the amount of
-            // LLVM IR generated.
-            let layout = match Layout::array::<T>(capacity) {
-                Ok(layout) => layout,
-                Err(_) => capacity_overflow(),
-            };
-            match alloc_guard(layout.size()) {
-                Ok(_) => {}
-                Err(_) => capacity_overflow(),
-            }
-            let result = match init {
-                AllocInit::Uninitialized => alloc.allocate(layout),
-                AllocInit::Zeroed => alloc.allocate_zeroed(layout),
-            };
-            let ptr = match result {
-                Ok(ptr) => ptr,
-                Err(_) => handle_alloc_error(layout),
-            };
-
-            Self {
-                ptr: unsafe { Unique::new_unchecked(ptr.cast().as_ptr()) },
-                cap: Self::capacity_from_bytes(ptr.len()),
-                alloc,
-            }
-        }
-    }
-```    
-如上，不象Box, RawVec没有MaybeUninit的阶段,直接将NonNull指针转化为了Unique.
-
-
-
-### Cell结构
-###### UnsafeCell 
-内部可变性的基础机制。也是一个repr(transparent)的表示。与ManuallyDrop非常类似的一个设计方式。
-UnsafeCell<T>::new(val), 将val封装如UnsafeCell中
-UnsafeCell<T>::into_inner(),将内部的val重新暴露出来
-UnsafeCell<T>::get(), 返回一个mut T类型的指针，
-UnsafeCell<T>::get_mut(), 返回&mut T类型引用，
-
-RefCell<T>使用的实例
-```rust
-    #[derive(Debug)]
-    struct Lower<'a> {
-        a:u32,
-        b:u32,
-        c:Option<&'a cell::RefCell<Higher<'a>>>
-    };
-    #[derive(Debug)]
-    struct Higher<'a> {
-        a:u32,
-        b:u32,
-        c:Option<&'a cell::RefCell<Lower<'a>>>
-    }
-    let mut test_l = Lower{a:1,b:1,c:None};
-    let c1 = cell::RefCell::<Lower>::new(test_l);
-    let test_h = Higher{a:1,b:1,c:None};
-    let c2 = cell::RefCell::<Higher>::new(test_h);
-    println!("{:?} {:?}", c1, c2);
-    {
-        let mut r1 = c1.borrow_mut();
-        (*r1).c = Some(&c2);
-        let mut r4 = c2.borrow_mut();
-        (*r4).c = Some(&c1); 
-    }
-    ```
-    以上，两个结构互相包含引用，这是一种常见的设计，但在RUST中，因为所有权及生命周期的关系，引用互相赋值实现变得极为啰嗦及复杂，如果再叠加堆指针或者其他的数据结构，那让人无法直视。这种情况下，可能用unsafe是最适合的解决方案。
-    ```rust
-    #[derive(Debug)]
-    struct Lower<'a> {
-        a:u32,
-        b:u32,
-        c:Option<&'a Higher<'a>>
-    };
-    #[derive(Debug)]
-    struct Higher<'a> {
-        a:u32,
-        b:u32,
-        c:Option<&'a Lower<'a>>
-    }
-    let mut test_l = Lower{a:1,b:1,c:None};
-    let mut test_h = Higher{a:1,b:1,c:Some(&test_l)};
-    unsafe{*((&test_l.c) as * const Option<&Higher> as * mut Option<&Higher> )  = Some(&test_h)};
- ```
- 以上是unsafe的代码。但只要对test_l或test_h有可变的操作，则此段代码后继将无法通过编译。所以实际上不可行。
-
-
-# RUST泛型思考
-对于T，因为没有通用的new操作，所以如果在程序中需要创建一个T的变量，可以采用的方法：
-1. MaybeUninit::<T>::uninit(); 这是在RUST中new(), malloc的替代方式，因为这种情况经常发生，所以，MaybeUninit是必须要掌握的。但MaybeUninit依然只能满足浅拷贝的需求，对于深拷贝无能为力。所以还是有d限性。
-2. 
-
-# RUST在面对对象设计中选择组合模式，不用继承模式的强制性
-
-#![allow(unused)]
-fn main() {
-let a = 3;
-let b = 1 + 2;
-let d = unsafe{&mut *(&a as *const _ as *mut i32)};
-*d = 5;
-println!("{}", a);
-//assert_eq!(a, b);
-
-//assert_eq!(a, b, "we are testing addition with {} and {}", a, b);
-}
