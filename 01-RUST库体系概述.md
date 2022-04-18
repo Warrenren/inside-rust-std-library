@@ -17,12 +17,12 @@ RUST语言核心库，适用于操作系统内核及用户态，包括RUST的基
 主要是各种用于表达式的RUST符号重载，包括算数计算符号，逻辑运算符号，位操作符号，解引用(*)符号, [index]数组下标符号， `../start..end/start../start..=end/..end/..=end` Range符号， ?号，||{..}闭包符号等，RUST原则是所有的运算符号都要能重载, 所以所有运算操作都定义了重载Trait。
 
 #### 编译器内部实现的派生宏 Trait
-如果类型结构中的每一个变量都实现了该Trait, 则此结构的该Trait可通过派生宏实现
-Clone, Copy: Copy浅复制，Clone提供深复制
-Debug: 类型的格式化输出
-Default: 类型的default值，
-Eq, Ord，PartialEQ, PartialOrd: 实现后可以对类型的变量做大,小,相等比较
-Sync, Send: 实现此Trait的类型变量的引用可以安全在线程间共享
+如果类型结构中的每一个变量都实现了该Trait, 则此结构的该Trait可通过派生宏实现.  
+Clone, Copy: Copy浅复制，Clone提供深复制.  
+Debug: 类型的格式化输出.  
+Default: 类型的default值，  
+Eq, Ord，PartialEQ, PartialOrd: 实现后可以对类型的变量做大,小,相等比较.  
+Sync, Send: 实现此Trait的类型变量的引用可以安全在线程间共享.  
 Hash: 实现结构的整体Hash值，这个Trait Hash是因为复杂才被加入，意义没有前面的大
 
 #### Iterator
