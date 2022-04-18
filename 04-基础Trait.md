@@ -1,146 +1,36 @@
 # RUST标准库的基础Trait
 
-## RUST中直接针对泛型实现方法定义和Trait
-实现方法或Trait时，可以针对泛型来做实现，并可以给泛型添加限制。可以添加的泛型限制有：无限制，泛型的原生指针（可变/不可变）类型，泛型的引用(可变/不可变)类型，泛型的数组类型，泛型的切片类型，泛型的切片引用（可变/不可变）类型，泛型的元组（可变/不可变）类型，函数类型， 需实现特定的Trait限制等。
-对某个具有泛型的类型结构体实现方法和Trait时，也可以对类型结构体的泛型做出如上所述的限制。
-举例说明：
-```rust
-//为所有的类型实现了Borrow<T> Trait
-impl<T: ?Sized> Borrow<T> for T {
-    fn borrow(&self) -> &T {
-        self
-    }
-}
-//为所有的引用类型实现Receiver Trait
-impl<T: ?Sized> Receiver for &T {}
-
-//为所有可变引用类型实现Receiver Trait
-impl<T: ?Sized> Receiver for &mut T {}
-
-//为所有原生不可变指针类型实现Clone Trait
-impl<T: ?Sized> Clone for *const T {
-     fn clone(&self) -> Self {
-         *self
-     }
- }
-//为原生可变指针类型实现Clone Trait
-impl<T: ?Sized> Clone for *mut T {
-     fn clone(&self) -> Self {
-         *self
-     }
-}
-
-//为切片类型[T]实现AsRef<[T]> Trait
-impl<T> AsRef<[T]> for [T] {
-    fn as_ref(&self) -> &[T] {
-        self
-    }
-}
-
-// 切片的方法 具体实现的摘要
-// [T;N]代表数组类型，[T]代表切片类型，
-// 下面是针对所有切片类型的统一方法。
-impl<T> [T] {
-    pub const fn len(&self) -> usize {
-        //使用* const T的元数据获得len
-        unsafe { crate::ptr::PtrRepr { const_ptr: self }.components.metadata }
-    }
-
-    pub const fn is_empty(&self) -> bool {
-        self.len() == 0
-    }
-    
-    //以下代码展示了RUST代码的极简洁及易理解
-    pub const fn first(&self) -> Option<&T> {
-        //从以下代码可以学习及体会RUST的编码技巧。利用绑定语法完成
-        //空切片的判断。同时，因为不能从切片中转移所有权，
-        // let [first, ..] = self 实际上是 let [ref x, ..] = self的一种简化表示
-        if let [first, ..] = self { Some(first) } else { None }
-    }
-
-    pub const fn split_first(&self) -> Option<(&T, &[T])> {
-        //利用绑定语义，极简高效的完成数组分离，秒杀其他语言
-        if let [first, tail @ ..] = self { Some((first, tail)) } else { None }
-    }
-
-    ...
-    ...
-}
-
-//原生指针 具体方法的片段
-impl<T: ?Sized> *const T {
-    pub const fn is_null(self) -> bool {
-        //这里要注意*const T是有元数据的，转化为*const u8后元数据为空，只比较address的部分
-        (self as *const u8).guaranteed_eq(null())
-    }
-
-    /// Casts to a pointer of another type.
-    pub const fn cast<U>(self) -> *const U {
-        //注意"_"的使用技巧
-        self as _
-    }
-
-    pub unsafe fn as_ref<'a>(self) -> Option<&'a T> {
-        // else后直接将原生指针转化为&T，调用的代码需要确实的保证安全性
-        // *const T指向的内存不应在返回的&T生命周期结束前被释放
-        if self.is_null() { None } else { unsafe { Some(&*self) } }
-    }
-    ...
-    ...
-}
-
-//原生数组指针 具体方法实现片段。需要注意，原生数组指针也是原生指针，
-//此处不应该再实现 *const T的同名函数。
-impl<T> *const [T] {
-    pub const fn len(self) -> usize {
-        metadata(self)
-    }
-
-    pub const fn as_ptr(self) -> *const T {
-        //注意，转换后metadata函数会返回T类型的对应元数据，不再是切片长度值
-        self as *const T
-    }
-    ...
-    ...
-}
-//如果T实现了Default Trait, 则为Box<T>实现Default Trait
-impl<T: Default> Default for Box<T> {
-    /// Creates a `Box<T>`, with the `Default` value for T.
-    fn default() -> Self {
-        box T::default()
-    }
-}
-```
-有效使用针对限制的泛型实现方法和Trait可以大幅的减少代码，受限制的泛型是RUST提供的强大的泛型语法武器。
-
 ## 编译器内置Trait代码分析
-代码路径： 
-%USER%\.rustup\toolchains\nightly-x86_64-pc-windows-msvc\lib\rustlib\src\rust\library\core\src\marker.rs  
-源代码主要部分是标准库指南文档。这里简要给出一些需注意的点
+代码路径：
+%USER%\.rustup\toolchains\nightly-x86_64-pc-windows-msvc\lib\rustlib\src\rust\library\core\src\marker.rs
+
+marker trait是没有实现体，是一种特殊的类型性质，这类性质无法用类型成员来表达，因此用trait来实现是最合适的。
+
 ```rust
-//Send Trait
+//线程之间可移动
 pub unsafe auto trait Send {
     // empty.
 }
-//原生指针不支持Send Trait实现，利用"!"表示明确的对Trait的不支持
+//裸指针不支持Send Trait实现，利用"!"表示明确的对Trait的不支持
 impl<T: ?Sized> !Send for *const T {}
 impl<T: ?Sized> !Send for *mut T {}
 
 mod impls {
-    // 实现Sync的类型的类型不可变引用支持Send
+    // 实现Sync的类型的不可变引用类型支持Send
     unsafe impl<T: Sync + ?Sized> Send for &T {}
-    // 实现Send的类型的类型可变引用支持 Send
+    // 实现Send的类型的可变引用类型支持 Send
     unsafe impl<T: Send + ?Sized> Send for &mut T {}
 }
 
-// Sync Trait
+// 线程间可共享
 pub unsafe auto trait Sync {
     // Empty
 }
-//原生指针不支持Sync Trait
+//裸指针不支持Sync Trait
 impl<T: ?Sized> !Sync for *const T {}
 impl<T: ?Sized> !Sync for *mut T {}
 
+//类型内存大小固定
 pub trait Sized {
     // Empty.
 }
@@ -152,7 +42,6 @@ pub trait Unsize<T: ?Sized> {
 }
 
 //模式匹配表达式匹配时编译器需要使用的Trait，如果一个结构实现了PartialEq，该Trait会自动被实现。
-//推测这个结构应该是内存按位比较
 pub trait StructuralPartialEq {
     // Empty.
 }
@@ -161,7 +50,11 @@ pub trait StructuralPartialEq {
 pub trait StructuralEq {
     // Empty.
 }
+```
+以下给出了一个针对所有的原生类型都实现Copy Trait的实现代码, 实现了Copy Trait的类型编译器不必调用drop来对类型进行内存释放。
+可以看到，RUST针对原生类型可以直接扩展Trait实现，者极大的提高了RUST的语法一致性及函数式编程的能力：
 
+```rust
 //Copy，略
 pub trait Copy: Clone {
     // Empty.
@@ -197,21 +90,21 @@ mod copy_impls {
 
     //& mut T不支持Copy，以保证RUST的借用规则
 }
-
-//PhantomData被用来在类型结构体重做一个标记，标记某结构中需要但不必有实体的另一类型属性
-//PhantomData具体阐述请参考标准库文档。 
-//PhantomData是个单元结构体，单元结构体的变量名就是单元结构体的类型名。
-//所以使用的时候直接使用PhantomData即可，编译器会将泛型的类型实例化信息自动带入PhantomData中
-pub struct PhantomData<T: ?Sized>;
 ```
 
-
-
+PhantomData<T>类型可以在其他类型结构体中定义一个变量，标记此结构体逻辑上拥有，但不需要或不方便在结构体成员变量体现的某个属性。实质上，智能指针一般都需要利用Unique<T>，以PhantomData来实现对堆内存的逻辑拥有权.
+PhantomData最常用来标记生命周期及所有权。主要给编译器提示检验类型变量的生命周期和类型构造时输入的生命周期关系。也用来提示拥有PhantomData<T>的结构体会负责对T做drop操作。需要编译器做drop检查的时候更准确的判断出内存安全错误。
+PhantomData<T>属性与所有权或生命周期的关系由编译器自行推断。具体实例可参考官方标准库文档及后继相关章节。
+PhantomData是个单元结构体，单元结构体的变量名就是单元结构体的类型名。
+所以使用的时候直接使用PhantomData即可，编译器会将泛型的类型实例化信息自动带入PhantomData中
+```rust
+pub struct PhantomData<T: ?Sized>;
+```
 ## ops 运算符 Trait 代码分析
-代码路径如下：  
+代码路径如下：
 %USER%\.rustup\toolchains\nightly-x86_64-pc-windows-msvc\lib\rustlib\src\rust\library\core\src\ops\*.rs
 
-RUST中，所有的运算符号都可以重载。
+RUST中，所有的运算符号都可以重载。对于Ops运算符，RUST都可以提供*两个不同类型*之间的运算。
 ### 一个小规则
 在重载函数中，如果重载的符号出現，编译器用规定的默认操作来实现。例如：
 ```rust
@@ -228,17 +121,14 @@ RUST中，所有的运算符号都可以重载。
 易理解，略
 
 ### 关系运算符Trait
-代码路径如下：  
-%USER%\.rustup\toolchains\nightly-x86_64-pc-windows-msvc\lib\rustlib\src\rust\library\core\src\cmp.rs
-
-### 关系运算符Trait
 代码路径如下：
 %USER%\.rustup\toolchains\nightly-x86_64-pc-windows-msvc\lib\rustlib\src\rust\library\core\src\cmp.rs
 
 关系运算符的代码稍微复杂，这里给出较完整的代码。
 ```rust
 //"==" "!="的实现Trait，对于在整个类型定义域内存在值无法满足相等条件的，就只实现该Trait的类型
-//例如浮点类型 “NaN != NaN" , 实质上，在代码上，只需要实现这个Trait
+//例如浮点类型 “NaN != NaN" , 实质上，在代码上，对于相等/不等判断只需要实现这个Trait即可
+//可以为一个类型实现不同与此类型的PartialEq
 pub trait PartialEq<Rhs: ?Sized = Self> {
     /// “==” 重载方法
     fn eq(&self, other: &Rhs) -> bool;
@@ -258,7 +148,8 @@ pub trait Eq: PartialEq<Self> {
 对于"<,>,<=,>="等四种运算，同上，对于全域如果有可能出现无法比较的情况，仅实现PartialOrd<Rhs>，如下：
 ```rust
 // "<" ">" ">=" "<=" 运算符重载结构, 事实上关系运算只需要重载这个Trait
-// Ord Trait 不用编码
+// Ord Trait 不用编码,
+// 可以为一个类型实现不同于此类型的PartialEq
 pub trait PartialOrd<Rhs: ?Sized = Self>: PartialEq<Rhs> {
     // 显然，只能有一个比较函数, 对于全域都满足比较的，此函数内部一般用Ord
     // Trait的cmp，对于无法比较的，需要实现独立的代码，如浮点,因为存在不可比较
@@ -285,7 +176,7 @@ pub trait PartialOrd<Rhs: ?Sized = Self>: PartialEq<Rhs> {
     //eq已经在PatialEq中包含
 }
 
-//Ord是全域值都可比较Trait，但其的结果应该是一致的
+//Ord是全域值都可比较的Trait，其与PartialOrd结果应该一致
 pub trait Ord: Eq + PartialOrd<Self> {
     //通常partial_cmp() == Some(cmp()),因为全域值
     //都可以比较，不会出现Ordering之外的情况
@@ -421,6 +312,7 @@ mod impls {
     //PartialEq在原生类型上的实现,利用宏减少重复代码
     macro_rules! partial_eq_impl {
         ($($t:ty)*) => ($(
+            //Rhs是默认的
             impl PartialEq for $t {
                 //编译器默认的符号
                 fn eq(&self, other: &$t) -> bool { (*self) == (*other) }
@@ -437,7 +329,7 @@ mod impls {
             false
         }
     }
-
+    //所有类型都实现PartialEq
     partial_eq_impl! {
         bool char usize u8 u16 u32 u64 u128 isize i8 i16 i32 i64 i128 f32 f64
     }
@@ -451,6 +343,7 @@ mod impls {
 
     //浮点不实现Eq
     eq_impl! { () bool char usize u8 u16 u32 u64 u128 isize i8 i16 i32 i64 i128 }
+
     //关系运算，利用宏减少代码, 这个宏仅仅针对浮点数
     macro_rules! partial_ord_impl {
         ($($t:ty)*) => ($(
@@ -474,6 +367,7 @@ mod impls {
         )*)
     }
 
+    //仅在浮点数实现
     partial_ord_impl! { f32 f64 }
     
     //为支持全域值可比较的类型实现的宏
@@ -516,11 +410,11 @@ mod impls {
             PartialEq::ne(*self, *other)
         }
     }
+    
 }
 
 ```
-以上较完整的给出了关系运算Trait的代码，可以看到，RUST标准库除了对原生类型做了Trait的实现，也针对受限制的泛型尽可能的做了关系运算符 Trait的实现，以便最大的减少后继的开发量。程序员需要精通RUST的标准库已经针对那些泛型类型做好了实现，避免再重复的造轮子。
-
+以上较完整的给出了关系运算Trait的代码，可以看到，RUST标准库除了对原生类型做了Trait的实现，也针对受约束的泛型尽可能的做了关系运算符 Trait的实现，以便最大的减少后继的开发量。程序员需要精通RUST的标准库已经针对那些泛型类型做好了实现，避免再重复的造轮子。
 
 ### ？运算符 Trait代码分析
 代码路径：try_trait.rs
@@ -538,14 +432,11 @@ pub trait Try: FromResidual {
     /// ?操作符提前返回的值类型，后继会用实例来说明
     type Residual;
 
-    /// 从Self::Output返回值类型中获得原类型的值
+    /// 从Self::Output返回值类型中获得实现Try Trait的类型的值
     /// 函数必须符合下面代码的原则，
     /// `Try::from_output(x).branch() --> ControlFlow::Continue(x)`.
     /// 例子：
     /// ```
-    /// #![feature(try_trait_v2)]
-    /// use std::ops::Try;
-    ///
     /// assert_eq!(<Result<_, String> as Try>::from_output(3), Ok(3));
     /// assert_eq!(<Option<_> as Try>::from_output(4), Some(4));
     /// assert_eq!(
@@ -556,9 +447,6 @@ pub trait Try: FromResidual {
 
     /// branch函数会返回ControlFlow，据此决定流程继续还是提前返回
     /// 例子：
-    /// ```p
-    /// #![feature(try_trait_v2)]
-    /// use std::ops::{ControlFlow, Try};
     ///
     /// assert_eq!(Ok::<_, String>(3).branch(), ControlFlow::Continue(3));
     /// assert_eq!(Err::<String, _>(3).branch(), ControlFlow::Break(Err(3)));
@@ -575,22 +463,17 @@ pub trait Try: FromResidual {
 }
 
 pub trait FromResidual<R = <Self as Try>::Residual> {
-    /// 该函数从提前返回的值中获取原始值
+    /// 该函数从提前返回的值中获取实现Try Trait的类型的值
     ///
     /// 此函数必须符合下面代码的原则
     /// `FromResidual::from_residual(r).branch() --> ControlFlow::Break(r)`.
     /// 例子：
-    /// ```
-    /// #![feature(try_trait_v2)]
-    /// use std::ops::{ControlFlow, FromResidual};
-    ///
     /// assert_eq!(Result::<String, i64>::from_residual(Err(3_u8)), Err(3));
     /// assert_eq!(Option::<String>::from_residual(None), None);
     /// assert_eq!(
     ///     ControlFlow::<_, String>::from_residual(ControlFlow::Break(5)),
     ///     ControlFlow::Break(5),
     /// );
-    /// ```
     fn from_residual(residual: R) -> Self;
 }
 ```
@@ -633,42 +516,15 @@ Try Trait对? 操作支持的举例如下：
 ControlFlow类型代码如下, 主要用于指示代码控制流程指示， 逻辑上可类比于continue, break 关键字 代码如下：
 ```rust
 pub enum ControlFlow<B, C = ()> {
-    /// Move on to the next phase of the operation as normal.
+    //代码过程继续执行，可以从C中得到代码过程的中间结果
     Continue(C),
-    /// Exit the operation without running subsequent phases.
+    /// 代码过程应退出，可以从B中的到代码退出时的中间结果
     Break(B),
-    // Yes, the order of the variants doesn't match the type parameters.
-    // They're in this order so that `ControlFlow<A, B>` <-> `Result<B, A>`
-    // is a no-op conversion in the `Try` implementation.
-}
-
-impl<B, C> ops::Try for ControlFlow<B, C> {
-    type Output = C;
-    // convert::Infallible表示类型不会被使用，可认为是忽略类型,
-    //对于Residual只会用ControlFlow::Break(B), 所以用Infallible明确说明不会用到此类型
-    type Residual = ControlFlow<B, convert::Infallible>;
-
-    fn from_output(output: Self::Output) -> Self {
-        ControlFlow::Continue(output)
-    }
-
-    fn branch(self) -> ControlFlow<Self::Residual, Self::Output> {
-        match self {
-            ControlFlow::Continue(c) => ControlFlow::Continue(c),
-            ControlFlow::Break(b) => ControlFlow::Break(ControlFlow::Break(b)),
-        }
-}
-
-impl<B, C> ops::FromResidual for ControlFlow<B, C> {
-    // Infallible表示类型不会被用到
-    fn from_residual(residual: ControlFlow<B, convert::Infallible>) -> Self {
-        match residual {
-            ControlFlow::Break(b) => ControlFlow::Break(b),
-        }
-    }
 }
 ```
-Option的Try Trait实现：
+
+#### Option<T>的Try Trait实现
+实现代码如下：
 ```rust
 impl<T> ops::Try for Option<T> {
     type Output = T;
@@ -689,7 +545,6 @@ impl<T> ops::Try for Option<T> {
 }
 
 impl<T> const ops::FromResidual for Option<T> {
-    #[inline]
     fn from_residual(residual: Option<convert::Infallible>) -> Self {
         match residual {
             None => None,
@@ -697,21 +552,13 @@ impl<T> const ops::FromResidual for Option<T> {
     }
 }
 ```
-一个Iterator::try_fold()的实现：
+所以，一个Option<T>？等同于如下代码：
 ```rust
-    fn try_fold<B, F, R>(&mut self, init: B, mut f: F) -> R
-    where
-        Self: Sized,
-        F: FnMut(B, Self::Item) -> R,
-        R: Try<Output = B>,
-    {
-        let mut accum = init;
-        while let Some(x) = self.next() {
-            accum = f(accum, x)?;
-        }
-        //try 关键字将accum转化为R类型变量
-        try { accum }
-    }
+   match(Option<T>.branch()) {
+       ControlFlow::Continue(a) => a,
+       //下面代码实际就是return None
+       ControlFlow::Break(None) => return (Option<T>::from_residual(None)),
+   }
 ```
 Result<T,E>类型的Try Trait请自行分析
 
@@ -719,35 +566,45 @@ Result<T,E>类型的Try Trait请自行分析
 利用Try Trait，程序员可以实现自定义类型的?，提供函数式编程的有力手段并简化代码，提升代码的理解度。
 
 ### Range 运算符代码分析
+代码路径：  
+%USER%\.rustup\toolchains\nightly-x86_64-pc-windows-msvc\lib\rustlib\src\rust\library\core\src\ops\range.rs
 Range是符号 .. , start..end , start.. , ..end , ..=end，start..=end 形式
 #### Range相关的边界结构Bound
 源代码：
 ```rust
 pub enum Bound<T> {
-    /// An inclusive bound.
-    /// 边界包括
+    /// 边界包括在Range内
     Included(T),
-    /// An exclusive bound.
-    /// 边界不包括
+    /// 边界不包括在Range内
     Excluded(T),
-    /// An infinite endpoint. Indicates that there is no bound in this direction.
-    /// 边界不存在
+    /// 边界是无限的，边界不存在
     Unbounded,
 }
 ```
 Include边界的值包含，Exclued边界的值不包含，Unbounded边界值不存在
 #### RangeFull
 ` ..  `的数据结构。
+```rust
+struct RangeFull;
+```
 #### Range<Idx>
 `start.. end`的数据结构
+```rust
+pub struct Range<Idx> {
+    pub start: Idx,
+    pub end: Idx,
+}
+```
 #### RangeFrom<Idx>
-`start..`的数据结构
+`start..`的数据结构, 略
 #### RangeTo<Idx>
-`.. end`的数据结构
+`.. end`的数据结构, 略
 #### RangeInclusive<Idx>
-`start..=end`的数据结构
+`start..=end`的数据结构,略
 #### RangeToInclusive<Idx>
-`..=end`的数据结构
+`..=end`的数据结构,略
+
+以上的Idx需要满足Idx:PartialOrd<Idx>
 
 #### RangeBounds<T: ?Sized>
 所有Range统一实现的Trait。
@@ -756,26 +613,14 @@ pub trait RangeBounds<T: ?Sized> {
     /// 获取范围的起始值
     ///
     /// 例子
-    /// # fn main() {
-    /// use std::ops::Bound::*;
-    /// use std::ops::RangeBounds;
-    ///
     /// assert_eq!((..10).start_bound(), Unbounded);
     /// assert_eq!((3..10).start_bound(), Included(&3));
-    /// # }
-    /// ```
     fn start_bound(&self) -> Bound<&T>;
 
     /// 获取范围的终止值.
     /// 例子
-    /// # fn main() {
-    /// use std::ops::Bound::*;
-    /// use std::ops::RangeBounds;
-    ///
     /// assert_eq!((3..).end_bound(), Unbounded);
     /// assert_eq!((3..10).end_bound(), Excluded(&10));
-    /// # }
-    /// ```
     fn end_bound(&self) -> Bound<&T>;
 
     /// 范围是否包括某个值.
@@ -792,6 +637,7 @@ pub trait RangeBounds<T: ?Sized> {
         T: PartialOrd<U>,
         U: ?Sized + PartialOrd<T>,
     {
+        //比较有意思的典型的RUST代码
         (match self.start_bound() {
             Included(start) => start <= item,
             Excluded(start) => start < item,
@@ -807,29 +653,37 @@ pub trait RangeBounds<T: ?Sized> {
 ```
 RangeBounds针对RangeFull，RangeTo, RangeInclusive, RangeToInclusive, RangeFrom, Range结构都进行了实现。同时针对(Bound<T>, Bound<T>)的元组做了实现。
 
-#### Range的独立性
-Range操作符多用于与Index运算符结合或与Iterator Trait结合使用。在后继的Index运算符和Iterator中会研究Range是如何与他们结合的。
+#### Range的灵活性与独立性
+完全可以定义 ((0,0)..(100,100))； ("1st".."30th")这种极有表现力的Range。
+Range使用的时候，需要先定义一个取值集合，定义类型表示这个集合，针对类型实现PartialOrd。就可以对这个集合的类型用Range符号了。
+值得注意的是，对于Range<Idx>, 如果一个变量类型为U, 则如果实现了PartialOrd<U> for Idx， 那U就有可能属于Range, 即U可以与Idx不同。
+Range操作符多用于与Index运算符结合或与Iterator Trait结合使用，独立的Range在。在后继的Index运算符和Iterator中会研究Range是如何与他们结合的。
 
 #### 小结
 基于泛型的Range类型提供了非常好的语法手段，只要某类型支持排序，那就可以定义一个在此类型基础上实现的Range类型。再结合Index和Iterator, 将高效的实现极具冲击力的代码。
 
 ### RUST的Index 运算符代码分析
+代码路径：  
+%USER%\.rustup\toolchains\nightly-x86_64-pc-windows-msvc\lib\rustlib\src\rust\library\core\src\ops\index.rs
+
 数组下标符号[]由Index, IndexMut两个Trait完成重载。数组下标符号重载使得程序更有可读性。两个Trait如下定义：
 ```rust
+// [T][Idx] 形式重载
 pub trait Index<Idx: ?Sized> {
     /// The returned type after indexing.
     type Output: ?Sized;
 
-    /// 若果传入的参数超过内存界限将马上引发panic
+    /// 如果传入的参数超过内存界限将马上引发panic
     fn index(&self, index: Idx) -> &Self::Output;
 }
-
+//mut [T][Idx]形式重载
 pub trait IndexMut<Idx: ?Sized>: Index<Idx> {
     fn index_mut(&mut self, index: Idx) -> &mut Self::Output;
 }
 ```
-#### 切片数据结构[T]的Index实现
+由以上可以看出["Hary"], ["Bold"]之类的表达形式都是可以存在的。
 
+#### 切片数据结构[T]的Index实现
 ```rust
 impl<T, I> ops::Index<I> for [T]
 where
@@ -850,9 +704,11 @@ where
         index.index_mut(self)
     }
 }
-需要依赖SliceIndex Trait实现[T]的ops::Index。SliceIndex主要是为了实现下标即支持用usize类型取出单一元素，又支持用Range类型取出子slice。
-显然，针对不同的Index<Idx>中的泛型Idx，需要实现不同的处理逻辑。SliceIndex的引入是典型的处理这个需求的设计方式。即如果对某一类型实现一个具有泛型的Trait时，如果对于Trait的泛型实例化不同类型，会带来处理逻辑的不同。那就再定义一个辅助Trait，为前Trait的实例化类型实现辅助Trait，在这个辅助Trait的实现中实现不同的处理逻辑。辅助Trait和Trait之间的定义相关性即可参考SliceIndex和Index的定义相关性。
+```
+SliceIndex Trait 被设计同时满足Index及切片类型的一些方法的需求。因为这些需求在逻辑上是同领域的。集中在SliceIndex Trait模块性更好。如：
+`[T]::get<I:SliceIndex>(&self, I)->Option<&I::Output>` 就是直接调用SliceIndex中的方法来实现成员获取。
 
+```rust
 mod private_slice_index {
     use super::ops;
     //在私有模块中定义一个Sealed Trait，后继的SliceIndex继承Sealed。
@@ -871,7 +727,7 @@ mod private_slice_index {
 }
 
 pub unsafe trait SliceIndex<T: ?Sized>: private_slice_index::Sealed {
-    /// 此类型通常为T或者T的引用，切片，原生指针类型
+    /// 此类型通常为T或者T的引用，切片，裸指针类型
     type Output: ?Sized;
 
     // 从slice变量中用self获取Option<Output>变量
@@ -879,7 +735,7 @@ pub unsafe trait SliceIndex<T: ?Sized>: private_slice_index::Sealed {
 
     fn get_mut(self, slice: &mut T) -> Option<&mut Self::Output>;
 
-    //slice是序列的头指针，后面的具体实现会看到为什么用 *const T
+    //slice是序列的头指针，后面的具体实现会看到为什么用 *const
     unsafe fn get_unchecked(self, slice: *const T) -> *const Self::Output;
 
     unsafe fn get_unchecked_mut(self, slice: *mut T) -> *mut Self::Output;
@@ -893,49 +749,58 @@ pub unsafe trait SliceIndex<T: ?Sized>: private_slice_index::Sealed {
 unsafe impl<T> SliceIndex<[T]> for usize {
     type Output = T;
 
+    //此函数主要用在不适合使用下标时，例如不确定切片长度，又不希望panic
     fn get(self, slice: &[T]) -> Option<&T> {
-        // 必须转化为*const T才能够用指针加方式来获取
+        // 这里slice 被强制转化成了* const [T]
         if self < slice.len() { unsafe { Some(&*self.get_unchecked(slice)) } } else { None }
     }
 
     fn get_mut(self, slice: &mut [T]) -> Option<&mut T> {
+        //这里slice 被强制转化成了*mut [T]
         if self < slice.len() { unsafe { Some(&mut *self.get_unchecked_mut(slice)) } } else { None }
     }
-
+    
+    //此函数主要用在不适合下标的情况下
     unsafe fn get_unchecked(self, slice: *const [T]) -> *const T {
-        //相当于C的指针加操作
+        //slice.as_ptr()获得* const T，利用* const T的add方法来取得slice成员的地址
         unsafe { slice.as_ptr().add(self) }
     }
 
     unsafe fn get_unchecked_mut(self, slice: *mut [T]) -> *mut T {
+        //as_mut_ptr返回* mut T指针，在用add方法获得成员地址。
         unsafe { slice.as_mut_ptr().add(self) }
     }
 
     fn index(self, slice: &[T]) -> &T {
-        // N.B., use intrinsic indexing 此处应该可以用get,但应该是编译器内置支持，为了效率直接使用了内置的数组下标表示。
+        //使用编译器内置支持，为了效率直接使用了内置的数组下标表示。此操作可能引发panic
         &(*slice)[self]
     }
 
     fn index_mut(self, slice: &mut [T]) -> &mut T {
-        // N.B., use intrinsic indexing
+        // 使用编译器内置下标运算符，可能引发panic
         &mut (*slice)[self]
     }
 }
 ```
-以上就是针对[T]的以无符号数作为下标取出单一元素的ops::Index 及 ops::IndexMut的底层实现，从slice中取出单一元素必须应用ptr的操作。
-
+以上就是针对[T]的以无符号数作为下标取出单一元素的ops::Index 及 ops::IndexMut的底层实现。
+针对Range做下标的代码实现
 ```rust
+
 unsafe impl<T> SliceIndex<[T]> for ops::Range<usize> {
     type Output = [T];
-
+    
+    //不会引发panic的方法
+    //此处注意，self是Rang<usize>
     fn get(self, slice: &[T]) -> Option<&[T]> {
+        //提前做判断
         if self.start > self.end || self.end > slice.len() {
             None
         } else {
             unsafe { Some(&*self.get_unchecked(slice)) }
         }
     }
-
+    
+    //可变引用获取
     fn get_mut(self, slice: &mut [T]) -> Option<&mut [T]> {
         if self.start > self.end || self.end > slice.len() {
             None
@@ -944,11 +809,13 @@ unsafe impl<T> SliceIndex<[T]> for ops::Range<usize> {
         }
     }
 
+    //不对输出参数做判断, 调用者要保证输入参数没有问题
     unsafe fn get_unchecked(self, slice: *const [T]) -> *const [T] {
-        // 利用ptr的内存操作形成* const [T] 原生指针
+        // 先将*const [T] 转换为 * const T，完成指针运算，然后再转换成* const [T]
         unsafe { ptr::slice_from_raw_parts(slice.as_ptr().add(self.start), self.end - self.start) }
     }
-
+    
+    //与上面函数类似，略
     unsafe fn get_unchecked_mut(self, slice: *mut [T]) -> *mut [T] {
         unsafe {
             ptr::slice_from_raw_parts_mut(slice.as_mut_ptr().add(self.start), self.end - self.start)
@@ -956,6 +823,7 @@ unsafe impl<T> SliceIndex<[T]> for ops::Range<usize> {
     }
 
     fn index(self, slice: &[T]) -> &[T] {
+        //超出范围会直接panic
         if self.start > self.end {
             slice_index_order_fail(self.start, self.end);
         } else if self.end > slice.len() {
@@ -966,6 +834,7 @@ unsafe impl<T> SliceIndex<[T]> for ops::Range<usize> {
     }
 
     fn index_mut(self, slice: &mut [T]) -> &mut [T] {
+        //超出范围会直接panic
         if self.start > self.end {
             slice_index_order_fail(self.start, self.end);
         } else if self.end > slice.len() {
@@ -975,14 +844,34 @@ unsafe impl<T> SliceIndex<[T]> for ops::Range<usize> {
     }
 }
 ```
-以上是实现用Range从slice中取出子slice的实现。其他如RangeTo等与Range大同小异。
+以上是实现用Range从slice中取出子slice的实现。同样是使用裸指针来最高效的实现逻辑。实际上，不用裸指针就没法实现。
+
+```rust
+unsafe impl<T> SliceIndex<[T]> for ops::RangeTo<usize> {
+    type Output = [T];
+
+    fn get(self, slice: &[T]) -> Option<&[T]> {
+        //将RangeTo转换成Range, 然后对ops::Range<usize>的方法直接调用
+        (0..self.end).get(slice)
+    }
+
+    fn get_mut(self, slice: &mut [T]) -> Option<&mut [T]> {
+        //对ops::Range<usize>的方法直接调用
+        (0..self.end).get_mut(slice)
+    }
+    
+    //其他方法也是直接对Range<usize>做一个调用略
+}
+```
+RangeFrom, RangeInclusive, RangeToInclusive, RangeFull等与RangeTo的实现类似，略。
 
 ##### 小结
-对于切片的Index, 整体上，需要将切片类型的引用转换为slice元素类型的原生指针，然后对原生指针做加减操作，再根据需要重新建立元素类型或作切片类型的原生指针，然后将原生指针转换为引用。由此可见，ptr和mem模块的熟练使用是必须掌握的。
+RUST切片的下标计算展示了裸指针的使用技巧，在数组类的成员操作中，基本无法脱离裸指针。在这里，只要不越界，裸指针操作是安全的。
 
 #### 数组数据结构[T;N]的ops::Index实现
 
 ```rust
+//注意这里的Trait约束的写法
 impl<T, I, const N: usize> Index<I> for [T; N]
 where
     [T]: Index<I>,

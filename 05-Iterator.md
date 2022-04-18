@@ -1,9 +1,12 @@
 # RUST的Iterator实现代码分析 
+代码路径：  
+%USER%\.rustup\toolchains\nightly-x86_64-pc-windows-msvc\lib\rustlib\src\rust\library\core\src\iter\*.*  
+
 Iterator在函数式编程中是居于最核心的地位。在函数式编程中，最关键的就是把问题的解决方式设计成能够使用Iterator方案来解决。RUST基本上可以说是原生的Iterator语言，几乎所有的核心关键类型的方法库都依托于Iterator。
 
 ## RUST的Iterator与其他语言Iterator比较
 RUST定义了三种迭代器Trait:
-1. 对容器内的变量进行操作的迭代器：
+1. Iterator遍历的是变量本身
 ```rust
 pub trait IntoIterator {
     type Item;
@@ -11,12 +14,14 @@ pub trait IntoIterator {
     fn into_iter(self) -> Self::IntoIter;
 }
 ```
-into_iter返回的迭代器迭代时，会消费容器，完全迭代后容器将被释放。此种迭代器适用于类似生产者-消费者队列的程序设计
-2. 对容器内的变量不可用引用进行操作的迭代器：
+into_iter返回的迭代器迭代时，会消费变量及容器，完全迭代后容器将不再存在。
+
+2. Iterator遍历的是变量不可变引用：
 这个一般不做Trait，而是容器类型实现一个方法：
 ```pub fn iter(&self) -> I:Iterator```
 此方法返回一个迭代器，这种迭代器适用的一个例子是对网络接口做遍历以获得统计值
-3. 对容器内的变量可变引用进行操作的迭代器：
+
+3. Iterator遍历的是变量的可变引用：
 同2 容器类型实现方法：
 ```pub fn iter_mut(&self) -> I:Iterator ```
 这种迭代器适用的一个例子是定时器遍历长连接，更新连接活动时间。
@@ -38,6 +43,10 @@ pub trait Iterator {
     fn size_hint(&self) -> (usize, Option<usize>) {
         (0, None)
     }
+
+    //其他方法
+    ...
+    ...
 }
 
 impl<I: Iterator + ?Sized> Iterator for &mut I {
@@ -59,13 +68,62 @@ impl<I: Iterator + ?Sized> Iterator for &mut I {
 上面代码：如果一个类型I已经实现了 Iterator, 那针对这个结构的可变引用类型 &mut I, 标准库已经做了统一的 Iterator Trait实现。
 
 ## ops::Range类型的Iterator实现
+代码路径：  
+
+%USER%\.rustup\toolchains\nightly-x86_64-pc-windows-msvc\lib\rustlib\src\rust\library\core\src\iter\range.rs
+
+Range被直接实现Iterator trait，没有iter()这样生成迭代器的调用。
 定义如下：
 ```rust 
 impl<A: Step> Iterator for ops::Range<A> {
-        ...
+    type Item = A;
+    
+    fn next(&mut self) -> Option<A> {
+        self.spec_next()
     }
+
+    fn size_hint(&self) -> (usize, Option<usize>) {
+        if self.start < self.end {
+            let hint = Step::steps_between(&self.start, &self.end);
+            (hint.unwrap_or(usize::MAX), hint)
+        } else {
+            (0, Some(0))
+        }
+    }
+
+    fn nth(&mut self, n: usize) -> Option<A> {
+        self.spec_nth(n)
+    }
+    ...
+    ...
+    
+}
 ```
-只有实现`Step Trait`的Range类型才实现了Iterator, `Step Trait`的定义如下：
+Range Iterator的具体实现RangeIteratorImpl trait
+```rust
+impl<A: Step> RangeIteratorImpl for ops::Range<A> {
+    type Item = A;
+
+    default fn spec_next(&mut self) -> Option<A> {
+        if self.start < self.end {
+            //self.start.clone()是为了不转移self.start的所有权
+            let n =
+                Step::forward_checked(self.start.clone(), 1).expect("`Step` invariants not upheld");
+            //mem::replace将self.start赋值为n，返回self.start的值，这个方式适用于任何类型，且处理了所有权问题
+            //mem::replace是效率最高的代码方式
+            Some(mem::replace(&mut self.start, n))
+        } else {
+            None
+        }
+    }
+
+    ...
+}
+```
+由上面的代码可以看出，每一次next实际都对Range本身做出了修改。
+
+只有基于实现`Step Trait`的类型的Range才支持了Iterator, 而代码关键是Step Trait的方法，
+ `Step Trait`的定义如下：
 ```rust
 pub trait Step: Clone + PartialOrd + Sized {
     /// 从start 到end一共多少step
@@ -98,80 +156,146 @@ pub trait Step: Clone + PartialOrd + Sized {
     }
 }
 ```
-照此，可以实现一个自定义类型的类型, 并支持Step Trait，如此，即可使用Range的符号。例如，一个二维的点的range，三维的点的range，数列等。
-一个为所有的无符号类型整数实现的Step Trait中的一个函数：
+照此，可以实现一个自定义类型的类型, 并支持Step Trait，如此，即可使用Range符号的Iterator。例如，一个二维的点的range,例如Range<(i32, i32)>的变量((0,0)..(10,10)), 三维的点的range，数列等。
+
+一下是为所有证书类型实现Step的宏：
 ```rust
-                fn forward_checked(start: Self, n: usize) -> Option<Self> {
-                    match Self::try_from(n) {
-                        Ok(n) => start.checked_add(n),
-                        Err(_) => None, // if n is out of range, `unsigned_start + n` is too
+
+macro_rules! step_identical_methods {
+    () => {
+        unsafe fn forward_unchecked(start: Self, n: usize) -> Self {
+            // 调用代码需要保证加法不会越界.
+            unsafe { start.unchecked_add(n as Self) }
+        }
+
+        unsafe fn backward_unchecked(start: Self, n: usize) -> Self {
+            // 调用代码需要保证减法不会越界.
+            unsafe { start.unchecked_sub(n as Self) }
+        }
+
+        fn forward(start: Self, n: usize) -> Self {
+            // debug 情况下 以下代码会panic，release以下代码会被优化掉
+            if Self::forward_checked(start, n).is_none() {
+                let _ = Self::MAX + 1;
+            }
+            // release中的加法 
+            start.wrapping_add(n as Self)
+        }
+
+        fn backward(start: Self, n: usize) -> Self {
+            // debug情况，以下代码会panic，release挥别优化掉.
+            if Self::backward_checked(start, n).is_none() {
+                let _ = Self::MIN - 1;
+            }
+            // release下的用法
+            start.wrapping_sub(n as Self)
+        }
+    };
+}
+
+macro_rules! step_integer_impls {
+    {
+        //比CPU字长小的无符号整数类型及有符号整数类型
+        narrower than or same width as usize:
+            $( [ $u_narrower:ident $i_narrower:ident ] ),+;
+        //比CPU字长大的无符号整数类型及有符号整数类型
+        wider than usize:
+            $( [ $u_wider:ident $i_wider:ident ] ),+;
+    } => {
+        $(
+            //为所有比CPU字长小的无符号整数类型的Step实现
+            impl Step for $u_narrower {
+                //通用实现
+                step_identical_methods!();
+
+                fn steps_between(start: &Self, end: &Self) -> Option<usize> {
+                    if *start <= *end {
+                        // u_nrrower类型字长必须小于usize字长
+                        Some((*end - *start) as usize)
+                    } else {
+                        None
                     }
                 }
-```
-从这个函数中可以看到，使用了try_from做了不同的无符号整数类型之间的变换，checked_add来规避溢出，都是RUST的安全性的具体体现，这是使用rust编码与其他语言编码的不同之处,在编码的时候即强制消除了易忽视的整数变量溢出bug产生。
 
-Range Iterator的底层实现Trait RangeIteratorImpl
-```rust
-impl<A: Step> RangeIteratorImpl for ops::Range<A> {
-    type Item = A;
+                fn forward_checked(start: Self, n: usize) -> Option<Self> {
+                    //将类型转换可能不成功显化，这是需要养成的RUST的特有思维
+                    match Self::try_from(n) {
+                        //checked_add完成溢出检查
+                        Ok(n) => start.checked_add(n),
+                        Err(_) => None, 
+                    }
+                }
 
-    default fn spec_next(&mut self) -> Option<A> {
-        if self.start < self.end {
-            //self.start.clone()是为了不转移self.start的所有权
-            let n =
-                Step::forward_checked(self.start.clone(), 1).expect("`Step` invariants not upheld");
-            //mem::replace将self.start赋值为n，返回self.start的值，这个方式适用于任何类型
-            Some(mem::replace(&mut self.start, n))
-        } else {
-            None
-        }
+                fn backward_checked(start: Self, n: usize) -> Option<Self> {
+                    match Self::try_from(n) {
+                        Ok(n) => start.checked_sub(n),
+                        Err(_) => None, // if n is out of range, `unsigned_start - n` is too
+                    }
+                }
+            }
+            
+            //略
+            ...
     }
-
-    ...
 }
 ```
-从代码分析中可见，rust在代码上的技巧性实际上和C在思想上很类似。都是基于对内存的深刻理解。
+Range实现Iterator的代码不复杂，但是从类型转换及加减法的处理上深刻的体现了RUST的安全理念。
 
 ## slice的Iterator实现
+代码路径：  
+%USER%\.rustup\toolchains\nightly-x86_64-pc-windows-msvc\lib\rustlib\src\rust\library\core\src\slice\iter.rs  
 
 首先定义了适合&[T]的Iter结构：
 ```rust
 pub struct Iter<'a, T: 'a> {
-    //当前元素的指针
+    //当前元素的指针，与end用不同的类型表示
     ptr: NonNull<T>,
     //尾元素指针，用ptr == end以快速检测iterator是否为空
     end: *const T, 
-    //用来表示iterator与容器类型的生命周期关系
+    //这里PhantomData 主要用来做生命周期标识，用来做Iter结构体与切片之间的生命周期关系检测
     _marker: PhantomData<&'a T>, 
 }
 
-//判断Iterator是否为空的宏
-macro_rules! is_empty {
-    // 可以满足0字节元素的切片及非0字节元素的切片
-    ($self: ident) => {
-        //Iter::ptr == Iter::end
-        $self.ptr.as_ptr() as *const T == $self.end
-    };
+pub struct IterMut<'a, T: 'a> {
+    ptr: NonNull<T>,
+    end: *mut T, 
+    _marker: PhantomData<&'a mut T>,
 }
+```
+这里，一个疑惑就是为什么不用下标及切片长度来作为Iter结构。这里主要是因为可变的Iterator实现无法支持。
+例如，给出如下结构：
+```rust
+pub struct IterMut <'a, T:'a> {
+    current: usize,
+    len: usize,
+    slice: 'a mut &[T]
+}
+```
+显然，当IterMut结构是可变借用时，无法再返回一个内部成员的借用用作迭代器的迭代返回值。
+```rust
+impl<'a, T> IterMut<'a, T> {
+    pub(super) fn new(slice: &'a mut [T]) -> Self {
+        let ptr = slice.as_mut_ptr();
+        unsafe {
+            assume(!ptr.is_null());
 
-//取Iterator长度的宏
-macro_rules! len {
-    ($self: ident) => {{
-        let start = $self.ptr;
-        let size = size_from_ptr(start.as_ptr());
-        //判断元素是否为0字节
-        if size == 0 {
-            // 用end减start得到0字节元素的切片长度
-            ($self.end as usize).wrapping_sub(start.as_ptr() as usize)
-        } else {
-            //非0字节，用内存字节数除以单元素长度
-            let diff = unsafe { unchecked_sub($self.end as usize, start.as_ptr() as usize) };
-            unsafe { exact_div(diff, size) }
+            let end = if mem::size_of::<T>() == 0 {
+                (ptr as *mut u8).wrapping_add(slice.len()) as *mut T
+            } else {
+                ptr.add(slice.len())
+            };
+
+            Self { ptr: NonNull::new_unchecked(ptr), end, _marker: PhantomData }
         }
-    }};
+    }
+    
+    ...
+    ...
 }
+//用宏来实现切片的Iterator trait
+iterator! {struct IterMut -> *mut T, &'a mut T, mut, {mut}, {}}
 
-//用宏实现Iterator Trait
+//上面的宏定义
 macro_rules! iterator {
     (
         struct $name:ident -> $ptr:ty,
@@ -190,7 +314,7 @@ macro_rules! iterator {
             ($self: ident) => {& $( $mut_ )? *$self.pre_dec_end(1)}
         }
 
-        // 0元素next的移动
+        // 0长度元素next的移动
         macro_rules! zst_shrink {
             ($self: ident, $n: ident) => {
                 //0元素数组因为不能移动指针，所以移动尾指针
@@ -198,11 +322,12 @@ macro_rules! iterator {
             }
         }
         
-        //具体的方法实现
+        //具体的方法实现 
+        // $name 即 IterMut
         impl<'a, T> $name<'a, T> {
             // 从Iterator获得切片.
             fn make_slice(&self) -> &'a [T] {
-                // ptr::from_raw_parts，由内存首地址和切片长度创建切片指针，然后转换为引用
+                // Iter::ptr::as_ptr，由内存首地址和切片长度创建切片指针，然后转换为引用
                 unsafe { from_raw_parts(self.ptr.as_ptr(), len!(self)) }
             }
 
@@ -213,7 +338,7 @@ macro_rules! iterator {
                     zst_shrink!(self, offset);
                     self.ptr.as_ptr()
                 } else {
-                    //非0字节元素，返回首地址，首地址然后后移正确的字节
+                    //非0字节元素，返回首地址，然后后移正确的字节
                     let old = self.ptr.as_ptr();
                     self.ptr = unsafe { NonNull::new_unchecked(self.ptr.as_ptr().offset(offset)) };
                     old
@@ -234,11 +359,12 @@ macro_rules! iterator {
             }
         }
 
-        //Iterator的实现
+        //Iterator的实现, 即
+        //impl<'a, T> Iterator for IterMut<'a, T>
         impl<'a, T> Iterator for $name<'a, T> {
+            // $elem即&'a T
             type Item = $elem;
 
-            #[inline]
             fn next(&mut self) -> Option<$elem> {
                 unsafe {
                     //安全性确认
@@ -257,6 +383,7 @@ macro_rules! iterator {
             }
 
             fn size_hint(&self) -> (usize, Option<usize>) {
+                //用len!宏计算Iter的长度
                 let exact = len!(self);
                 (exact, Some(exact))
             }
@@ -308,34 +435,35 @@ macro_rules! iterator {
     }
 }
 
-
-impl<'a, T> Iter<'a, T> {
-    pub(super) fn new(slice: &'a [T]) -> Self {
-        let ptr = slice.as_ptr();
-        // SAFETY: Similar to `IterMut::new`.
-        unsafe {
-            assume(!ptr.is_null()); 
-
-            let end = if mem::size_of::<T>() == 0 {
-                //如果切片元素是0字节类型，end 为 首地址加 切片长度字节。即每个元素一个字节
-                (ptr as *const u8).wrapping_add(slice.len()) as *const T 
-            } else {
-                //end为slice.len() * mem::<T>::size_of()
-                ptr.add(slice.len()) 
-            };
-            
-            //PhantomData会做类型推断，带入T的类型和生命周期
-            Self { ptr: NonNull::new_unchecked(ptr as *mut T), end, _marker: PhantomData }
-        }
-    }
-    
-    ...
-    ...
+//判断Iterator是否为空的宏
+macro_rules! is_empty {
+    // 可以满足0字节元素的切片及非0字节元素的切片
+    ($self: ident) => {
+        //Iter::ptr == Iter::end
+        $self.ptr.as_ptr() as *const T == $self.end
+    };
 }
-//宏声明
-iterator! {struct Iter -> *const T, &'a T, const, {/* no mut */}, {}}
+
+//取Iterator长度的宏
+macro_rules! len {
+    ($self: ident) => {{
+        let start = $self.ptr;
+        let size = size_from_ptr(start.as_ptr());
+        //判断元素是否为0字节
+        if size == 0 {
+            // 用end减start得到0字节元素的切片长度
+            ($self.end as usize).wrapping_sub(start.as_ptr() as usize)
+        } else {
+            //非0字节，用内存字节数除以单元素长度
+            let diff = unsafe { unchecked_sub($self.end as usize, start.as_ptr() as usize) };
+            unsafe { exact_div(diff, size) }
+        }
+    }};
+}
+
+
 ```
-基本上，一个容器类的Iterator的实现基本上是必须要用ptr及mem模块的函数。
+对于切片，RUST的所有权，借用等规定导致其迭代器实际上是一个非常好的编码训练工具，代码粗略看一遍后值得自己将其实现一遍，可以有效提高对RUST的认识和编码水平。
 
 ## <a id="str_iter">字符串Iterator代码分析</a>
 题外话，&str.len()返回字符串切片字节占用数，&str.chars().count()返回字符数目。
@@ -426,27 +554,27 @@ pub trait Unsize<T: ?Sized> {
 ```rust
 pub struct IntoIter<T, const N: usize> {
     /// data是迭代中的数组.
-    ///
     /// 这个数组中，只有data[alive]是有效的，访问其他的部分，即data[..alive.start]
     /// 及data[end..]会发生UB
-    /// 
+    /// [MaybeUninit<T>;N]的用法需要体会，
     data: [MaybeUninit<T>; N],
 
-    /// 表明数组中有效的范围.
-    ///
+    /// 表明数组中有效的成员的下标范围.
     /// 必须满足:
     /// - `alive.start <= alive.end`
     /// - `alive.end <= N`
     alive: Range<usize>,
 }
 ```
-从后继的代码可以看出，一旦使用了Iterator, 数组便被IntoIter所代替。
+上面这个结构是因为需要对array内成员做消费设计的。因为数组成员不支持所有权转移，所以采用了这种设计方式。数组的Iterator实现是理解所有权的一个极佳例子。
+
+### into_iter实现
 ```rust
 impl<T, const N: usize> IntoIter<T, N> {
     pub fn new(array: [T; N]) -> Self {
         // 
         // 因为RUST特性目前还不支持数组的transmute，所以用了内存跨类型的transmute_copy，此函数将从栈中申请一块内存。
-        // 拷贝完毕后，原数组的所有权已经转移到data中，且data也完成了初始化。此时，需要调用mem::forget反应所有权已经失去。
+        // 拷贝完毕后，原数组的所有权已经转移到data，data内数据事实上已经初始化，但仍然还是MaybeUninit<T>的类型。此时，需要对原数组调用mem::forget反应所有权已经失去。
         // mem::forget不会导致内存泄漏。
         unsafe {
             let iter = Self { data: mem::transmute_copy(&array), alive: 0..N };
@@ -456,9 +584,10 @@ impl<T, const N: usize> IntoIter<T, N> {
     }
 
     pub fn as_slice(&self) -> &[T] {
-        // SAFETY: We know that all elements within `alive` are properly initialized.
+        // 仅针对有效的部分返回切片引用。已经消费的不返回。
         unsafe {
             //此处调用SliceIndex::<Range>::get_unchecked
+            //slice是&[MaybeUninit<T>]类型
             let slice = self.data.get_unchecked(self.alive.clone());
             MaybeUninit::slice_assume_init_ref(slice)
         }
@@ -467,6 +596,7 @@ impl<T, const N: usize> IntoIter<T, N> {
     pub fn as_mut_slice(&mut self) -> &mut [T] {
         unsafe {
             //此处调用SliceIndex::<Range>::get_unchecked_mut
+            //slice 是 & mut [MaybeUninit<T>]类型
             let slice = self.data.get_unchecked_mut(self.alive.clone());
             MaybeUninit::slice_assume_init_mut(slice)
         }
@@ -476,7 +606,7 @@ impl<T, const N: usize> IntoIter<T, N> {
 impl<T, const N: usize> Iterator for IntoIter<T, N> {
     type Item = T;
     fn next(&mut self) -> Option<Self::Item> {
-        // 下面使用Range的Iterator特性实现next. alive的start会变化，从而导致start之前的数组元素无法再被访问。
+        // 下面使用Range的Iterator特性实现next. alive的start会变化，从而导致start之前的数组元素无法再被访问。因为已经被消费掉。
         // Option::map完成下标值传递。
         self.alive.next().map(|idx| {
             // SliceIndex::<usize>::get_unchecked, MaybeUninit::<T>::assume_init_read()
@@ -490,104 +620,58 @@ impl<T, const N: usize> Iterator for IntoIter<T, N> {
 }
 
 impl<T, const N: usize> Drop for IntoIter<T, N> {
-    // 因为IntoIter使用的内存是调用MaybeUninit::uninit()从栈中获得的, 感觉不释放似乎也没有内存泄漏问题。
-    // 此处的必要性还需要再思考。
+    // 这里没有被消费掉的成员必须显示释放掉。
     fn drop(&mut self) {
-        // as_mut_slice()获得所有具有所有权的元素，这些元素需要调用drop来释放。这里，data变量中的元素始终封装在MaybeUninit
+        // as_mut_slice()获得所有具有所有权的元素，这些元素需要调用drop来释放。这里，data变量中的元素始终封装在MaybeUninit<T>中
         unsafe { ptr::drop_in_place(self.as_mut_slice()) }
     }
 }
 
 ```
-以上需要特别注意所有权的转移和内存drop调用，这是RUST需要特别注意训练的点。
+数组的Iterator最关键的点就是如何将数组成员的所有权取出，这是RUST语法带来的额外的麻烦和复杂性。最终的解决办法显示了RUST编码的所有权转移的一些通用的底层技巧。
+
 ```rust
 impl<T, const N: usize> IntoIterator for [T; N] {
     type Item = T;
     type IntoIter = IntoIter<T, N>;
 
-    /// Creates a consuming iterator, that is, one that moves each value out of
-    /// the array (from start to end). The array cannot be used after calling
-    /// this unless `T` implements `Copy`, so the whole array is copied.
     /// 创建消费型的iterator, 如果T不实现`Copy`, 则调用此函数后，数组不可再被访问。
     fn into_iter(self) -> Self::IntoIter {
         IntoIter::new(self)
     }
 }
+```
+以上创建消费数组成员的Iterator。
 
-#[stable(feature = "rust1", since = "1.0.0")]
+### iter(), iter_mut()实现
+下面的数组成员引用的Iterator实质上是将数组强制转换为切片类型，应用切片类型的迭代器。
+```rust
 impl<'a, T, const N: usize> IntoIterator for &'a [T; N] {
     type Item = &'a T;
     type IntoIter = Iter<'a, T>;
     
-    //调用了slice::iter(), &[T;N]实质是slice结构[T]
     fn into_iter(self) -> Iter<'a, T> {
+        //点号导致self强制转换成[T], 然后调用切片类型的iter
         self.iter()
     }
 }
 
-#[stable(feature = "rust1", since = "1.0.0")]
 impl<'a, T, const N: usize> IntoIterator for &'a mut [T; N] {
     type Item = &'a mut T;
     type IntoIter = IterMut<'a, T>;
     
-    //同上
+    
     fn into_iter(self) -> IterMut<'a, T> {
+        //self被强制转换为切片类型
         self.iter_mut()
     }
 }
 ```
-对于数组类型，iterator的实现耗费了大量的资源并有很多内存操作。对于数组，尽可能的使用引用的Iterator。
-
-## 切片排序
-
-```rust
-/// 插入排序, 复杂度O(n^2).
-fn insertion_sort<T, F>(v: &mut [T], is_less: &mut F)
-where
-    F: FnMut(&T, &T) -> bool,
-{
-    //排序场景下，基本不能使用iterator
-    for i in 1..v.len() {
-        shift_tail(&mut v[..i + 1], is_less);
-    }
-}
-
-
-/// 将最后的值左移到遇到更小的值.
-fn shift_tail<T, F>(v: &mut [T], is_less: &mut F)
-where
-    F: FnMut(&T, &T) -> bool,
-{
-    let len = v.len();
-    
-    // 因为是对泛型排序，RUST的排序算法比较复杂， 需要指出，&mut [T] 保证了外界不会有对数组或数组元素的引用，而数组元素本身的内存
-    // 浅拷贝等同于所有权转移，不会出现内存安全问题。
-    unsafe {
-        if len >= 2 && is_less(v.get_unchecked(len - 1), v.get_unchecked(len - 2)) {
-            // ManuallyDrop把drop的权利从rust编译器接管
-            let mut tmp = mem::ManuallyDrop::new(ptr::read(v.get_unchecked(len - 1)));
-            // CopyOnDrop会在drop的时候做src到dest的拷贝
-            let mut hole = CopyOnDrop { src: &mut *tmp, dest: v.get_unchecked_mut(len - 2) };
-            ptr::copy_nonoverlapping(v.get_unchecked(len - 2), v.get_unchecked_mut(len - 1), 1);
-            
-            //正常的排序内存置换操作
-            for i in (0..len - 2).rev() {
-                if !is_less(&*tmp, v.get_unchecked(i)) {
-                    break;
-                }
-
-                ptr::copy_nonoverlapping(v.get_unchecked(i), v.get_unchecked_mut(i + 1), 1);
-                hole.dest = v.get_unchecked_mut(i);
-            }
-        }
-    }
-}
-```
-由上可见，即使是简单的排序算法，也必须使用mem及ptr和unsafe代码。而排序实际上是最基本的编程，因此若果ptr和mem模块是必须深刻理解的。
 
 ## Iterator的适配器代码分析
 
 ### Map 适配器代码分析
+
 Map相关代码如下：
 ```rust
 
@@ -622,7 +706,9 @@ impl<I, F> Map<I, F> {
         Map { iter, f }
     }
 }
-
+```
+Map适配器结构相当直接而简单。
+```rust
 //针对Map实现Iterator
 impl<B, I: Iterator, F> Iterator for Map<I, F>
 where
@@ -664,7 +750,9 @@ pub trait Iterator {
 
 
 pub struct Chain<A, B> {
+    //迭代器A
     a: Option<A>,
+    //迭代器B
     b: Option<B>,
 }
 impl<A, B> Chain<A, B> {
@@ -726,13 +814,13 @@ where
 
 ```
 ### 其他
-Iterator的adapter还有很多，如StedBy, Filter, Zip, Intersperse等等。具体请参考标准库手册。基本上所有的adapter都是遵循Adapter的设计模式来实现的。
+Iterator的adapter还有很多，如StedBy, Filter, Zip, Intersperse等等。具体请参考标准库手册。基本上所有的adapter都是遵循Adapter的设计模式来实现的。且每一个适配器的结构及代码逻辑都是比较简单且易理解的。
 ### 小结
-RUST的Iterater的adapter是突出的体现RUST的语法优越性的特性，借助Trait和强大的泛型机制，与c/c++/java/python/go相比较，RUST以很少的代码在标准库就实现了最丰富的adapter。而其他语言往往需要语言基础之上的框架去支持，会导致额外的学习努力。
-函数式编程的基础框架之一便是基于Iterator和闭包实现丰富的adapter。这也凸显了RUST在语言级别对函数式编程的良好支持。
+RUST的Iterater的adapter是突出的体现RUST的语法优越性的特性，借助Trait和强大的泛型机制，与c/c++/java相比较，RUST以很少的代码在标准库就实现了最丰富的adapter。而其他语言标准库往往不存在这些适配器，需要其他库来实现。
+Iterator的adapter实现了强大的基于Iterator的函数式编程基础设施。函数式编程的基础框架之一便是基于Iterator和闭包实现丰富的adapter。这也凸显了RUST在语言级别对函数式编程的良好支持。
 
 ## Option的Iterator实现代码分析
-Option实现Iterator是比较令人疑惑的，毕竟用Iterator肯定代码更多，逻辑也复杂。主要目的应该是为了重用Iterator构建的各种adapter，及为了函数式编程的需要。仅分析了IntoIterator Trait所涉及的结构及方法
+Option实现Iterator是比较令人疑惑的，毕竟用Iterator肯定代码更多，逻辑也复杂。主要目的应该是为了重用Iterator构建的各种adapter，及为了函数式编程的需要。仅分析IntoIterator Trait所涉及的结构及方法
 相关类型结构定义：
 ```rust
 //into_iter的结构
@@ -751,7 +839,7 @@ impl<T> IntoIterator for Option<T> {
     type Item = T;
     type IntoIter = IntoIter<T>;
 
-    //创建Iterator的实现结构体，所有权传入
+    //创建Iterator的实现结构体，self所有权传入结构体
     fn into_iter(self) -> IntoIter<T> {
         IntoIter { inner: Item { opt: self } }
     }
@@ -762,6 +850,7 @@ impl<A> Iterator for Item<A> {
     type Item = A;
 
     fn next(&mut self) -> Option<A> {
+        //所有权传出，并用None替换原变量的值
         self.opt.take()
     }
 
@@ -773,7 +862,7 @@ impl<A> Iterator for Item<A> {
     }
 }
 
-//变量Iterator, 
+//消费变量的Iterator实现
 impl<A> Iterator for IntoIter<A> {
     type Item = A;
 
@@ -786,5 +875,5 @@ impl<A> Iterator for IntoIter<A> {
     }
 }
 ```   
-`
+
 Result<T,E>的 Iterator与Option<T>的Iterator非常相似，略
