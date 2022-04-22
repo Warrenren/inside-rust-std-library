@@ -4,7 +4,7 @@ RUST语言的设计目标是操作系统内核级的系统编程语言，使用�
 RUST的现代语言特性决定了标准库无法象C语言那样把操作系统内核及用户态程序区分成完全独立的两个部分，所以只能更细致的设计，做模块化的处理。RUST标准库体系分为三个模块：语言核心库--core; alloc库；用户态 std库。
 
 ## core库
-RUST语言核心库，适用于操作系统内核及用户态，包括RUST的基础类型，基本Trait, 类型行为函数，其他函数等内容。core库是硬件架构和操作系统无关的可移植库。主要内容：
+RUST语言核心库，适用于操作系统内核及用户态，包括RUST的基础类型，基本`Trait`, 类型行为函数，其他函数等内容。core库是硬件架构和操作系统无关的可移植库。主要内容：
 
 ### 编译器内置intrinsics函数
 包括内存操作函数，算数函数，位操作函数等， 这些函数通常与CPU硬件架构紧密相关，且一般需要汇编来提供最佳性能。 intrinsic函数实际上也是对CPU指令的屏蔽层。
@@ -14,22 +14,22 @@ RUST语言核心库，适用于操作系统内核及用户态，包括RUST的基
 本节给出core库中的Trait一览
 
 #### 运算符（ops）Trait
-主要是各种用于表达式的RUST符号重载，包括算数计算符号，逻辑运算符号，位操作符号，解引用(*)符号, [index]数组下标符号， `../start..end/start../start..=end/..end/..=end` Range符号， ?号，||{..}闭包符号等，RUST原则是所有的运算符号都要能重载, 所以所有运算操作都定义了重载Trait。
+主要是各种用于表达式的RUST符号重载，包括算数计算符号，逻辑运算符号，位操作符号，解引用(*)符号, `[index]`数组下标符号， `../start..end/start../start..=end/..end/..=end` `Range`符号， `?`号，`||`{..}闭包符号等，RUST原则是所有的运算符号都要能重载, 所以所有运算操作都定义了重载`Trait`。
 
 #### 编译器内部实现的派生宏 Trait
-如果类型结构中的每一个变量都实现了该Trait, 则此结构的该Trait可通过派生宏实现.  
-Clone, Copy: Copy浅复制，Clone提供深复制.  
-Debug: 类型的格式化输出.  
-Default: 类型的default值，  
-Eq, Ord，PartialEQ, PartialOrd: 实现后可以对类型的变量做大,小,相等比较.  
-Sync, Send: 实现此Trait的类型变量的引用可以安全在线程间共享.  
-Hash: 实现结构的整体Hash值，这个Trait Hash是因为复杂才被加入，意义没有前面的大
+如果类型结构中的每一个变量都实现了该`Trait`, 则此结构的该`Trait`可通过派生宏实现.  
+`Clone`, `Copy`: `Copy`浅复制，`Clone`提供深复制.  
+`Debug`: 类型的格式化输出.  
+`Default`: 类型的default值，  
+`Eq, Ord，PartialEQ, PartialOrd`: 实现后可以对类型的变量做大,小,相等比较.  
+`Sync, Send`: 实现此`Trait`的类型变量的引用可以安全在线程间共享.  
+`Hash`: 实现结构的整体Hash值，这个`Trait Hash`是因为复杂才被加入，意义没有前面的大
 
 #### Iterator
 迭代器，RUST基础构架之一，也是RUST所有学习资料的重点。不赘述，本书后面章节将关注其代码实现。
 
 #### 类型转换Trait
-AsRef， AsMut, From，Into，TryFrom，TryInto, FloatToInt, FromStr
+`AsRef`， `AsMut`, `From`，`Into`，`TryFrom`，`TryInto`, `FloatToInt`, `FromStr`
 
 #### 字符串Trait
 此处略，后面章节单独做分析
@@ -41,32 +41,32 @@ AsRef， AsMut, From，Into，TryFrom，TryInto, FloatToInt, FromStr
 此处略，后面章节单独分析
 
 ### 基本数据类型
-包括整数类型，浮点类型，布尔类型，字符类型，单元类型，内容主要是实现运算符Trait, 类型转换Trait, 派生宏Trait等，字符类型包括对unicode，ascii的不同编码的处理。整数类型有大小端变换的处理。
+包括整数类型，浮点类型，布尔类型，字符类型，单元类型，内容主要是实现运算符`Trait`, 类型转换`Trait`, 派生宏`Trait`等，字符类型包括对`unicode`，`ascii`的不同编码的处理。整数类型有大小端变换的处理。
 
 ### 数组、切片及Range
-这些类型对Iterator Trait, 运算符Trait, 类型转换Trait, 派生宏Trait的实现。同时，实现了基于这些数据结构的一些操作函数。这些函数可具体参考std库说明文档，都是熟悉的内容。后继对于RUST实现中的一些特殊点将专节说明。
+这些类型对`Iterator Trait`, 运算符`Trait`, 类型转换`Trait`, 派生宏`Trait`的实现。同时，实现了基于这些数据结构的一些操作函数。这些函数可具体参考std库说明文档，都是熟悉的内容。后继对于RUST实现中的一些特殊点将专节说明。
 
 ### Option/Result/Marker等关键的语言级别Enum类型
 RUST安全特性的重点，也是各种学习资料的重点，不赘述，后面章节将关注其一些代码实现
 
 ### RUST内存相关类型及内容
-alloc, mem, ptr等模块，RUST的内存操作，后继章节重点详述。
+`alloc, mem, ptr`等模块，RUST的内存操作，后继章节重点详述。
 
 ### RUST字符串相关库
-字符串str，string，fmt, panic, debug, log等
+字符串`str`，`string`，`fmt`, `panic`, `debug`, `log`等
 
 ### RUST时间库
-Duration等
+`Duration`等
 
 ## alloc库
-alloc库主要实现需要进行动态堆内存申请的智能指针类型，集合类型及他们的行为，函数，Trait等内容，仅建立在core库模块之上。std会对alloc模块库的内容做重新的封装。alloc库适用于操作系统内核及用户态程序。
+`alloc`库主要实现需要进行动态堆内存申请的智能指针类型，集合类型及他们的行为，函数，`Trait`等内容，仅建立在`core`库模块之上。std会对alloc模块库的内容做重新的封装。alloc库适用于操作系统内核及用户态程序。
 包括：
-1.基本内存申请；Allocator Trait; Allocator的实现结构Global
-2.基础智能指针：Box<T>, Rc<T>, 
-3.动态数组内存类型: RawVec<T>, Vec<T>
-4.字符串类型：&str, String
-5.并发编程指针类型: Arc<T>
-6.指针内访问类型: Cell<T>, RefCell<T>
+1.基本内存申请；`Allocator Trait`; `Allocator`的实现结构`Global`
+2.基础智能指针：`Box<T>`, `Rc<T>`, 
+3.动态数组内存类型: `RawVec<T>`, `Vec<T>`
+4.字符串类型：`&str`, `String`
+5.并发编程指针类型: `Arc<T>`
+6.指针内访问类型: `Cell<T>`, `RefCell<T>`
 还有些其他类型，一般仅在标准库内部使用，后文在需要的时候再介绍及分析。
 
 ## std库
@@ -103,7 +103,7 @@ impl<T: ?Sized> BorrowMut<T> for T {
     }
 }
 ```
-以上代码基本上就是对所有的类型都实现了Borrow<T>的trait。  
+以上代码基本上就是对所有的类型都实现了`Borrow<T>`的trait。  
 直接针对泛型做方法和trait的实现是强大的工具，它的作用：  
 - 针对泛型的代码会更内聚，方法总比函数具备更明显的模块性  
 - 逻辑更清晰及系统化更好  
@@ -125,7 +125,7 @@ impl<T, U> Option<(T, U)> {...}
 impl<T: Copy> Option<&T> {...}
 impl<T: Default> Option<T> {...}
 ```
-以上是标准库对Option<T> 的不同泛型进行的方法实现定义。遵循了从一般到特殊的规则。  
+以上是标准库对`Option<T>` 的不同泛型进行的方法实现定义。遵循了从一般到特殊的规则。  
 
 类似的实现再试举如下几例：  
 ```rust

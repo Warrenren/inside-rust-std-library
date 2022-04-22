@@ -2,7 +2,9 @@
 
 ## 编译器内置Trait代码分析
 代码路径：
+```shell
 %USER%\.rustup\toolchains\nightly-x86_64-pc-windows-msvc\lib\rustlib\src\rust\library\core\src\marker.rs
+```
 
 marker trait是没有实现体，是一种特殊的类型性质，这类性质无法用类型成员来表达，因此用trait来实现是最合适的。
 
@@ -51,7 +53,7 @@ pub trait StructuralEq {
     // Empty.
 }
 ```
-以下给出了一个针对所有的原生类型都实现Copy Trait的实现代码, 实现了Copy Trait的类型编译器不必调用drop来对类型进行内存释放。
+以下给出了一个针对所有的原生类型都实现`Copy` Trait的实现代码, 实现了`Copy` Trait的类型编译器不必调用drop来对类型进行内存释放。
 可以看到，RUST针对原生类型可以直接扩展Trait实现，者极大的提高了RUST的语法一致性及函数式编程的能力：
 
 ```rust
@@ -92,9 +94,9 @@ mod copy_impls {
 }
 ```
 
-PhantomData<T>类型可以在其他类型结构体中定义一个变量，标记此结构体逻辑上拥有，但不需要或不方便在结构体成员变量体现的某个属性。实质上，智能指针一般都需要利用Unique<T>，以PhantomData来实现对堆内存的逻辑拥有权.
-PhantomData最常用来标记生命周期及所有权。主要给编译器提示检验类型变量的生命周期和类型构造时输入的生命周期关系。也用来提示拥有PhantomData<T>的结构体会负责对T做drop操作。需要编译器做drop检查的时候更准确的判断出内存安全错误。
-PhantomData<T>属性与所有权或生命周期的关系由编译器自行推断。具体实例可参考官方标准库文档及后继相关章节。
+`PhantomData<T>`类型可以在其他类型结构体中定义一个变量，标记此结构体逻辑上拥有，但不需要或不方便在结构体成员变量体现的某个属性。实质上，智能指针一般都需要利用`Unique<T>`，以PhantomData来实现对堆内存的逻辑拥有权.
+PhantomData最常用来标记生命周期及所有权。主要给编译器提示检验类型变量的生命周期和类型构造时输入的生命周期关系。也用来提示拥有`PhantomData<T>`的结构体会负责对T做drop操作。需要编译器做drop检查的时候更准确的判断出内存安全错误。
+`PhantomData<T>`属性与所有权或生命周期的关系由编译器自行推断。具体实例可参考官方标准库文档及后继相关章节。
 PhantomData是个单元结构体，单元结构体的变量名就是单元结构体的类型名。
 所以使用的时候直接使用PhantomData即可，编译器会将泛型的类型实例化信息自动带入PhantomData中
 ```rust
@@ -122,7 +124,7 @@ RUST中，所有的运算符号都可以重载。对于Ops运算符，RUST都可
 
 ### 关系运算符Trait
 代码路径如下：
-%USER%\.rustup\toolchains\nightly-x86_64-pc-windows-msvc\lib\rustlib\src\rust\library\core\src\cmp.rs
+`%USER%\.rustup\toolchains\nightly-x86_64-pc-windows-msvc\lib\rustlib\src\rust\library\core\src\cmp.rs`
 
 关系运算符的代码稍微复杂，这里给出较完整的代码。
 ```rust
@@ -145,7 +147,7 @@ pub trait Eq: PartialEq<Self> {
     fn assert_receiver_is_total_eq(&self) {}
 }
 ```
-对于"<,>,<=,>="等四种运算，同上，对于全域如果有可能出现无法比较的情况，仅实现PartialOrd<Rhs>，如下：
+对于`<`,`>`,`<=`,`>=`等四种运算，同上，对于全域如果有可能出现无法比较的情况，仅实现`PartialOrd<Rhs>`，如下：
 ```rust
 // "<" ">" ">=" "<=" 运算符重载结构, 事实上关系运算只需要重载这个Trait
 // Ord Trait 不用编码,
@@ -523,7 +525,7 @@ pub enum ControlFlow<B, C = ()> {
 }
 ```
 
-#### Option<T>的Try Trait实现
+#### `Option<T>`的Try Trait实现
 实现代码如下：
 ```rust
 impl<T> ops::Try for Option<T> {
@@ -552,7 +554,7 @@ impl<T> const ops::FromResidual for Option<T> {
     }
 }
 ```
-所以，一个Option<T>？等同于如下代码：
+所以，`一个Option<T>`？等同于如下代码：
 ```rust
    match(Option<T>.branch()) {
        ControlFlow::Continue(a) => a,
@@ -560,16 +562,16 @@ impl<T> const ops::FromResidual for Option<T> {
        ControlFlow::Break(None) => return (Option<T>::from_residual(None)),
    }
 ```
-Result<T,E>类型的Try Trait请自行分析
+`Result<T,E>`类型的`Try` Trait请自行分析
 
 #### 小结
-利用Try Trait，程序员可以实现自定义类型的?，提供函数式编程的有力手段并简化代码，提升代码的理解度。
+利用`Try` Trait，程序员可以实现自定义类型的?，提供函数式编程的有力手段并简化代码，提升代码的理解度。
 
 ### Range 运算符代码分析
 代码路径：  
-%USER%\.rustup\toolchains\nightly-x86_64-pc-windows-msvc\lib\rustlib\src\rust\library\core\src\ops\range.rs
-Range是符号 .. , start..end , start.. , ..end , ..=end，start..=end 形式
-#### Range相关的边界结构Bound
+`%USER%\.rustup\toolchains\nightly-x86_64-pc-windows-msvc\lib\rustlib\src\rust\library\core\src\ops\range.rs`
+`Range`是符号 `.. `, `start..end` , `start..` , `..end` , `..=end`，`start..=end` 形式
+#### `Range`相关的边界结构`Bound`
 源代码：
 ```rust
 pub enum Bound<T> {
@@ -582,12 +584,12 @@ pub enum Bound<T> {
 }
 ```
 Include边界的值包含，Exclued边界的值不包含，Unbounded边界值不存在
-#### RangeFull
+#### `RangeFull`
 ` ..  `的数据结构。
 ```rust
 struct RangeFull;
 ```
-#### Range<Idx>
+#### `Range<Idx>`
 `start.. end`的数据结构
 ```rust
 pub struct Range<Idx> {
@@ -595,18 +597,18 @@ pub struct Range<Idx> {
     pub end: Idx,
 }
 ```
-#### RangeFrom<Idx>
+#### `RangeFrom<Idx>`
 `start..`的数据结构, 略
-#### RangeTo<Idx>
+#### `RangeTo<Idx>`
 `.. end`的数据结构, 略
-#### RangeInclusive<Idx>
+#### `RangeInclusive<Idx>`
 `start..=end`的数据结构,略
-#### RangeToInclusive<Idx>
+#### `RangeToInclusive<Idx>`
 `..=end`的数据结构,略
 
-以上的Idx需要满足Idx:PartialOrd<Idx>
+以上的Idx需要满足`Idx:PartialOrd<Idx>`
 
-#### RangeBounds<T: ?Sized>
+#### `RangeBounds<T: ?Sized>`
 所有Range统一实现的Trait。
 ```rust
 pub trait RangeBounds<T: ?Sized> {
@@ -651,22 +653,22 @@ pub trait RangeBounds<T: ?Sized> {
 }
 
 ```
-RangeBounds针对RangeFull，RangeTo, RangeInclusive, RangeToInclusive, RangeFrom, Range结构都进行了实现。同时针对(Bound<T>, Bound<T>)的元组做了实现。
+`RangeBounds`针对`RangeFull`，`RangeTo`, `RangeInclusive`, `RangeToInclusive`, `RangeFrom`, `Range`结构都进行了实现。同时针对(`Bound<T>`,`Bound<T>`)的元组做了实现。
 
 #### Range的灵活性与独立性
-完全可以定义 ((0,0)..(100,100))； ("1st".."30th")这种极有表现力的Range。
-Range使用的时候，需要先定义一个取值集合，定义类型表示这个集合，针对类型实现PartialOrd。就可以对这个集合的类型用Range符号了。
-值得注意的是，对于Range<Idx>, 如果一个变量类型为U, 则如果实现了PartialOrd<U> for Idx， 那U就有可能属于Range, 即U可以与Idx不同。
-Range操作符多用于与Index运算符结合或与Iterator Trait结合使用，独立的Range在。在后继的Index运算符和Iterator中会研究Range是如何与他们结合的。
+完全可以定义 (`(0,0)..(100,100)`)； (`"1st".."30th"`)这种极有表现力的`Range`。
+`Range`使用的时候，需要先定义一个取值集合，定义类型表示这个集合，针对类型实现`PartialOrd`。就可以对这个集合的类型用`Range`符号了。
+值得注意的是，对于`Range<Idx>`, 如果一个变量类型为U, 则如果实现了`PartialOrd<U> for Idx`， 那U就有可能属于`Range`, 即U可以与`Idx`不同。
+`Range`操作符多用于与`Index`运算符结合或与`Iterator` Trait结合使用，独立的`Range`在。在后继的`Index`运算符和`Iterator`中会研究`Range`是如何与他们结合的。
 
 #### 小结
-基于泛型的Range类型提供了非常好的语法手段，只要某类型支持排序，那就可以定义一个在此类型基础上实现的Range类型。再结合Index和Iterator, 将高效的实现极具冲击力的代码。
+基于泛型的`Range`类型提供了非常好的语法手段，只要某类型支持排序，那就可以定义一个在此类型基础上实现的`Range`类型。再结合`Index`和`Iterator`, 将高效的实现极具冲击力的代码。
 
 ### RUST的Index 运算符代码分析
 代码路径：  
-%USER%\.rustup\toolchains\nightly-x86_64-pc-windows-msvc\lib\rustlib\src\rust\library\core\src\ops\index.rs
+`%USER%\.rustup\toolchains\nightly-x86_64-pc-windows-msvc\lib\rustlib\src\rust\library\core\src\ops\index.rs`
 
-数组下标符号[]由Index, IndexMut两个Trait完成重载。数组下标符号重载使得程序更有可读性。两个Trait如下定义：
+数组下标符号`[]`由`Index`, `IndexMut`两个Trait完成重载。数组下标符号重载使得程序更有可读性。两个Trait如下定义：
 ```rust
 // [T][Idx] 形式重载
 pub trait Index<Idx: ?Sized> {
@@ -681,7 +683,7 @@ pub trait IndexMut<Idx: ?Sized>: Index<Idx> {
     fn index_mut(&mut self, index: Idx) -> &mut Self::Output;
 }
 ```
-由以上可以看出["Hary"], ["Bold"]之类的表达形式都是可以存在的。
+由以上可以看出`["Hary"]`, `["Bold"]`之类的表达形式都是可以存在的。
 
 #### 切片数据结构[T]的Index实现
 ```rust
@@ -705,7 +707,7 @@ where
     }
 }
 ```
-SliceIndex Trait 被设计同时满足Index及切片类型的一些方法的需求。因为这些需求在逻辑上是同领域的。集中在SliceIndex Trait模块性更好。如：
+`SliceIndex` Trait 被设计同时满足`Index`及切片类型的一些方法的需求。因为这些需求在逻辑上是同领域的。集中在`SliceIndex` Trait模块性更好。如：
 `[T]::get<I:SliceIndex>(&self, I)->Option<&I::Output>` 就是直接调用SliceIndex中的方法来实现成员获取。
 
 ```rust
@@ -782,7 +784,7 @@ unsafe impl<T> SliceIndex<[T]> for usize {
     }
 }
 ```
-以上就是针对[T]的以无符号数作为下标取出单一元素的ops::Index 及 ops::IndexMut的底层实现。
+以上就是针对`[T]`的以无符号数作为下标取出单一元素的`ops::Index` 及 `ops::IndexMut`的底层实现。
 针对Range做下标的代码实现
 ```rust
 
@@ -844,7 +846,7 @@ unsafe impl<T> SliceIndex<[T]> for ops::Range<usize> {
     }
 }
 ```
-以上是实现用Range从slice中取出子slice的实现。同样是使用裸指针来最高效的实现逻辑。实际上，不用裸指针就没法实现。
+以上是实现用`Range`从slice中取出子slice的实现。同样是使用裸指针来最高效的实现逻辑。实际上，不用裸指针就没法实现。
 
 ```rust
 unsafe impl<T> SliceIndex<[T]> for ops::RangeTo<usize> {
@@ -863,12 +865,12 @@ unsafe impl<T> SliceIndex<[T]> for ops::RangeTo<usize> {
     //其他方法也是直接对Range<usize>做一个调用略
 }
 ```
-RangeFrom, RangeInclusive, RangeToInclusive, RangeFull等与RangeTo的实现类似，略。
+`RangeFrom`, `RangeInclusive`, `RangeToInclusive`, `RangeFull`等与`Rang`eTo的实现类似，略。
 
 ##### 小结
 RUST切片的下标计算展示了裸指针的使用技巧，在数组类的成员操作中，基本无法脱离裸指针。在这里，只要不越界，裸指针操作是安全的。
 
-#### 数组数据结构[T;N]的ops::Index实现
+#### 数组数据结构`[T;N]`的`ops::Index`实现
 
 ```rust
 //注意这里的Trait约束的写法
@@ -892,4 +894,4 @@ where
     }
 }
 ```
-以上， `self as &[T]` 即把[T;N]转化为了切片[T], 所以数组的Index就是[T]的Index实现
+以上， `self as &[T]` 即把`[T;N]`转化为了切片`[T]`, 所以数组的Index就是`[T]`的Index实现

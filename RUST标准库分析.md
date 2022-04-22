@@ -1,23 +1,22 @@
-[TOC]
 # 引言
-RUST无疑是编程语言史中最难学的高级语言，在仅依靠静态编译的前提下实现一门安全的编程语言，这是必须付出的代价。无论如何，成为一门编程语言的老手的最佳办法就是深入分析，学习，理解优秀的代码，那RUST标准库的代码必然是不可绕过的最佳教材。另外，掌握RUST也必然意味对标准库的熟练掌握，深入了解标准库接口后面的内核无疑能帮助我们更好的掌握如何使用标准库。
+Rust 无疑是编程语言史中最难学的高级语言，在仅依靠静态编译的前提下实现一门安全的编程语言，这是必须付出的代价。无论如何，成为一门编程语言的老手的最佳办法就是深入分析，学习，理解优秀的代码，那 Rust 标准库的代码必然是不可绕过的最佳教材。另外，掌握 Rust 也必然意味对标准库的熟练掌握，深入了解标准库接口后面的内核无疑能帮助我们更好的掌握如何使用标准库。
 
 ## 本书目的
 本书主要目的：
 1. 给出一个分析标准库代码的脉络，使得读者能够快速理清标准库代码的彼此依赖关系。
-2. 通过对标准库代码的学习，分析，让读者对RUST代码的编写技巧，规则有更好的理解，为读者成为RUST老手奠定基础。
+2. 通过对标准库代码的学习，分析，让读者对 Rust 代码的编写技巧，规则有更好的理解，为读者成为 Rust 老手奠定基础。
 
 ## 目标读者
-本书不适合初级程序员，本书针对的最佳对象是资深的C/C++程序员, 转学RUST。本书也适合已经采用RUST编写了一段时间程序，但希望对RUST有更深的了解，尤其是希望进行操作系统内核编程或通用编程框架编程的程序员。对于Java/python/go等语言的资深程序员，本书可以作为RUST与其他语言相比较的一个参考。阅读本书之前，读者最好已经学习过官方教程，中文翻译版链接如下[RUST程序设计语言](https://rustwiki.org/zh-CN/book/)。本书不是标准库参考手册，如需要参考手册，中文翻译版链接如下[RUST标准库参考手册](https://rustwiki.org/zh-CN/std/)。本书难度应该属于死灵书级别，中文翻译版死灵书链接如下[RUST秘典](https://nomicon.purewhite.io/)
+本书不适合初级程序员，本书针对的最佳对象是资深的 C/C++ 程序员, 转学 Rust。本书也适合已经采用 Rust 编写了一段时间程序，但希望对 Rust 有更深的了解，尤其是希望进行操作系统内核编程或通用编程框架编程的程序员。对于 Java/python/go 等语言的资深程序员，本书可以作为 Rust 与其他语言相比较的一个参考。阅读本书之前，读者最好已经学习过官方教程，中文翻译版链接如下 [Rust程序设计语言](https://rustwiki.org/zh-CN/book/)。本书不是标准库参考手册，如需要参考手册，中文翻译版链接如下 [Rust标准库参考手册](https://rustwiki.org/zh-CN/std/)。本书难度应该属于死灵书级别，中文翻译版死灵书链接如下 [Rust秘典](https://nomicon.purewhite.io/)
 
 ## 本书代码分析的原则
 因为不可能对标准库的所有代码进行分析。所以本书仅对作者认为有必要分析的源代码进行分析，遵循以下原则：
-1. 对于RUST的所有权，借用，生命周期概念理解至关重要的代码
+1. 对于 Rust 的所有权，借用，生命周期概念理解至关重要的代码
 2. 重要的语法知识点的代码
 3. 逻辑上较复杂和难以理解的代码
-4. 体现RUST的编码技巧的代码
+4. 体现 Rust 的编码技巧的代码
 
-本文对各语言通用的算法技巧不做更多的关注和分析，因为本书的重点是帮助读者理解RUST语言本身独有的特点。
+本文对各语言通用的算法技巧不做更多的关注和分析，因为本书的重点是帮助读者理解 Rust 语言本身独有的特点。
 
 对于逻辑上很简单的代码，本书倾向于不分析。对于从函数名容易理解其功能，本书倾向于不分析。
 本书倾向于对函数尽量给出比标准库参考手册更深层的一些理解。
@@ -26,47 +25,47 @@ RUST无疑是编程语言史中最难学的高级语言，在仅依靠静态编�
 对于代码的解析，以代码中文注释的方式放在本书的代码中。
 
 ## IDE
-作者使用的IDE是Visual Code，并安装了rust语言插件，足以满足代码阅读需求
+作者使用的 IDE 是 Visual Code，并安装了 Rust 语言插件，足以满足代码阅读需求
 
-# RUST标准库体系概述
-RUST语言的设计目标是操作系统内核级的现代语法的系统编程语言，使用静态编译，并且不采用GC机制，保证开发出的应用即具备极高性能， 又能够在编译阶段就保证内存安全，并发安全，分支安全等安全性。
-现代高级语言的标准库是语言的一个紧密的组成部分，语言的很多特性实际是标准库实现。RUST的库也是如此，但与其他采用GC方案的语言不同，其他语言编程目标是在操作系统之上运行的用户态程序。RUST的编程目标要加上操作系统内核，需要考虑内核与用户态两种模型。C语言解决这个问题的方法是只提供用户态的标准库，操作系统内核的库由各操作系统内核源代码自行实现。
-RUST的现代语言特性决定了标准库无法象C语言那样把操作系统内核及用户态程序区分成完全独立的两个部分，所以只能更细致的设计，做模块化的处理。RUST标准库体系分为三个模块：语言核心库--core; alloc库；用户态 std库。
+# Rust标准库体系概述
+Rust 语言的设计目标是操作系统内核级的现代语法的系统编程语言，使用静态编译，并且不采用 GC 机制，保证开发出的应用即具备极高性能， 又能够在编译阶段就保证内存安全，并发安全，分支安全等安全性。
+现代高级语言的标准库是语言的一个紧密的组成部分，语言的很多特性实际是标准库实现。Rust的库也是如此，但与其他采用 GC 方案的语言不同，其他语言编程目标是在操作系统之上运行的用户态程序。Rust 的编程目标要加上操作系统内核，需要考虑内核与用户态两种模型。C 语言解决这个问题的方法是只提供用户态的标准库，操作系统内核的库由各操作系统内核源代码自行实现。
+Rust 的现代语言特性决定了标准库无法象 C 语言那样把操作系统内核及用户态程序区分成完全独立的两个部分，所以只能更细致的设计，做模块化的处理。Rust标准库体系分为三个模块：语言核心库-- core;  alloc 库；用户态 std 库。
 
 ## 标准库路径
-安装rust后，rust标准库的代码路径在作者机器上的路径如下：
-%USER%\.rustup\toolchains\nightly-x86_64-pc-windows-msvc\lib\rustlib\src\rust\library\core\src
-%USER%\.rustup\toolchains\nightly-x86_64-pc-windows-msvc\lib\rustlib\src\rust\library\alloc\src， 
-%USER%\.rustup\toolchains\nightly-x86_64-pc-windows-msvc\lib\rustlib\src\rust\library\std\src
+安装Rust后，Rust标准库的代码路径在作者机器上的路径如下：
+`%USER%\.rustup\toolchains\nightly-x86_64-pc-windows-msvc\lib\rustlib\src\Rust\library\core\src`
+`%USER%\.rustup\toolchains\nightly-x86_64-pc-windows-msvc\lib\rustlib\src\Rust\library\alloc\src`， 
+`%USER%\.rustup\toolchains\nightly-x86_64-pc-windows-msvc\lib\rustlib\src\Rust\library\std\src`
 本书主要分析上述三个目录下的代码
 
 ## core库
-RUST语言核心库，适用于操作系统内核及用户态，包括RUST的基础类型及方法和关联函数，基本Trait及基础Trait在基础类型上的实现，其他函数等内容。core库是硬件架构和操作系统无关的可移植库。主要内容：
+Rust 语言核心库，适用于操作系统内核及用户态，包括 Rust 的基础类型及方法和关联函数，基本 Trait 及基础 Trait 在基础类型上的实现，其他函数等内容。core 库是硬件架构和操作系统无关的可移植库。主要内容：
 
 ### 编译器内置intrinsics函数
-包括内存操作函数，算数函数，位操作函数等， 这些函数通常与CPU硬件架构紧密相关，且一般需要汇编来提供最佳性能。 intrinsic函数实际上也是对CPU指令的屏蔽层。
+包括内存操作函数，算数函数，位操作函数等， 这些函数通常与 CPU 硬件架构紧密相关，且一般需要汇编来提供最佳性能。 intrinsic 函数实际上也是对 CPU 指令的屏蔽层。
 
 ### 基本Trait
 [推荐这个链接](https://rustmagazine.github.io/rust_magazine_2021/chapter_7/rusts-standard-library-traits.html)
 本节给出core库中的Trait一览
 
 #### 运算符（ops）Trait
-主要是各种用于表达式的RUST符号重载，包括算数计算符号，逻辑运算符号，位操作符号，解引用(*)符号, [index]数组下标符号， start..=end /start..end/start../..end/..=end/.. 等Range范围符号， ?号，||{..}闭包符号等，RUST原则是所有的运算符号都要能重载, 所以所有运算操作都定义了重载Trait。
+主要是各种用于表达式的 Rust 符号重载，包括算数计算符号，逻辑运算符号，位操作符号，解引用`(*)`符号, `[index]`数组下标符号， `start..=end` /`start..end`/`start..`/`..end`/`..=end`/.. 等`Range`范围符号， `?`号，`||` `{..}`闭包符号等，Rust原则是所有的运算符号都要能重载, 所以所有运算操作都定义了重载 Trait。
 
 #### 编译器内部实现的派生宏 Trait
-如果类型结构中的每一个变量都实现了该Trait, 则此结构的该Trait可通过派生宏实现
-Clone, Copy: Copy浅复制，Clone提供深复制
-Debug: 类型的格式化输出
-Default: 类型的default值，
-Eq, Ord，PartialEQ, PartialOrd: 实现后可以对类型的变量做大,小,相等比较
-Sync, Send: 实现此Trait的类型变量的引用可以安全在线程间共享
-Hash: 实现结构的整体Hash值，这个Trait Hash是因为复杂才被加入，意义没有前面的大
+如果类型结构中的每一个变量都实现了该 `Trait` , 则此结构的该 `Trait` 可通过派生宏实现
+`Clone` , `Copy` :  `Copy` 浅复制，`Clone` 提供深复制
+`Debug` : 类型的格式化输出
+`Default` : 类型的default值，
+`Eq`, `Ord`，`PartialEQ`, `PartialOrd`: 实现后可以对类型的变量做大,小,相等比较
+`Sync` , `Send` : 实现此 Trait 的类型变量的引用可以安全在线程间共享
+`Hash` : 实现结构的整体 Hash 值，这个 Trait `Hash` 是因为复杂才被加入，意义没有前面的大
 
 #### Iterator
-迭代器，RUST基础构架之一，也是RUST所有学习资料的重点。也是每个类型结构代码分析的重点。
+迭代器，Rust 基础构架之一，也是 Rust 所有学习资料的重点。也是每个类型结构代码分析的重点。
 
 #### 类型转换Trait
-AsRef， AsMut, From，Into，TryFrom，TryInto, FloatToInt, FromStr。
+`AsRef`， `AsMut`, `From`，`Into`，`TryFrom`，`TryInto`, `FloatToInt`, `FromStr`。
 
 #### 异步编程Trait
 此处略，需要单独做分析
@@ -75,55 +74,57 @@ AsRef， AsMut, From，Into，TryFrom，TryInto, FloatToInt, FromStr。
 此处略，需要单独做分析
 
 ### 基本数据类型
-包括整数类型，浮点类型，布尔类型，字符类型，单元类型，内容主要是实现运算符Trait, 类型转换Trait, 派生宏Trait等，字符类型包括对unicode，ascii的不同编码的处理。整数类型有大小端变换的处理。
+包括整数类型，浮点类型，布尔类型，字符类型，单元类型，内容主要是实现运算符 Trait , 类型转换 Trait , 派生宏 Trait 等，字符类型包括对 Unicode，Ascii 的不同编码的处理。整数类型有大小端变换的处理。
 
 ### 数组、切片及Range
-这些类型对Iterator Trait, 运算符Trait, 类型转换Trait, 派生宏Trait及其他一些方法函数。
+这些类型对 `Iterator` Trait, 运算符 Trait, 类型转换 Trait, 派生宏 Trait 及其他一些方法函数。
 
 ### Option/Result/Marker等关键的语言级别Enum类型
-RUST安全特性的重点，也是各种学习资料的重点，不赘述。后继章节将对代码给以说明
+Rust 安全特性的重点，也是各种学习资料的重点，不赘述。后继章节将对代码给以说明
 
-### RUST内存相关类型及内容
-alloc, mem, ptr等模块，RUST的内存操作。是本书代码分析的第一个重点。
+### Rust内存相关类型及内容
+alloc , mem , ptr 等模块，Rust 的内存操作。是本书代码分析的第一个重点。
 
-### RUST字符串相关库
-字符串str，string，fmt, panic, debug, log等
+### Rust字符串相关库
+字符串`str`，`string`，`fmt`, `panic`, `debug`, `log`等
 
-### RUST时间库
+### Rust时间库
 Duration等 
 
 ## alloc库
-alloc库主要实现需要进行动态堆内存申请的智能指针类型，集合类型及他们的方法，函数，Trait等内容，这些仅需要建立在core库模块之上，std会对alloc模块库的内容做重新的封装。alloc库适用于操作系统内核及用户态程序。
+alloc 库主要实现需要进行动态堆内存申请的智能指针类型，集合类型及他们的方法，函数，Trait 等内容，这些仅需要建立在 core 库模块之上，std 会对 alloc 模块库的内容做重新的封装。alloc 库适用于操作系统内核及用户态程序。
 包括：
-1.基本内存申请；Allocator Trait; Allocator的实现结构Global
-2.基础智能指针：Box<T>, Rc<T>, 
-3.动态数组内存类型: RawVec<T>, Vec<T>
-4.字符串类型：&str, String
-5.并发编程指针类型: Arc<T>
-6.指针内访问类型: Cell<T>, RefCell<T>
+
+1. 基本内存申请；`Allocator` Trait; `Allocator`的实现结构`Global`
+2. 基础智能指针：`Box<T>`, `Rc<T>`, 
+3. 动态数组内存类型: `RawVec<T>`, `Vec<T>`
+4. 字符串类型：`&str`, `String`
+5. 并发编程指针类型: `Arc<T>`
+6. 指针内访问类型: `Cell<T>`, `RefCell<T>`
 还有些其他类型，一般仅在标准库内部使用，后文在需要的时候再介绍及分析。
 
 ## std库
-std是在操作系统支撑下运行的只适用于用户态程序的库，core库实现的内容基本在std库也有对应的实现。其他内容主要是将操作系统系统调用封装为适合rust特征的结构和Trait,包括：
-1.进程，线程库
-2.网络库
-3.文件操作库
-4.环境变量及参数
-5.互斥与同步库，读写锁
-6.定时器
-7.输入输出的数据结构，
-8.系统事件，对epoll,kevent等的封装
-可以将std库看做基本常用的容器类型及操作系统封装库。
+std是在操作系统支撑下运行的只适用于用户态程序的库，core库实现的内容基本在std库也有对应的实现。其他内容主要是将操作系统系统调用封装为适合Rust特征的结构和 Trait ,包括：
+
+1. 进程，线程库
+2. 网络库
+3. 文件操作库
+4. 环境变量及参数
+5. 互斥与同步库，读写锁
+6. 定时器
+7. 输入输出的数据结构，
+8. 系统事件, 对 epoll, kevent等的封装
+   可以将std库看做基本常用的容器类型及操作系统封装库。
 
 ## 小结
-RUST的目标和现代编程语言的特点决定了它的库需要仔细的模块化设计。RUST的alloc库及std库都是基于core库。RUST的库设计非常巧妙和仔细，使得RUST完美的实现了对各种硬件架构平台的兼容，对各种操作系统平台的兼容。
+Rust的目标和现代编程语言的特点决定了它的库需要仔细的模块化设计。Rust的alloc库及std库都是基于core库。Rust的库设计非常巧妙和仔细，使得Rust完美的实现了对各种硬件架构平台的兼容，对各种操作系统平台的兼容。
 
 
-# RUST泛型小议
-RUST是一门生存在泛型的基础之上的语言。其他语言不使用泛型也不影响编程，泛型只是一个语法中的强大工具。与之相对，RUST是离开了泛型就无法完成程序编写，泛型与语法共生。
+# Rust泛型小议
+Rust是一门生存在泛型的基础之上的语言。其他语言不使用泛型也不影响编程，泛型只是一个语法中的强大工具。与之相对，Rust是离开了泛型就无法完成程序编写，泛型与语法共生。
 
 ## 直接针对泛型的方法和trait实现
-其他语言的泛型，是作为类型结构体成员，或是函数的输入/返回参数出现在代码中，是配角。RUST的泛型则可以作为主角，可以直接对泛型实现方法和trait。如：
+其他语言的泛型，是作为类型结构体成员，或是函数的输入/返回参数出现在代码中，是配角。Rust的泛型则可以作为主角，可以直接对泛型实现方法和trait。如：
 ```rust
 //T:?Sized基本上就是所有的类型，直接impl <T> Borrow<T>实际上隐含了 T:Sized。所以 T:?Sized比T范围更广阔
 impl<T: ?Sized> Borrow<T> for T {
@@ -138,7 +139,8 @@ impl<T: ?Sized> BorrowMut<T> for T {
     }
 }
 ```
-以上代码基本上就是对所有的类型都实现了Borrow<T>的trait。  
+
+以上代码基本上就是对所有的类型都实现了`Borrow<T>`的`trait`。  
 直接针对泛型做方法和trait的实现是强大的工具，它的作用：  
 - 针对泛型的代码会更内聚，方法总比函数具备更明显的模块性
 - 逻辑更清晰及系统化更好
@@ -146,8 +148,8 @@ impl<T: ?Sized> BorrowMut<T> for T {
 - 更好的支持函数式编程
 
 ## 泛型的层次关系
-RUST的泛型从一般到特殊会形成一种层次结构，有些类似于面对对象的基类和子类关系： 
-最基层： T  没有任何约束的T是泛型的基类   
+Rust的泛型从一般到特殊会形成一种层次结构，有些类似于面对对象的基类和子类关系： 
+最基层： `T`  没有任何约束的`T`是泛型的基类   
 一级子层： 裸指针类型`* const T/* mut T`; 切片类型`[T]`; 数组类型`[T;N]`; 引用类型`&T/&mut T`; trait约束类型`T:trait`; 泛型元组`(T, U...)`; 泛型复合类型`struct <T>; enum <T>; union<T>` 及具体类型 `u8/u16/i8/bool/f32/&str/String...`     
 二级子层： 对一级子层的T赋以具体类型 如：`* const u8; [i32]`，或者将一级子层中的T再次做一级子层的具化，例如：`* const [T]; [*const T]; &(*const T); * const T where T:trait; struct <T:trait>` 
 
@@ -160,7 +162,7 @@ impl<T, U> Option<(T, U)> {...}
 impl<T: Copy> Option<&T> {...}
 impl<T: Default> Option<T> {...}
 ```
-以上是标准库对Option<T> 的不同泛型进行的方法实现定义。一般先针对基层泛型实现方法及trait，然后再针对高层次的泛型做方法及trait实现。  
+以上是标准库对`Option<T>` 的不同泛型进行的方法实现定义。一般先针对基层泛型实现方法及trait，然后再针对高层次的泛型做方法及trait实现。  
 
 类似的实现再试举如下几例：  
 ```rust
@@ -174,17 +176,17 @@ impl AsRef<[u8]> for str {...}
 impl AsRef<str> for str {...}
 ```
 
-RUST中，可以定义新的trait, 并根据需要在已定义的类型上实现新的trait。这就显然比其他的面对对象的语言具备更好的可扩展性。
+Rust中，可以定义新的trait, 并根据需要在已定义的类型上实现新的trait。这就显然比其他的面对对象的语言具备更好的可扩展性。
 
-# RUST标准库内存模块代码分析
+# Rust标准库内存模块代码分析
 内存模块的代码路径举例如下(以作者电脑上的路径):
-%USER%\.rustup\toolchains\nightly-x86_64-pc-windows-msvc\lib\rustlib\src\rust\library\core\src\alloc\*.*
-%USER%\.rustup\toolchains\nightly-x86_64-pc-windows-msvc\lib\rustlib\src\rust\library\core\src\ptr\*.*
-%USER%\.rustup\toolchains\nightly-x86_64-pc-windows-msvc\lib\rustlib\src\rust\library\core\src\mem\*.*
-%USER%\.rustup\toolchains\nightly-x86_64-pc-windows-msvc\lib\rustlib\src\rust\library\core\src\intrinsic.rs
-%USER%\.rustup\toolchains\nightly-x86_64-pc-windows-msvc\lib\rustlib\src\rust\library\alloc\src\alloc.rs
+%USER%\.Rustup\toolchains\nightly-x86_64-pc-windows-msvc\lib\Rustlib\src\Rust\library\core\src\alloc\*.*
+%USER%\.Rustup\toolchains\nightly-x86_64-pc-windows-msvc\lib\Rustlib\src\Rust\library\core\src\ptr\*.*
+%USER%\.Rustup\toolchains\nightly-x86_64-pc-windows-msvc\lib\Rustlib\src\Rust\library\core\src\mem\*.*
+%USER%\.Rustup\toolchains\nightly-x86_64-pc-windows-msvc\lib\Rustlib\src\Rust\library\core\src\intrinsic.rs
+%USER%\.Rustup\toolchains\nightly-x86_64-pc-windows-msvc\lib\Rustlib\src\Rust\library\alloc\src\alloc.rs
 
-RUST之所以被认为难学，是因为RUST与C相同，需要对内存做彻底的控制，即程序可以在代码中编写专属内存管理系统，并将内存管理系统与语言类型相关联，将内存块与语言类型做自如的转换。对于当前现代语法的高级语言如Java/Python/JS/Go，内存管理实际上是编译器的任务，这就导致大部分程序员对于内存管理缺乏经验，所以对RUST内存安全相关的所有权/生命周期等缺乏实践认知。相对于C，RUST的现代语法特性及内存安全导致RUST的内存块与类型系统的转换的细节不容易被透彻理解。本节将从标准库的内存模块的代码分析中给出RUST内存的本质。理解了RUST内存及内存安全，RUST语言的最难关便过了。
+Rust之所以被认为难学，是因为Rust与C相同，需要对内存做彻底的控制，即程序可以在代码中编写专属内存管理系统，并将内存管理系统与语言类型相关联，将内存块与语言类型做自如的转换。对于当前现代语法的高级语言如Java/Python/JS/Go，内存管理实际上是编译器的任务，这就导致大部分程序员对于内存管理缺乏经验，所以对Rust内存安全相关的所有权/生命周期等缺乏实践认知。相对于C，Rust的现代语法特性及内存安全导致Rust的内存块与类型系统的转换的细节不容易被透彻理解。本节将从标准库的内存模块的代码分析中给出Rust内存的本质。理解了Rust内存及内存安全，Rust语言的最难关便过了。
 
 从内存角度考察一个变量，则每个变量具备统一的内存参数，这些参数是：
 1. 变量的首地址，是一个usize的数值
@@ -193,12 +195,12 @@ RUST之所以被认为难学，是因为RUST与C相同，需要对内存做彻�
 4. 变量类型中成员内存顺序  
 
 如果变量成员是复合类型，可递归上面的四个参数。 
-RUST认为变量类型成员顺序与编译优化不可分割，因此，变量成员内存顺序完全由编译器控制，这与C不同，C中变量类型成员的顺序是不能被编译器改动的。这使得C变量的内存布局对程序员是透明的。这种透明性导致了C语言在设计类型内存布局的操作中会出现很多坏代码。如，直接用头指针+偏移数值来获得类型内部变量的指针，直接导致变量类型可修改性极差。  
-与C相同，RUST具备将一块内存块直接转换成某一类型变量的能力。这一能力是RUST操作系统内核编程及高效的一个基石。但因为这个转换使得代码可以绕过编译器的类型系统检查，造成了BUG也绕过了编译器的某些错误检查，而这些错误很可能在系统运行很久之后才真正的出错，造成排错的极高成本。
-GC类语言去掉了这一能力，但也牺牲了性能，且无法作为系统级别语言。RUST没有因噎废食，在保留能力的同时给出这一能力明确的危险标识unsafe, 加上整体的内存安全框架设计，使得此类错误更易被发现，更易被定位，极大的降低了错误的数目及排错的成本。
-unsafe容易让初学RUST语言的程序员产生排斥感，但unsafe实际上是RUST不可分割的部分，一个好的RUST程序员绝不是不使用unsafe，而是能够准确的把握好unsafe使用的合适场合及合适范围，必要的时候必须使用，但不滥用。
+Rust认为变量类型成员顺序与编译优化不可分割，因此，变量成员内存顺序完全由编译器控制，这与C不同，C中变量类型成员的顺序是不能被编译器改动的。这使得C变量的内存布局对程序员是透明的。这种透明性导致了C语言在设计类型内存布局的操作中会出现很多坏代码。如，直接用头指针+偏移数值来获得类型内部变量的指针，直接导致变量类型可修改性极差。  
+与C相同，Rust具备将一块内存块直接转换成某一类型变量的能力。这一能力是Rust操作系统内核编程及高效的一个基石。但因为这个转换使得代码可以绕过编译器的类型系统检查，造成了BUG也绕过了编译器的某些错误检查，而这些错误很可能在系统运行很久之后才真正的出错，造成排错的极高成本。
+GC类语言去掉了这一能力，但也牺牲了性能，且无法作为系统级别语言。Rust没有因噎废食，在保留能力的同时给出这一能力明确的危险标识unsafe, 加上整体的内存安全框架设计，使得此类错误更易被发现，更易被定位，极大的降低了错误的数目及排错的成本。
+unsafe容易让初学Rust语言的程序员产生排斥感，但unsafe实际上是Rust不可分割的部分，一个好的Rust程序员绝不是不使用unsafe，而是能够准确的把握好unsafe使用的合适场合及合适范围，必要的时候必须使用，但不滥用。
 
-掌握RUST的内存，主要有如下几个部分：
+掌握Rust的内存，主要有如下几个部分：
 1. 编译器提供的固有内存操作函数
 2. 内存块与类型系统的结合点：裸指针 `*const T/*mut T`
 3. 裸指针的包装结构: `NonNull<T>/Unique<T>`
@@ -206,8 +208,8 @@ unsafe容易让初学RUST语言的程序员产生排斥感，但unsafe实际上�
 5. 堆内存申请及释放
    
 ## 裸指针标准库代码分析
-裸指针`*const T/* mut T`将内存和类型系统相连接，*const T代表了一个内存块，指示了内存块首地址，大小，对齐等属性，以及后文提到的元数据，但不保证这个内存块的有效性和安全性。
-与`*const T/* mu T`不同，`&T/&mut T`则保证内存块是安全和有效的，这表示`&T/&mut T`满足内存块首地址对齐，内存块已经完成了初始化。在RUST中，`&T/&mut T`是被绑定在某一内存块上，只能用于读写这一内存块。  
+裸指针`*const T/* mut T`将内存和类型系统相连接，`*const T`代表了一个内存块，指示了内存块首地址，大小，对齐等属性，以及后文提到的元数据，但不保证这个内存块的有效性和安全性。
+与`*const T/* mu T`不同，`&T/&mut T`则保证内存块是安全和有效的，这表示`&T/&mut T`满足内存块首地址对齐，内存块已经完成了初始化。在Rust中，`&T/&mut T`是被绑定在某一内存块上，只能用于读写这一内存块。  
 对于内存块更复杂的操作，由`*const T/*mut T` 负责，主要有：
 1. 将usize类型数值强制转换成裸指针类型，以此数值为首地址的内存块被转换为相应的类型。这一转换是不安全的。
 2. 在不同的裸指针类型之间进行强制转换，实质上完成了裸指针指向的内存块的类型强转，这一转换是不安全的。
@@ -218,7 +220,7 @@ unsafe容易让初学RUST语言的程序员产生排斥感，但unsafe实际上�
 7. 从外部的C函数接口对接的指针参数
 8... 
 
-RUST的裸指针类型不象C语言的指针类型那样仅仅是一个地址值，为满足实现内存安全的类型系统需求，并兼顾内存使用效率和方便性，RUST的裸指针实质是一个较复杂的类型结构体。
+Rust的裸指针类型不象C语言的指针类型那样仅仅是一个地址值，为满足实现内存安全的类型系统需求，并兼顾内存使用效率和方便性，Rust的裸指针实质是一个较复杂的类型结构体。
 
 ### 裸指针具体实现
 `*const T/*mut T`实质是个数据结构体，由两个部分组成，第一个部分是一个内存地址，第二个部分对这个内存地址的约束性描述-元数据
@@ -237,7 +239,7 @@ pub(crate) struct PtrComponents<T: ?Sized> {
     pub(crate) metadata: <T as Pointee>::Metadata,
 }
 
-//从下面Pointee的定义可以看到一个RUST的编程技巧，即Trait可以只用来实现对关联类型的指定，Pointee这一Trait即只用来指定Metadata的类型。
+//从下面Pointee的定义可以看到一个Rust的编程技巧，即Trait可以只用来实现对关联类型的指定，Pointee这一Trait即只用来指定Metadata的类型。
 pub trait Pointee {
     /// The type for metadata in pointers and references to `Self`.
     type Metadata: Copy + Send + Sync + Ord + Hash + Unpin;
@@ -246,18 +248,18 @@ pub trait Pointee {
 pub trait Thin = Pointee<Metadata = ()>;
 ```
 元数据的规则:
-* 对于固定大小类型的指针（实现了 `Sized` Trait）, RUST定义为廋指针(thin pointer)，元数据大小为0，类型为(),这里要注意，RUST中数组也是固定大小的类型，运行中对数组下标合法性的检测，就是比较是否已经越过了数组的内存大小。
-* 对于动态大小类型的指针(DST 类型)，RUST定义为胖指针(fat pointer 或 wide pointer), 元数据为：  
+* 对于固定大小类型的指针（实现了 `Sized` `Trait`）, Rust定义为廋指针(thin pointer)，元数据大小为0，类型为(),这里要注意，Rust中数组也是固定大小的类型，运行中对数组下标合法性的检测，就是比较是否已经越过了数组的内存大小。
+* 对于动态大小类型的指针(DST 类型)，Rust定义为胖指针(fat pointer 或 wide pointer), 元数据为：  
     * 对于结构类型，如果最后一个成员是动态大小类型(结构的其他成员不允许为动态大小类型)，则元数据为此动态大小类型  
     的元数据  
     * 对于`str`类型, 元数据是按字节计算的长度值，元数据类型是usize  
     * 对于切片类型，例如`[T]`类型，元数据是数组元素的数目值，元数据类型是usize   
-    * 对于trait对象，例如 dyn SomeTrait， 元数据是 [DynMetadata<Self>][DynMetadata]（后面代码解释）
-    （例如：DynMetadata<dyn SomeTrait>)
-随着RUST的发展，有可能会根据需要引入新的元数据种类。
+    * 对于trait对象，例如 `dyn SomeTrait`， 元数据是 `[DynMetadata<Self>]``[DynMetadata]`（后面代码解释）
+    （例如：`DynMetadata<dyn SomeTrait>`)
+    随着Rust的发展，有可能会根据需要引入新的元数据种类。
 
-在标准库代码当中没有指针类型如何实现Pointee Trait的代码，编译器针对每个类型自动的实现了Pointee。
-如下为rust编译器代码的一个摘录
+在标准库代码当中没有指针类型如何实现`Pointee Trait`的代码，编译器针对每个类型自动的实现了Pointee。
+如下为Rust编译器代码的一个摘录
 ```rust
     pub fn ptr_metadata_ty(&'tcx self, tcx: TyCtxt<'tcx>) -> Ty<'tcx> {
         // FIXME: should this normalize?
@@ -307,8 +309,8 @@ pub trait Thin = Pointee<Metadata = ()>;
         }
     }
 ```
-以上代码中的中文注释比较清晰的说明了编译器对每一个类型（或类型指针）都实现了Pointee中元数据类型的获取。
-对于Trait对象的元数据的具体结构定义见如下代码：
+以上代码中的中文注释比较清晰的说明了编译器对每一个类型（或类型指针）都实现了`Pointee`中元数据类型的获取。
+对于`Trait`对象的元数据的具体结构定义见如下代码：
 ```rust
 //dyn Trait裸指针的元数据结构
 pub struct DynMetadata<Dyn: ?Sized> {
@@ -331,28 +333,28 @@ struct VTable {
 }
 ```
 
-元数据类型相同的裸指针可以任意的转换，例如：可以有 * const [usize; 3] as * const[usize; 5] 这种语句
-元数据类型不同的裸指针之间不能转换，例如；* const [usize;3] as *const[usize] 这种语句无法通过编译器 
+元数据类型相同的裸指针可以任意的转换，例如：可以有 `* const [usize; 3] as * const[usize; 5] `这种语句
+元数据类型不同的裸指针之间不能转换，例如；`* const [usize;3] as *const[usize] `这种语句无法通过编译器 
 
 ### 裸指针的操作函数——intrinsic模块内存相关固有函数
-intrinsics模块中的函数由编译器内置实现，并提供给其他模块使用。固有函数不提供代码，所以对其主要是了解功能和如何使用，intrinsics模块的内存函数一般不由库以外的代码直接调用，而是由mem模块和ptr模块封装后再提供给其他模块。 
+`intrinsics`模块中的函数由编译器内置实现，并提供给其他模块使用。固有函数不提供代码，所以对其主要是了解功能和如何使用，`intrinsics`模块的内存函数一般不由库以外的代码直接调用，而是由`mem`模块和`ptr`模块封装后再提供给其他模块。 
 
 内存申请及释放函数：
-`intrinsics::drop_in_place<T:Sized?>(to_drop: * mut T)` 在某些情况下，我们会主动的将变量设置成不允许编译器自动调用变量的drop函数， 此时如果仍然需要对变量调用drop，则在代码中显示调用此函数以出发对T类型的drop调用。  
-`intrinsics::forget<T:Sized?> (_:T)`, 代码中调用这个函数后，编译器不对forget的变量自动调用变量的drop函数。 
-`intrinsics::needs_drop<T>()->bool`, 判断T类型是否需要做drop操作，实现了Copy Trait的类型会返回false  
+`intrinsics::drop_in_place<T:Sized?>(to_drop: * mut T)` 在某些情况下，我们会主动的将变量设置成不允许编译器自动调用变量的`drop`函数， 此时如果仍然需要对变量调用drop，则在代码中显示调用此函数以出发对T类型的drop调用。  
+`intrinsics::forget<T:Sized?> (_:T)`, 代码中调用这个函数后，编译器不对`forget`的变量自动调用变量的`drop`函数。 
+`intrinsics::needs_drop<T>()->bool`, 判断T类型是否需要做`drop`操作，实现了`Copy Trait`的类型会返回`false`  
 
 类型转换：
-`intrinsics::transmute<T,U>(e:T)->U`, 对于内存布局相同的类型 T和U, 完成将类型T变量转换为类型U变量，此时T的所有权将转换为U的所有权   
+`intrinsics::transmute<T,U>(e:T)->U`, 对于内存布局相同的类型 `T`和`U`, 完成将类型T变量转换为类型`U`变量，此时`T`的所有权将转换为`U`的所有权   
 
 指针偏移函数:
 `intrinsics::offset<T>(dst: *const T, offset: usize)->* const T`, 相当于C的类型指针加计算   
 `intrinsics::ptr_offset_from<T>(ptr: *const T, base: *const T) -> isize` 基于类型T内存布局的两个裸指针之间的偏移量  
 
 内存块内容修改函数:
-`intrinsics::copy<T>(src:*const T, dst: *mut T, count:usize)`, 内存拷贝， src和dst内存可重叠， 类似c语言中的memmove, 此时dst原有内存如果已经初始化，则会出现内存泄漏。src的所有权实际会被复制，从而也造成重复drop问题。    
-`intrinsics::copy_no_overlapping<T>(src:*const T, dst: * mut T, count:usize)`, 内存拷贝， src和dst内存不重叠   
-`intrinsics::write_bytes(dst: *mut T, val:u8, count:usize)` , C语言的memset的RUST实现, 此时，原内存如果已经初始化，则原内存的变量可能造成内存泄漏，且因为编译器会继续对dst的内存块做drop调用，有可能会UB。  
+`intrinsics::copy<T>(src:*const T, dst: *mut T, count:usize)`, 内存拷贝， `src`和`dst`内存可重叠， 类似c语言中的`memmove`, 此时`dst`原有内存如果已经初始化，则会出现内存泄漏。`src`的所有权实际会被复制，从而也造成重复drop问题。    
+`intrinsics::copy_no_overlapping<T>(src:*const T, dst: * mut T, count:usize)`, 内存拷贝， `src`和`dst`内存不重叠   
+`intrinsics::write_bytes(dst: *mut T, val:u8, count:usize)` , C语言的`memset`的Rust实现, 此时，原内存如果已经初始化，则原内存的变量可能造成内存泄漏，且因为编译器会继续对`dst`的内存块做`drop`调用，有可能会UB。  
 
 类型内存参数函数：
 `intrinsics::size_of<T>()->usize` 类型内存空间字节大小  
@@ -372,11 +374,11 @@ intrinsics模块中的函数由编译器内置实现，并提供给其他模块�
 
 内存比较函数：
 `intrinsics::raw_eq<T>(a: &T, b: &T) -> bool` 内存比较，类似C语言memcmp  
-`pub fn ptr_guaranteed_eq<T>(ptr: *const T, other: *const T) -> bool` 判断两个指针是否判断, 相等返回ture, 不等返回false  
-`pub fn ptr_guaranteed_ne<T>(ptr: *const T, other: *const T) -> bool` 判断两个指针是否不等，不等返回true  
+`pub fn ptr_guaranteed_eq<T>(ptr: *const T, other: *const T) -> bool` 判断两个指针是否判断, 相等返回`ture`, 不等返回`false` 
+`pub fn ptr_guaranteed_ne<T>(ptr: *const T, other: *const T) -> bool` 判断两个指针是否不等，不等返回`true`
 
 ### 裸指针方法
-RUST针对`*const T/*mut T`的类型实现了若干方法，能够对语言的原生类型实现方法，并能够扩展，这个是在其他语言中少见的：
+Rust针对`*const T/*mut T`的类型实现了若干方法，能够对语言的原生类型实现方法，并能够扩展，这个是在其他语言中少见的：
 ```rust
 impl <T:?Sized> * const T {
     ...
@@ -391,12 +393,12 @@ impl <T> *mut [T] {
     ...
 }
 ```
-对于裸指针，RUST 将之分为最基础的 `* const T/* mut T`， 以及在`* const T/*mut T` 基础上特化的切片类型[T]的裸指针`* const [T]/*mut [T]`, 可以认为 `* const[T]`是`* const T`的子类，当然，RUST不使用这个定义。
+对于裸指针，Rust 将之分为最基础的 `* const T/* mut T`， 以及在`* const T/*mut T` 基础上特化的切片类型[T]的裸指针`* const [T]/*mut [T]`, 可以认为 `* const[T]`是`* const T`的子类，当然，Rust不使用这个定义。
 标准库针对这两种类型实现了一些关联函数及方法。这里一定注意，所有针对 `* const T`的方法在`* const [T]`上都是适用的。
 
 以上有几点值得注意：
-1. 可以针对原生类型实现方法(实现Trait)，这体现了RUST类型系统的强大扩展性，也是对函数式编程的强大支持
-2. 针对泛型约束实现方法，我们可以大致认为`*const T/* mut T`实质是一种泛型约束，`*const [T]/*mut [T]`是更进一步的约束，这使得RUST可以具备更好的数据抽象能力，简化代码，复用模块。
+1. 可以针对原生类型实现方法(实现`Trait`)，这体现了Rust类型系统的强大扩展性，也是对函数式编程的强大支持
+2. 针对泛型约束实现方法，我们可以大致认为`*const T/* mut T`实质是一种泛型约束，`*const [T]/*mut [T]`是更进一步的约束，这使得Rust可以具备更好的数据抽象能力，简化代码，复用模块。
 
 #### 裸指针的创建
 直接从已经初始化的变量创建裸指针：
@@ -413,16 +415,16 @@ impl <T> *mut [T] {
 ```
 操作系统内核经常需要直接将一个地址数值转换为某一类型的裸指针
 
-RUST也提供了一些其他的裸指针创建关联函数：
-`ptr::null<T>() -> *const T` 创建一个0值的`*const T`，实际上就是 `0 as *const T`，用null()函数明显更符合程序员的习惯  
+Rust也提供了一些其他的裸指针创建关联函数：
+`ptr::null<T>() -> *const T` 创建一个0值的`*const T`，实际上就是 `0 as *const T`，用`null()`函数明显更符合程序员的习惯  
 `ptr::null_mut<T>()->*mut T` 除了类型以外，其他同上  
 `ptr::from_raw_parts<T: ?Sized>(data_address: *const (), metadata: <T as Pointee>::Metadata) -> *const T` 从内存地址和元数据创建裸指针  
 `ptr::from_raw_parts_mut<T: ?Sized>(data_address: *mut (), metadata: <T as Pointee>::Metadata) -> *mut T` 功能同上，创建可变裸指针   
-RUST裸指针类型转换时，经常使用以上两个函数获得需要的指针类型。
+Rust裸指针类型转换时，经常使用以上两个函数获得需要的指针类型。
 
 切片类型的裸指针创建函数如下：
 `ptr::slice_from_raw_parts<T>(data: *const T, len: usize) -> *const [T] `  
-`ptr::slice_from_raw_parts_mut<T>(data: *mut T, len: usize) -> *mut [T]` 由裸指针类型及切片长度获得切片类型裸指针，调用代码应保证data事实上就是切片的裸指针地址。由类型裸指针转换为切片类型裸指针最突出的应用之一是内存申请，申请的内存返回 * const u8的指针，这个裸指针是没有包含内存大小的，只有头地址，因此需要将这个指针转换为 * const [u8]，将申请的内存大小包含入裸指针结构体中。 
+`ptr::slice_from_raw_parts_mut<T>(data: *mut T, len: usize) -> *mut [T]` 由裸指针类型及切片长度获得切片类型裸指针，调用代码应保证data事实上就是切片的裸指针地址。由类型裸指针转换为切片类型裸指针最突出的应用之一是内存申请，申请的内存返回 `* const u8`的指针，这个裸指针是没有包含内存大小的，只有头地址，因此需要将这个指针转换为 `* const [u8]`，将申请的内存大小包含入裸指针结构体中。 
 slice_from_raw_parts代码如下： 
 ```rust
 pub const fn slice_from_raw_parts<T>(data: *const T, len: usize) -> *const [T] {
@@ -440,21 +442,21 @@ pub const fn from_raw_parts<T: ?Sized>(
 ```
 
 #### 不属于方法的裸指针函数
-`ptr::drop_in_place<T: ?Sized>(to_drop: *mut T)` 此函数是编译器实现的，用于不需要RUST自动drop时，由程序代码调用以释放内存  
+`ptr::drop_in_place<T: ?Sized>(to_drop: *mut T)` 此函数是编译器实现的，用于不需要Rust自动drop时，由程序代码调用以释放内存  
 `ptr::metadata<T: ?Sized>(ptr: *const T) -> <T as Pointee>::Metadata `用来返回裸指针的元数据  
 `ptr::eq<T>(a: *const T, b: *const T)->bool` 比较指针，此处需要注意，地址比较不但是地址，也比较元数据
-ptr模块的函数大部分逻辑都比较简单。很多就是对intrinsic 函数做调用。
+ptr模块的函数大部分逻辑都比较简单。很多就是对`intrinsic` 函数做调用。
 
 #### 裸指针类型转换方法
 裸指针类型之间的转换：
-`*const T::cast<U>(self) -> *const U ` ，本质上就是一个`*const T as *const U`。利用RUST的类型推断，此函数可以简化代码并支持链式调用。 
+`*const T::cast<U>(self) -> *const U ` ，本质上就是一个`*const T as *const U`。利用Rust的类型推断，此函数可以简化代码并支持链式调用。 
 `*mut T::cast<U>(self)->*mut U` 同上。
 调用以上的函数要注意，如果后继要把返回的指针转换成引用，那必须保证T类型与U类型内存布局完全一致。如果仅仅是将返回值做数值应用，则此约束可以不遵守，cast函数转换后的类型通常由编译器自行推断，有时需要仔细分析。  
 
 裸指针与引用之间的类型转换：
-```*const T::as_ref<`a>(self) -> Option<&`a T>``` 将裸指针转换为引用，因为*const T可能为零，所有需要转换为``Option<& `a T>``类型，转换的安全性由程序员保证，尤其注意满足RUST对引用的安全要求。这里要注意，转换后的生命周期实际上与原指针指向变量的生命周期相独立。因此，生命周期的正确性将由程序员保证。  
+```*const T::as_ref<`a>(self) -> Option<&`a T>``` 将裸指针转换为引用，因为*const T可能为零，所有需要转换为``Option<& `a T>``类型，转换的安全性由程序员保证，尤其注意满足Rust对引用的安全要求。这里要注意，转换后的生命周期实际上与原指针指向变量的生命周期相独立。因此，生命周期的正确性将由程序员保证。  
 ```*mut T::as_ref<`a>(self)->Option<&`a T>```   同上
-```*mut T::as_mut<`a>(self)->Option<&`a mut T>```同上，但转化类型为 &mut T。  
+```*mut T::as_mut<`a>(self)->Option<&`a mut T>```同上，但转化类型为 `&mut T`。  
 
 切片类型裸指针类型转换：
 `ptr::*const [T]::as_ptr(self) -> *const T` 将切片类型的裸指针转换为切片成员类型的裸指针， 这个转换会导致指针的元数据丢失  
@@ -472,11 +474,11 @@ ptr模块的函数大部分逻辑都比较简单。很多就是对intrinsic 函�
 
 #### 裸指针偏移计算相关方法
 `ptr::*const T::offset(self, count:isize)->* const T` 得到偏移后的裸指针  
-`ptr::*const T::wrapping_offset(self, count: isize) -> *const T` 考虑溢出绕回的offset  
-`ptr::*const T::offset_from(self, origin: *const T) -> isize` 计算两个裸指针的offset值  
+`ptr::*const T::wrapping_offset(self, count: isize) -> *const T` 考虑溢出绕回的`offset`  
+`ptr::*const T::offset_from(self, origin: *const T) -> isize` 计算两个裸指针的`offset`值  
 `ptr::*mut T::offset(self, count:isize)->* mut T` 偏移后的裸指针  
-`ptr::*const T::wrapping_offset(self, count: isize) -> *const T` 考虑溢出绕回的offset  
-`ptr::*const T::offset_from(self, origin: *const T) -> isize` 计算两个裸指针的offset值  
+`ptr::*const T::wrapping_offset(self, count: isize) -> *const T` 考虑溢出绕回的`offset` 
+`ptr::*const T::offset_from(self, origin: *const T) -> isize` 计算两个裸指针的`offset`值  
 以上两个方法基本上通过intrinsic的函数实现
 
 `ptr::*const T::add(self, count: usize) -> Self`   
@@ -506,9 +508,9 @@ ptr模块的函数大部分逻辑都比较简单。很多就是对intrinsic 函�
 本节还有一部分裸指针方法没有介绍，留到mem模块分析完以后再介绍会更易于理解。 
 
 ### 裸指针小结
-裸指针相关的代码多数比较简单，重要的是理解裸指针的概念，理解intrinsic 相关函数，这样才能够准确的理解代码。
+裸指针相关的代码多数比较简单，重要的是理解裸指针的概念，理解`intrinsic` 相关函数，这样才能够准确的理解代码。
 
-#### RUST引用`&T`的安全要求
+#### Rust引用`&T`的安全要求
 1. 引用的内存地址必须满足类型T的内存对齐要求
 2. 引用的内存内容必须是初始化过的
 举例：
@@ -522,17 +524,17 @@ ptr模块的函数大部分逻辑都比较简单。很多就是对intrinsic 函�
     }
  ```
 
-## MaybeUninit<T>标准库代码分析
-RUST对于变量的要求是必须初始化后才能使用，否则就会编译告警。但在程序中，总有内存还未初始化，但需要使用的情况：
+## `MaybeUninit<T>`标准库代码分析
+Rust对于变量的要求是必须初始化后才能使用，否则就会编译告警。但在程序中，总有内存还未初始化，但需要使用的情况：
 1. 从堆申请的内存块，这些内存块都是没有初始化的
 2. 需要定义一个新的泛型变量时，并且不合适用转移所有权进行赋值时
 3. 需要定义一个新的变量，但希望不初始化便能使用其引用时
 4. 定义一个数组，但必须在后继代码对数组成员初始化时
 5. ...
 
-为了处理这种需要在代码中使用未初始化内存的情况，RUST标准库定义了MaybeUninit<T>
+为了处理这种需要在代码中使用未初始化内存的情况，Rust标准库定义了`MaybeUninit<T>`
 
-### MaybeUninit<T>结构定义
+### `MaybeUninit<T>`结构定义
 源代码如下：
 ```rust
     #[repr(transparent)] 
@@ -542,12 +544,12 @@ RUST对于变量的要求是必须初始化后才能使用，否则就会编译�
     }
 ```
 属性`repr(transparent)`实际上表示外部的封装结构在内存中等价于内部的变量,
-MaybeUninit的内存布局就是`ManuallyDrop<T>`的内存布局，从后文可以看到，`ManuallyDrop<T>`实际就是T的内存布局。所以MaybeUninit在内存中实质也就是T类型。
-RUST的引用使用的内存块必须保证内存对齐及赋以初始值，未初始化的内存块和清零的内存块都不能满足引用的条件。但堆内存申请后都是未初始化的，且在程序中某些情况下也需要先将内存设置为未初始化，尤其在处理泛型时。因此，RUST提供了MaybeUninit<T>容器来实现对未初始化变量的封装，以便在不引发编译错误完成对T类型未初始化变量的相关操作.
-如果T类型的变量未初始化，那需要显式的提醒编译器不做T类型的drop操作，因为drop操作可能会对T类型内部的变量做处理，从而引用未初始化的内容，造成UB。实际上，未初始化的内存不必做drop。
-RUST用ManuallyDrop<T>封装结构完成了对编译器的显示提示，对于用ManuallyDrop<T>封装的变量，生命周期终止的时候编译器不会调用drop操作。
+`MaybeUninit`的内存布局就是`ManuallyDrop<T>`的内存布局，从后文可以看到，`ManuallyDrop<T>`实际就是T的内存布局。所以`MaybeUninit`在内存中实质也就是T类型。
+Rust的引用使用的内存块必须保证内存对齐及赋以初始值，未初始化的内存块和清零的内存块都不能满足引用的条件。但堆内存申请后都是未初始化的，且在程序中某些情况下也需要先将内存设置为未初始化，尤其在处理泛型时。因此，Rust提供了`MaybeUninit<T>`容器来实现对未初始化变量的封装，以便在不引发编译错误完成对T类型未初始化变量的相关操作.
+如果T类型的变量未初始化，那需要显式的提醒编译器不做T类型的`drop`操作，因为`drop`操作可能会对T类型内部的变量做处理，从而引用未初始化的内容，造成UB。实际上，未初始化的内存不必做`drop`。
+Rust用`ManuallyDrop<T>`封装结构完成了对编译器的显示提示，对于用`ManuallyDrop<T>`封装的变量，生命周期终止的时候编译器不会调用`drop`操作。
 
-### ManuallyDrop<T> 结构及方法
+### `ManuallyDrop<T>` 结构及方法
 源代码如下：
 ```rust
 #[repr(transparent)]
@@ -555,17 +557,17 @@ pub struct ManuallyDrop<T: ?Sized> {
     value: T,
 }
 ```
-一个变量被ManuallyDrop获取所有权后，RUST编译器将不再对其自动调用drop操作。因此如果封装入ManuallyDrop的变量实际上需要drop，那必须将ManuallyDrop的变量的所有权在后继转移出去。因为对于模块外的代码，value是私有的，所以必须调用方法才能将value的所有权转移出去。
+一个变量被`ManuallyDrop`获取所有权后，Rust编译器将不再对其自动调用drop操作。因此如果封装入`ManuallyDrop`的变量实际上需要`drop`，那必须将`ManuallyDrop`的变量的所有权在后继转移出去。因为对于模块外的代码，`value`是私有的，所以必须调用方法才能将value的所有权转移出去。
 
 重点关注的一些方法： 
-`ManuallyDrop<T>::new（val:T) -> ManuallyDrop<T>`, 此函数返回ManuallyDrop变量拥有传入的T类型变量所有权，并将此块内存直接用ManuallyDrop封装, 对于val，编译器不再主动做drop操作。 
+`ManuallyDrop<T>::new（val:T) -> ManuallyDrop<T>`, 此函数返回`ManuallyDrop`变量拥有传入的T类型变量所有权，并将此块内存直接用`ManuallyDrop`封装, 对于`val`，编译器不再主动做`drop`操作。 
 ```rust
     pub const fn new(value: T) -> ManuallyDrop<T> {
         //所有权转移到结构体内部，value生命周期结束时不会引发drop
         ManuallyDrop { value }
     }
-```  
-`ManuallyDrop<T>::into_inner(slot: ManuallyDrop<T>)->T`, 将封装的T类型变量所有权转移出来，转移出来的变量生命周期终止时，编译器会自动调用类型的drop。  
+```
+`ManuallyDrop<T>::into_inner(slot: ManuallyDrop<T>)->T`, 将封装的T类型变量所有权转移出来，转移出来的变量生命周期终止时，编译器会自动调用类型的`drop`。  
 ```rust
     pub const fn into_inner(slot: ManuallyDrop<T>) -> T {
         //将value解封装，所有权转移到返回值中，编译器重新对所有权做处理
@@ -573,7 +575,7 @@ pub struct ManuallyDrop<T: ?Sized> {
     }
 ```
 
-`ManuallyDrop<T>::drop(slot: &mut ManuallyDrop<T>)`，drop掉内部变量，封装入ManuallyDrop<T>的变量一定是在程序运行的某一时期不需要编译器drop，所以调用这个函数的时候一定要注意正确性。 
+`ManuallyDrop<T>::drop(slot: &mut ManuallyDrop<T>)`，`drop`掉内部变量，封装入`ManuallyDrop<T>`的变量一定是在程序运行的某一时期不需要编译器`drop`，所以调用这个函数的时候一定要注意正确性。 
 `ManuallyDrop<T>::deref(&self)-> & T`, 返回内部包装的变量的引用 
 ```rust
     fn deref(&self) -> &T {
@@ -581,7 +583,7 @@ pub struct ManuallyDrop<T: ?Sized> {
         &self.value
     }
 ```
-`ManuallyDrop<T>::deref_mut(&mut self)-> & mut T`返回内部包装的变量的可变引用，调用代码可以利用可变引用对内部变量赋值，但不改变drop机制  
+`ManuallyDrop<T>::deref_mut(&mut self)-> & mut T`返回内部包装的变量的可变引用，调用代码可以利用可变引用对内部变量赋值，但不改变`drop`机制  
 
 ManuallyDrop代码举例：
 ```rust
@@ -592,8 +594,8 @@ ManuallyDrop代码举例：
     // 但对x的drop不会再发生
 ```
 
-#### MaybeUninit<T> 创建方法
-`MaybeUninit<T>::uninit()->MaybeUninit<T>`, 可视为在栈空间上申请内存的方法，申请的内存大小是T类型的内存大小，该内存没有初始化。利用泛型和Union内存布局，RUST巧妙的利用此函数在栈上申请一块未初始化内存。此函数非常非常非常值得关注，在需要在栈空间定义一个未初始化泛型时，应第一时间想到MaybeUninit::<T>::uninit()。
+#### `MaybeUninit<T>` 创建方法
+`MaybeUninit<T>::uninit()->MaybeUninit<T>`, 可视为在栈空间上申请内存的方法，申请的内存大小是T类型的内存大小，该内存没有初始化。利用泛型和`Union`内存布局，Rust巧妙的利用此函数在栈上申请一块未初始化内存。此函数非常非常非常值得关注，在需要在栈空间定义一个未初始化泛型时，应第一时间想到`MaybeUninit::<T>::uninit()`。
 ```rust
     pub const fn uninit() -> MaybeUninit<T> {
         //变量内存布局与T类型完全一致
@@ -601,7 +603,7 @@ ManuallyDrop代码举例：
     }
 ```
 
-`MaybeUninit<T>::new(val:T)->MaybeUninit<T>`, 内部用ManuallyDrop封装了val, 然后用MaybeUninit封装ManuallyDrop。因为如果T没有初始化过，调用这个函数会编译失败，所以此时内存实际上已经初始化过了。调用此函数要额外注意val的drop必须在后继有交代。
+`MaybeUninit<T>::new(val:T)->MaybeUninit<T>`, 内部用`ManuallyDrop`封装了`val`, 然后用`MaybeUninit`封装`ManuallyDrop`。因为如果T没有初始化过，调用这个函数会编译失败，所以此时内存实际上已经初始化过了。调用此函数要额外注意`val`的`drop`必须在后继有交代。
 ```rust
     pub const fn new(val: T) -> MaybeUninit<T> {
         //val这个时候是初始化过的。
@@ -622,8 +624,8 @@ ManuallyDrop代码举例：
     }
 ```
 #### 对未初始化的变量赋值的方法
-将值写入MaybeUninit<T>
-`MaybeUninit<T>::write(val)->&mut T`, 这个函数是在未初始化时使用，如果已经调用过write，且不希望解封，那后继的赋值使用返回的&mut T。代码如下： 
+将值写入`MaybeUninit<T>`
+`MaybeUninit<T>::write(val)->&mut T`, 这个函数是在未初始化时使用，如果已经调用过`write`，且不希望解封，那后继的赋值使用返回的`&mut T`。代码如下： 
 ```rust
     pub const fn write(&mut self, val: T) -> &mut T {
         //下面这个赋值，会导致原*self的MaybeUninit<T>的变量生命周期截止，会调用drop。但不会对内部的T类型变量做drop调用。所以如果*self内部的T类型变量已经被初始化且需要做drop，那会造成内存泄漏。所以下面这个等式实际上隐含了self内部的T类型变量必须是未初始化的或者T类型变量不需要drop。
@@ -633,7 +635,7 @@ ManuallyDrop代码举例：
     }
 ```
 #### 初始化后解封装的方法
-用assume_init返回初始化后的变量并消费掉MaybeUninit<T>变量，这是最标准的做法：
+用`assume_init`返回初始化后的变量并消费掉`MaybeUninit<T>`变量，这是最标准的做法：
 `MaybeUninit<T>::assume_init()->T`,代码如下：
 ```rust
     pub const unsafe fn assume_init(self) -> T {
@@ -645,7 +647,7 @@ ManuallyDrop代码举例：
         }
     }
 ```
-assume_init_read是不消费self的情况下获得内部T变量，内部T变量的所有权已经转移到返回变量，后继要注意不能再次调用其他解封装函数，否则会出现双份所有权，导致UB
+`assume_init_read`是不消费`self`的情况下获得内部T变量，内部T变量的所有权已经转移到返回变量，后继要注意不能再次调用其他解封装函数，否则会出现双份所有权，导致UB
 ```rust
     pub const unsafe fn assume_init_read(&self) -> T {
         
@@ -657,7 +659,7 @@ assume_init_read是不消费self的情况下获得内部T变量，内部T变量�
     }
     //此函即ptr::read, 会复制一个变量，此时注意，实际上src指向的变量的所有权已经转移给了返回变量，
     //所以调用此函数的前提是src后继一定不能调用T类型的drop函数，例如src本身处于ManallyDrop，或后继对src调用forget，或给src绑定新变量。
-    //在RUST中，不支持 let xxx = *(&T) 这种转移所有权的方式，因此对于只有指针输入，又要转移所有权的，智能利用浅拷贝进行粗暴转移。
+    //在Rust中，不支持 let xxx = *(&T) 这种转移所有权的方式，因此对于只有指针输入，又要转移所有权的，智能利用浅拷贝进行粗暴转移。
     pub const unsafe fn read<T>(src: *const T) -> T {` 
         //利用MaybeUninit::uninit申请未初始化的T类型内存
         let mut tmp = MaybeUninit::<T>::uninit();
@@ -669,7 +671,7 @@ assume_init_read是不消费self的情况下获得内部T变量，内部T变量�
         }
     }
 ```
-与上个函数比较类似的ManuallyDrop<T>::take方法，用take函数将变量复制并获得变量的所有权。此时原变量仍然保留在ManuallyDrop中，后继不能再调用其他解封装函数，否则可能会出现UB。这里要特别注意理解take已经把变量的所有权转移到返回变量中。  
+与上个函数比较类似的`ManuallyDrop<T>::take`方法，用`take`函数将变量复制并获得变量的所有权。此时原变量仍然保留在`ManuallyDrop`中，后继不能再调用其他解封装函数，否则可能会出现UB。这里要特别注意理解`take`已经把变量的所有权转移到返回变量中。  
 ```rust
     pub unsafe fn take(slot: &mut ManuallyDrop<T>) -> T {
         // 拷贝内部变量，并返回内部变量的所有权
@@ -679,19 +681,19 @@ assume_init_read是不消费self的情况下获得内部T变量，内部T变量�
     }
 
 ```
-`MaybeUninit<T>::assume_init_drop(&self)` 对于已经初始化过的MaybeUninit<T>， 如果不做他用，必须调用此函数以触发T类型的drop函数。  
-`MaybeUninit<T>::assume_init_ref(&self)->&T` 返回内部T类型变量的借用，调用者应保证内部T类型变量已经初始化，返回值按照一个普通的引用使用。应注意返回值的生命周期应该小于self的生命周期
-`MaybeUninit<T>::assume_init_mut(&mut self)->&mut T`返回内部T类型变量的可变借用，调用者应保证内部T类型变量已经初始化，返回值按照一个普通的可变引用使用。应注意返回值的生命周期应该小于self的生命周期  
+`MaybeUninit<T>::assume_init_drop(&self)` 对于已经初始化过的`MaybeUninit<T>`， 如果不做他用，必须调用此函数以触发T类型的`drop`函数。  
+`MaybeUninit<T>::assume_init_ref(&self)->&T` 返回内部T类型变量的借用，调用者应保证内部T类型变量已经初始化，返回值按照一个普通的引用使用。应注意返回值的生命周期应该小于`self`的生命周期
+`MaybeUninit<T>::assume_init_mut(&mut self)->&mut T`返回内部T类型变量的可变借用，调用者应保证内部T类型变量已经初始化，返回值按照一个普通的可变引用使用。应注意返回值的生命周期应该小于`self`的生命周期  
 
-#### MaybeUninit<[T]>的方法
-创建一个MaybeUninit的未初始化数组：
-`MaybeUninit<T>::uninit_array<const LEN:usize>()->[Self; LEN]` 此处对LEN的使用方式需要注意，这是不常见的一个泛型写法,这个函数同样的申请了一块内存。代码： 
+#### `MaybeUninit<[T]>`的方法
+创建一个`MaybeUninit`的未初始化数组：
+`MaybeUninit<T>::uninit_array<const LEN:usize>()->[Self; LEN]` 此处对`LEN`的使用方式需要注意，这是不常见的一个泛型写法,这个函数同样的申请了一块内存。代码： 
 ```rust
     pub const fn uninit_array<const LEN: usize>() -> [Self; LEN] {
         unsafe { MaybeUninit::<[MaybeUninit<T>; LEN]>::uninit().assume_init() }
     }
 ```
-这里要注意区别数组类型和数组元素的初始化。对于数组[MaybeUninit<T>;LEN]这一类型本身来说，初始化就是确定整体的内存大小，所以数组类型的初始化在声明后就已经完成了。这时assume_init()是正确的。这是一个理解上的盲点。 
+这里要注意区别数组类型和数组元素的初始化。对于数组`[MaybeUninit<T>;LEN]`这一类型本身来说，初始化就是确定整体的内存大小，所以数组类型的初始化在声明后就已经完成了。这时`assume_init()`是正确的。这是一个理解上的盲点。 
 
 `MaybeUninit<T>::array_assume_init<const N:usize>(array: [Self; N]) -> [T; N]` 这个函数没有把所有权转移出来，代码分析如下：
 ```rust
@@ -704,7 +706,7 @@ assume_init_read是不消费self的情况下获得内部T变量，内部T变量�
     }
 ```
 
-#### MaybeUnint<T>典型案列
+#### `MaybeUnint<T>`典型案列
 对T类型变量申请内存及赋值：
 ```rust
     use std::mem::MaybeUninit;
@@ -716,7 +718,7 @@ assume_init_read是不消费self的情况下获得内部T变量，内部T变量�
     // 将初始化后的变量解封装供后继的代码使用。
     let x = unsafe { x.assume_init() };
 ```
-以上代码，编译器不会对x.write进行报警，这是MaybeUninit<T>的最重要的应用，这个例子展示了RUST如何给未初始化内存赋值的处理方式。调用assume_init前，必须保证变量已经被正确初始化。
+以上代码，编译器不会对`x.write`进行报警，这是`MaybeUninit<T>`的最重要的应用，这个例子展示了Rust如何给未初始化内存赋值的处理方式。调用`assume_init`前，必须保证变量已经被正确初始化。
 
 更复杂的初始化例子：
 ```rust
@@ -725,7 +727,7 @@ assume_init_read是不消费self的情况下获得内部T变量，内部T变量�
     let data = {
     // data在声明后实际上就已经初始化完毕。
     let mut data: [MaybeUninit<Vec<u32>>; 1000] = unsafe {
-        //这里注意实际调用是MaybeUninit::<[MaybeUninit<Vec<u32>>;1000]>::uninit(), RUST的类型推断机制完成了泛型实例化
+        //这里注意实际调用是MaybeUninit::<[MaybeUninit<Vec<u32>>;1000]>::uninit(), Rust的类型推断机制完成了泛型实例化
         MaybeUninit::uninit().assume_init()
     };
     
@@ -741,7 +743,7 @@ assume_init_read是不消费self的情况下获得内部T变量，内部T变量�
     assert_eq!(&data[0], &[42]);
 ```
 
-下面例子说明一块内存被 MaybeUnint<T>封装后，编译器将不再对其做释放，必须在代码中显式释放：
+下面例子说明一块内存被 `MaybeUnint<T>`封装后，编译器将不再对其做释放，必须在代码中显式释放：
 ```rust
     use std::mem::MaybeUninit;
     use std::ptr;
@@ -760,15 +762,15 @@ assume_init_read是不消费self的情况下获得内部T变量，内部T变量�
         unsafe { ptr::drop_in_place(elem.as_mut_ptr()); }
     }
 ```
-上例中，在没有assume_init()调用的情况下，必须手工调用drop_in_place释放内存。
-MaybeUninit<T>是一个非常重要的类型结构，未初始化内存是编程中不可避免要遇到的情况，MaybeUninit<T>也就是RUST编程中必须熟练使用的一个类型。
+上例中，在没有`assume_init()`调用的情况下，必须手工调用`drop_in_place`释放内存。
+`MaybeUninit<T>`是一个非常重要的类型结构，未初始化内存是编程中不可避免要遇到的情况，`MaybeUninit<T>`也就是Rust编程中必须熟练使用的一个类型。
 
 ## 裸指针模块再分析
-有了MaybeUnint<T>做基础后，可以对裸指针其他至关重要的标准库函数做出分析
+有了`MaybeUnint<T>`做基础后，可以对裸指针其他至关重要的标准库函数做出分析
 
-`ptr::read<T>(src: *const T) -> T` 此函数在MaybeUninit<T>节中已经给出了代码，ptr::read是对所有类型通用的一种复制方法，需要指出，此函数完成浅拷贝，复制后，src指向的变量的所有权会转移至返回值。所以，调用此函数的代码必须保证src指向的变量生命周期结束后不会被编译器自动调用drop，否则可能导致重复drop，出现UB问题。  
+`ptr::read<T>(src: *const T) -> T` 此函数在`MaybeUninit<T>`节中已经给出了代码，`ptr::read`是对所有类型通用的一种复制方法，需要指出，此函数完成浅拷贝，复制后，`src`指向的变量的所有权会转移至返回值。所以，调用此函数的代码必须保证`src`指向的变量生命周期结束后不会被编译器自动调用`drop`，否则可能导致重复`drop`，出现UB问题。  
 
-`ptr::read_unaligned<T>(src: *const T) -> T`当数据结构中有未内存对齐的成员变量时，需要用此函数读取内容并转化为内存对齐的变量。否则会引发UB(undefined behaiver) 如下例： 
+`ptr::read_unaligned<T>(src: *const T) -> T`当数据结构中有未内存对齐的成员变量时，需要用此函数读取内容并转化为内存对齐的变量。否则会引发`UB(undefined behaiver)` 如下例： 
 
 /// 从字节数组中读一个usize的值:
  ```rust
@@ -781,7 +783,7 @@ MaybeUninit<T>是一个非常重要的类型结构，未初始化内存是编程
         //此处必须用ptr::read_unaligned，因为不确定字节是否对齐
         unsafe { ptr.read_unaligned() }
     }
-```
+ ```
 例子中，为了从byte串中读取一个usize，需要用read_unaligned来获取值，不能象C语言那样通过指针类型转换直接获取值。
 
 `ptr::write<T>(dst: *mut T, src: T)` 代码如下：
@@ -795,10 +797,10 @@ pub const unsafe fn write<T>(dst: *mut T, src: T) {
     }
 }
 ```
-write函数本质上就是一个所有权转移的操作。完成src到dst的浅拷贝，然后调用了forget(src), 这使得src的Drop不再被调用。从而将所有权转移到dst。此函数是mem::replace， mem::transmute_copy的基础。底层由intrisic:: copy_no_overlapping支持。 
+write函数本质上就是一个所有权转移的操作。完成src到dst的浅拷贝，然后调用了`forget(src)`, 这使得`src`的`Drop`不再被调用。从而将所有权转移到`dst`。此函数是`mem::replace`， `mem::transmute_copy`的基础。底层由`intrisic::copy_no_overlapping`支持。 
 这个函数中，如果dst已经初始化过，那原dst变量的所有权将被丢失掉，有可能引发内存泄漏。 
 
-`ptr::write_unaligned<T>(dst: *mut T, src: T)` 与read_unaligned相对应。举例如下：
+`ptr::write_unaligned<T>(dst: *mut T, src: T)` 与`read_unaligned`相对应。举例如下：
 ```rust
     #[repr(packed, C)]
     struct Packed {
@@ -817,13 +819,13 @@ write函数本质上就是一个所有权转移的操作。完成src到dst的浅
     
      assert_eq!({packed.unaligned}, 42); // `{...}` forces copying the field instead of creating a reference.
 ```
-`ptr::read_volatile<T>(src: *const T) -> T`  是intrinsics::volatile_load的封装  
-`ptr::write_volatile<T>(dst: *mut T, src:T)` 是intrinsics::volatiel_store的封装  
+`ptr::read_volatile<T>(src: *const T) -> T`  是`intrinsics::volatile_load`的封装  
+`ptr::write_volatile<T>(dst: *mut T, src:T)` 是`intrinsics::volatiel_store`的封装  
 
-`ptr::macro addr_of($place:expr)` 因为用&获得引用必须是字节按照2的幂次对齐的地址，所以用这个宏获取非地址对齐的变量地址  
+`ptr::macro addr_of($place:expr)` 因为用`&`获得引用必须是字节按照2的幂次对齐的地址，所以用这个宏获取非地址对齐的变量地址  
 ```rust
 pub macro addr_of($place:expr) {
-    //关键字是&raw const，这个是RUST的原始引用语义，但目前还没有在官方做公开。
+    //关键字是&raw const，这个是Rust的原始引用语义，但目前还没有在官方做公开。
     //区别与&, &要求地址必须满足字节对齐和初始化，&raw 则没有这个问题
     &raw const $place
 }
@@ -834,9 +836,9 @@ pub macro addr_of_mut($place:expr) {
     &raw mut $place
 }
 ```
-指针的通用函数请参考[Rust库函数参考](https://doc.rust-lang.org/core/ptr/index.html#functions)
+指针的通用函数请参考[Rust库函数参考](https://doc.Rust-lang.org/core/ptr/index.html#functions)
 
-## NonNull<T> 代码分析
+## `NonNull<T>` 代码分析
 结构体定义如下：
 ```rust
 #[repr(transparent)]
@@ -845,15 +847,15 @@ pub struct NonNull<T: ?Sized> {
 }
 ```
 属性`repr(transparent)`实际上表示外部的封装结构在内存中等价于内部的变量。`NonNull<T>`在内存中与`*const T`完全一致。可以直接转化为`* const T`。
-裸指针的值因为可以为0，如果敞开来用，会有很多无法控制的代码隐患。按照RUST的习惯，标准库定义了非0的指针封装结构NonNull<T>，从而可以用Option<NonNull<T>>来对值可能为0的裸指针做出强制安全代码逻辑。不需要Option的则认为裸指针不会取值为0。
-NonNull<T>本身是协变(covarient)类型.
-*RUST中的协变*，在RUST中，不同的生命周期被视为不同的类型，对于带有生命周期的类型变量做赋值操作时，仅允许子类型赋给基类型(长周期赋给短周期), 为了从基本类型生成复合类型的子类型和基类型的关系，RUST引入了协变性。从基本类型到复合类型的协变性有 协变(covarient)/逆变(contracovarient)/不变(invarient)三种
+裸指针的值因为可以为0，如果敞开来用，会有很多无法控制的代码隐患。按照Rust的习惯，标准库定义了非0的指针封装结构`NonNull<T>`，从而可以用`Option<NonNull<T>>`来对值可能为0的裸指针做出强制安全代码逻辑。不需要`Option`的则认为裸指针不会取值为0。
+`NonNull<T>`本身是协变(`covarient`)类型.
+*Rust中的协变*，在Rust中，不同的生命周期被视为不同的类型，对于带有生命周期的类型变量做赋值操作时，仅允许子类型赋给基类型(长周期赋给短周期), 为了从基本类型生成复合类型的子类型和基类型的关系，Rust引入了协变性。从基本类型到复合类型的协变性有 协变(`covarient`)/逆变(`contracovarient`)/不变(`invarient`)三种
 程序员分析代码时，可以从基本类型之间的生命周期关系及协变性确定复合类型变量之间的生命周期关系，从而做合适的赋值操作。
 
-因为NonNull<T>实际上是封装`* mut T`类型，但`* mut T` 与NonNull<T>的协变性不同，所以程序员如果不能确定需要协变类型，就不要使用NonNull<T>
+因为`NonNull<T>`实际上是封装`* mut T`类型，但`* mut T` 与`NonNull<T>`的协变性不同，所以程序员如果不能确定需要协变类型，就不要使用`NonNull<T>`
 
-### NonNull<T>创建关联方法
-创建一个悬垂(dangling)指针, 保证指针满足类型内存对齐要求。该指针可能指向一个正常的变量，所以不能认为指向的内存是未初始化的。
+### `NonNull<T>`创建关联方法
+创建一个悬垂(`dangling`)指针, 保证指针满足类型内存对齐要求。该指针可能指向一个正常的变量，所以不能认为指向的内存是未初始化的。
 ```rust
     pub const fn dangling() -> Self {
         unsafe {
@@ -863,7 +865,7 @@ NonNull<T>本身是协变(covarient)类型.
         }
     }
 ```
-new函数，由输入的`*mut T`裸指针创建NonNull<T>。代码如下：
+`new`函数，由输入的`*mut T`裸指针创建`NonNull<T>`。代码如下：
 ```rust
     pub fn new(ptr: *mut T) -> Option<Self> {
         if !ptr.is_null() {
@@ -874,8 +876,8 @@ new函数，由输入的`*mut T`裸指针创建NonNull<T>。代码如下：
         }
     }
 ```
-```NonNull::<T>::new_unchecked(* mut T)->Self``` 用`* mut T`生成NonNull<T>，不检查`* mut T`是否为0，调用者应保证`* mut T`不为0。  
-from_raw_parts函数，类似裸指针的from_raw_parts。  
+```NonNull::<T>::new_unchecked(* mut T)->Self``` 用`* mut T`生成`NonNull<T>`，不检查`* mut T`是否为0，调用者应保证`* mut T`不为0。  
+`from_raw_parts`函数，类似裸指针的`from_raw_parts`。  
 ```rust
     pub const fn from_raw_parts(
         data_address: NonNull<()>,
@@ -887,7 +889,7 @@ from_raw_parts函数，类似裸指针的from_raw_parts。
         }
     }
 ```
-由From Trait创建NonNull<T>
+由`From Trait`创建`NonNull<T>`
 ```rust
 impl<T: ?Sized> const From<&mut T> for NonNull<T> {
     fn from(reference: &mut T) -> Self {
@@ -903,19 +905,19 @@ impl<T: ?Sized> const From<&T> for NonNull<T> {
 }
 ```
 
-### NonNull<T>类型转换方法
-NonNull的方法基本与`*const T/* mut T`相同，也容易理解，下文仅做罗列和简单说明
-`NonNull::<T>::as_ptr(self)->* mut T` 返回内部的pointer 裸指针  
+### `NonNull<T>`类型转换方法
+`NonNull`的方法基本与`*const T/* mut T`相同，也容易理解，下文仅做罗列和简单说明
+`NonNull::<T>::as_ptr(self)->* mut T` 返回内部的`pointer` 裸指针  
 ```NonNull::<T>::as_ref<`a>(&self)->&`a T ``` 返回的引用的生命周期与引用指向的变量生命周期无关，调用者应保证返回的引用的生命周期符合安全性要求
-```NonNull::<T>::as_mut<`a>(&mut self)->&`a mut T``` 与 as_ref类似，但返回可变引用。  
+```NonNull::<T>::as_mut<`a>(&mut self)->&`a mut T``` 与 `as_ref`类似，但返回可变引用。  
 ```NonNull::<T>::cast<U>(self)->NonNull<U>``` 指针类型转换，程序员应该保证T和U的内存布局相同 
 
-### NonNull<[T]> 方法
+### `NonNull<[T]>` 方法
 ```NonNull::<[T]>::slice_from_raw_parts(data: NonNull<T>, len: usize) -> Self``` 将类型指针转化为类型的切片类型指针，实质是`ptr::slice_from_raw_parts`的一种包装。  
-`NonNull::<[T]>::as_non_null_ptr(self) -> NonNull<T>` * const [T]::as_ptr的NonNull版本
+`NonNull::<[T]>::as_non_null_ptr(self) -> NonNull<T>` `* const [T]::as_ptr`的`NonNull`版本
 
-### NonNull<T>的使用实例
-以下的实例展示了 NonNull在动态申请堆内存的使用：
+### `NonNull<T>`的使用实例
+以下的实例展示了 `NonNull`在动态申请堆内存的使用：
 ```rust
     impl Global {
         fn alloc_impl(&self, layout: Layout, zeroed: bool) -> Result<NonNull<[u8]>, AllocError> {
@@ -935,17 +937,17 @@ NonNull的方法基本与`*const T/* mut T`相同，也容易理解，下文仅�
         ....
     }
 ```
-基本上，如果`* const T/*mut T`要跨越函数使用，或作为数据结构体的成员时，应将之转化成NonNull<T> 或Unique T。*const T应该仅仅保持在单一函数内。
+基本上，如果`* const T/*mut T`要跨越函数使用，或作为数据结构体的成员时，应将之转化成`NonNull<T>` 或`Unique T`。`*const T`应该仅仅保持在单一函数内。
 
-#### NonNull<T> 与MaybeUninit<T>相关函数
-```NonNull<T>::as_uninit_ref<`a>(&self) -> &`a MaybeUninit<T>``` NonNull与MaybeUninit的引用基本就是直接转换的关系，一体双面 
+#### `NonNull<T>` 与`MaybeUninit<T>`相关函数
+```NonNull<T>::as_uninit_ref<`a>(&self) -> &`a MaybeUninit<T>``` `NonNull`与`MaybeUninit`的引用基本就是直接转换的关系，一体双面 
 ```rust
     pub unsafe fn as_uninit_ref<'a>(&self) -> &'a MaybeUninit<T> {
         // self.cast将NonNull<T>转换为NonNull<MaybeUninit<T>>
         //self.cast.as_ptr将NonNull<MaybeUninit<T>>转换为 *mut MaybeUninit<T>
         unsafe { &*self.cast().as_ptr() }
     }
-``` 
+```
 ```NonNull<T>::as_uninit_mut<`a>(&self) -> &`a mut MaybeUninit<T>```  
 ```NonNull<[T]>::as_uninit_slice<'a>(&self) -> &'a [MaybeUninit<T>]```  
 ```rust
@@ -956,8 +958,8 @@ NonNull的方法基本与`*const T/* mut T`相同，也容易理解，下文仅�
 ```
 ```NonNull<[T]>::as_uninit_slice_mut<'a>(&self) -> &'a mut [MaybeUninit<T>]```   
 
-## Unique<T> 代码分析
-Unique<T>类型结构定义如下:
+## `Unique<T>` 代码分析
+`Unique<T>`类型结构定义如下:
 ```rust
     #[repr(transparent)]
     pub struct Unique<T: ?Sized> {
@@ -965,16 +967,16 @@ Unique<T>类型结构定义如下:
         _marker: PhantomData<T>,
     }
 ```
-和NonNull对比，Unique多了PhantomData<T>类型变量。这个定义使得编译器知晓，Unique<T>拥有了pointer指向的内存的所有权，NonNull<T>没有这个特性。具备所有权后，Unique<T>可以实现Send, Sync等Trait。因为获得了所有权，此块内存无法用于他处，这也是Unique的名字由来原因.
-指针在被Unique封装前，必须保证是NonNull的。
-对于RUST从堆内存申请的内存块，其指针都是用Unique<T>封装后来作为智能指针结构体内部成员变量，保证智能指针结构体拥有申请出来的内存块的所有权。
+和`NonNull`对比，`Unique`多了`PhantomData<T>`类型变量。这个定义使得编译器知晓，`Unique<T>`拥有了`pointer`指向的内存的所有权，`NonNull<T>`没有这个特性。具备所有权后，`Unique<T>`可以实现`Send`, `Sync`等`Trait`。因为获得了所有权，此块内存无法用于他处，这也是`Unique`的名字由来原因.
+指针在被`Unique`封装前，必须保证是`NonNull`的。
+对于Rust从堆内存申请的内存块，其指针都是用`Unique<T>`封装后来作为智能指针结构体内部成员变量，保证智能指针结构体拥有申请出来的内存块的所有权。
 
-Unique模块的函数及代码与NonNull函数代码相类似，此处不分析。
+`Unique`模块的函数及代码与`NonNull`函数代码相类似，此处不分析。
 `Unique::cast<U>(self)->Unique<U>` 类型转换，程序员应该保证T和U的内存布局相同  
-`Unique::<T>::new(* mut T)->Option<Self>` 此函数内部判断* mut T是否为0值  
-`Unique::<T>::new_unchecked(* mut T)->Self` 封装* mut T, 调用代码应该保证* mut T的安全性  
+`Unique::<T>::new(* mut T)->Option<Self>` 此函数内部判断`* mut T`是否为0值  
+`Unique::<T>::new_unchecked(* mut T)->Self` 封装`* mut T`, 调用代码应该保证`* mut T`的安全性  
 `Unique::as_ptr(self)->* mut T`  
-`Unique::as_ref(&self)->& T` 因为Unique具备所有权，此处&T的生命周期与self相同，不必特别声明声明周期  
+`Unique::as_ref(&self)->& T` 因为`Unique`具备所有权，此处`&T`的生命周期与`self`相同，不必特别声明声明周期  
 `Unique::as_mut(&mut self)->& mut T` 同上  
 
 ## mem模块函数  
@@ -1002,20 +1004,20 @@ pub unsafe fn uninitialized<T>() -> T {
 ```
 
 ### 泛型类型拷贝与替换 
-`mem::take<T: Default>(dest: &mut T) -> T` 将dest设置为默认内容(不改变所有权)，用一个新变量返回dest的内容。
+`mem::take<T: Default>(dest: &mut T) -> T` 将`dest`设置为默认内容(不改变所有权)，用一个新变量返回`dest`的内容。
 ```rust
 pub fn take<T: Default>(dest: &mut T) -> T {
     //即mem::replace，见下文
     //此处，对于引用类型，编译器禁止用*dest来转移所有权，所以不能用let xxx = *dest; xxx这种形式返回T
-    //其他语言简单的事情在RUST中必须用一个较难理解的方式来进行解决。replace()对所有权有仔细的处理
+    //其他语言简单的事情在Rust中必须用一个较难理解的方式来进行解决。replace()对所有权有仔细的处理
     replace(dest, T::default())
 }
 ```
-`mem::replace<T>(dest: &mut T, src: T) -> T` 用src的内容赋值dest(不改变所有权)，用一个新变量返回dest的内容。replace函数的难点在于了解所有权的转移。
+`mem::replace<T>(dest: &mut T, src: T) -> T` 用`src`的内容赋值`dest`(不改变所有权)，用一个新变量返回`dest`的内容。`replace`函数的难点在于了解所有权的转移。
 ```rust
 pub const fn replace<T>(dest: &mut T, src: T) -> T {
     unsafe {
-        //因为要替换dest, 所以必须对dest原有变量的所有权做处理，因此先用read将*dest的所有权转移到T，交由调用者进行处理, RUST不支持对引用类型做解引用的相等来转移所有权。将一个引用的所有权进行转移的方式只有粗暴的内存浅拷贝这种方法。
+        //因为要替换dest, 所以必须对dest原有变量的所有权做处理，因此先用read将*dest的所有权转移到T，交由调用者进行处理, Rust不支持对引用类型做解引用的相等来转移所有权。将一个引用的所有权进行转移的方式只有粗暴的内存浅拷贝这种方法。
         //使用这个函数，调用代码必须了解T类型的情况，T类型有可能需要显式的调用drop函数。ptr::read前文已经分析过。
         let result = ptr::read(dest);
         //ptr::write本身会导致src的所有权转移到dest，后继不允许在src生命周期终止时做drop。ptr::write会用forget(src)做到这一点。
@@ -1025,7 +1027,7 @@ pub const fn replace<T>(dest: &mut T, src: T) -> T {
 }
 ```
 
-`mem::transmute_copy<T, U>(src: &T) -> U` 新建类型U的变量，并把src的内容拷贝到U。调用者应保证T类型的内容与U一致，src后继的所有权问题需要做处理。
+`mem::transmute_copy<T, U>(src: &T) -> U` 新建类型`U`的变量，并把`src`的内容拷贝到U。调用者应保证T类型的内容与`U`一致，`src`后继的所有权问题需要做处理。
 ```rust
 pub const unsafe fn transmute_copy<T, U>(src: &T) -> U {
     if align_of::<U>() > align_of::<T>() {
@@ -1038,7 +1040,7 @@ pub const unsafe fn transmute_copy<T, U>(src: &T) -> U {
 }
 ```
 #### 所有权转移的底层实现
-所有权的转移实际上是两步：1.栈上内存的浅拷贝；2：原先的变量置标志表示所有权已转移。置标志的变量如果没有重新绑定其他变量，则在生命周期结束的时候被drop。 引用及指针自身也是一个isize的值变量，也有所有权，也具备生命周期。 
+所有权的转移实际上是两步：1.栈上内存的浅拷贝；2：原先的变量置标志表示所有权已转移。置标志的变量如果没有重新绑定其他变量，则在生命周期结束的时候被`drop`。 引用及指针自身也是一个`isize`的值变量，也有所有权，也具备生命周期。 
 ##### 变量调用drop的时机
 如下例子：
 ```rust
@@ -1064,21 +1066,21 @@ TestPtr { a: 1, b: 2 }
 1 2
 
 ### 其他函数
-`mem::forget<T>(t:T)` 通知RUST不做变量的drop操作  
+`mem::forget<T>(t:T)` 通知Rust不做变量的`drop`操作  
 ```rust
 pub const fn forget<T>(t: T) {
     //没有使用intrinsic::forget, 实际上效果一致，这里应该是尽量规避用intrinsic函数
     let _ = ManuallyDrop::new(t);
 }
 ```
-`mem::forget_unsized<T:Sized?>` 对intrinsics::forget的封装 
-`mem::size_of<T>()->usize`/`mem::min_align_of<T>()->usize`/`mem::size_of_val<T>(val:& T)->usize`/`mem::min_align_of_val<T>(val: &T)->usize`/`mem::needs_drop<T>()->bool` 基本就是直接调用intrinsic模块的同名函数  
+`mem::forget_unsized<T:Sized?>` 对`intrinsics::forget`的封装 
+`mem::size_of<T>()->usize`/`mem::min_align_of<T>()->usize`/`mem::size_of_val<T>(val:& T)->usize`/`mem::min_align_of_val<T>(val: &T)->usize`/`mem::needs_drop<T>()->bool` 基本就是直接调用`intrinsic`模块的同名函数  
 `mem::drop<T>(_x:T)` 释放内存  
 
-## RUST堆内存申请及释放
+## Rust堆内存申请及释放
 
-### RUST类型系统的内存布局 
-RUST提供了`Layout`内存布局类型, 此布局类型结构主要用于做堆内存申请。
+### Rust类型系统的内存布局 
+Rust提供了`Layout`内存布局类型, 此布局类型结构主要用于做堆内存申请。
 `Layout`的数据结构如下：
 ```rust
 pub struct Layout {
@@ -1088,10 +1090,10 @@ pub struct Layout {
     align_: NonZeroUsize,
 }
 ```
-*`NonZeroUsize`是一种非0值的usize, 这种类型主要应用于不可取0的值，本结构中， 字节对齐属性变量不能被置0，所以用`NonZeroUsize`来确保安全性。如果用usize类型，那代码中就可能会把0置给align_，导致bug产生。这是RUST的一个设计规则，所有的约束要在类型定义即显性化，从而使bug在编译中就被发现。*
+*`NonZeroUsize`是一种非0值的`usize`, 这种类型主要应用于不可取0的值，本结构中， 字节对齐属性变量不能被置0，所以用`NonZeroUsize`来确保安全性。如果用`usize`类型，那代码中就可能会把0置给`align_`，导致bug产生。这是Rust的一个设计规则，所有的约束要在类型定义即显性化，从而使bug在编译中就被发现。*
 
-每一个RUST的类型都有自身独特的内存布局Layout。一种类型的Layout可以用`intrinsic::<T>::size_of()`及`intrinsic::<T>::min_align_of()`获得的类型内存大小和对齐来获得。
-RUST的内存布局更详细原理阐述请参考[RUST内存布局] (https://doc.rust-lang.org/nomicon/data.html)，
+每一个Rust的类型都有自身独特的内存布局`Layout`。一种类型的`Layout`可以用`intrinsic::<T>::size_of()`及`intrinsic::<T>::min_align_of()`获得的类型内存大小和对齐来获得。
+Rust的内存布局更详细原理阐述请参考[Rust内存布局] (https://doc.Rust-lang.org/nomicon/data.html)，
 Layout比较有典型意义的函数：
 ```rust
 impl Layout {
@@ -1138,7 +1140,7 @@ impl Layout {
         // 实际上相当与C语言的表达式
         //   len_rounded_up = (len + align - 1) & !(align - 1);
         // 就是对对齐大小做除，如果有余数，商加1，是一种常用的方式.
-        // 但注意，在rust中C语言的"+"等同于wrapping_add, C语言的“-”等同于
+        // 但注意，在Rust中C语言的"+"等同于wrapping_add, C语言的“-”等同于
         // wrapping_sub
         let len_rounded_up = len.wrapping_add(align).wrapping_sub(1) & !align.wrapping_sub(1);
         //减去len，得到差值
@@ -1172,7 +1174,7 @@ impl Layout {
 ```
 
 ### `#[repr(transparent)]`内存布局模式
-repr(transparent)用于仅包含一个成员变量的类型，该类型的内存布局与成员变量类型的内存布局完全一致。类型仅仅具备编译阶段的意义，在运行时，类型变量与其成员变量可以认为是一个相同变量，可以相互无障碍类型转换。使用repr(transparent)布局的类型基本是一种封装结构。
+`repr(transparent)`用于仅包含一个成员变量的类型，该类型的内存布局与成员变量类型的内存布局完全一致。类型仅仅具备编译阶段的意义，在运行时，类型变量与其成员变量可以认为是一个相同变量，可以相互无障碍类型转换。使用`repr(transparent)`布局的类型基本是一种封装结构。
 
 #### `#[repr(packed)]`内存布局模式
 强制类型成员变量以1字节对齐，此种结构在协议分析和结构化二进制数据文件中经常使用
@@ -1180,26 +1182,26 @@ repr(transparent)用于仅包含一个成员变量的类型，该类型的内存
 #### `#[repr(align(n))]` 内存布局模式
 强制类型以2的幂次对齐
 
-#### `#[repr(RUST)]`内存布局模式
-默认的布局方式，采用此种布局，RUST编译器会根据情况来自行优化内存
+#### `#[repr(Rust)]`内存布局模式
+默认的布局方式，采用此种布局，Rust编译器会根据情况来自行优化内存
 
 #### `#[repr(C)]`内存布局模式
 采用C语言布局方式， 所有结构变量按照声明的顺序在内存排列。默认4字节对齐。
 
-### RUST堆内存申请与释放接口
+### Rust堆内存申请与释放接口
 资深的C/C++程序员都了解，在大型系统开发时，往往需要自行实现内存管理模块，以根据系统的特点优化内存使用及性能，并作出内存跟踪。
 对于操作系统，内存管理模块更是核心功能。
 对于C/C++小型系统，没有内存管理，仅仅是调用操作系统的内存系统调用，内存管理交给操作系统负责。操作系统内存管理模块接口是内存申请及内存释放的系统调用
 对于GC语言，内存管理由虚拟机或语言运行时负责，利用语言提供的new来完成类型结构内存获取。
-RUST的内存管理分成了三个界面：
+Rust的内存管理分成了三个界面：
 1. 由智能指针类型提供的类型创建函数，一般有new, 与其他的GC类语言相同，同时增加了一些更直观的函数。
-2. 智能指针使用实现Allocator Trait的类型做内存申请及释放。Allocator使用编译器提供的函数名申请及释放内存。
-3. 实现了GlobalAlloc Trait的类型来完成独立的内存管理模块，并用#[global_allocator]注册入编译器，替代编译器默认的内存申请及释放函数。
-这样，RUST达到了：
+2. 智能指针使用实现`Allocator Trait`的类型做内存申请及释放。`Allocator`使用编译器提供的函数名申请及释放内存。
+3. 实现了`GlobalAlloc Trait`的类型来完成独立的内存管理模块，并用#[global_allocator]注册入编译器，替代编译器默认的内存申请及释放函数。
+这样，Rust达到了：
 1. 对于小规模的程序，拥有与GC语言相类似的内存获取机制
 2. 对于大型程序和操作系统内核，从语言层面提供了独立的内存管理模块接口，达成了将现代语法与内存管理模块共同存在，相互配合的目的。
 但因为所有权概念的存在，从内存申请到转换为类型系统仍然还存在复杂的工作。
-堆内存申请和释放的Trait GlobalAlloc定义如下:
+堆内存申请和释放的`Trait GlobalAlloc`定义如下:
 ```rust
 pub unsafe trait GlobalAlloc {
     //申请内存，因为Layout中内存大小不为0，所以，alloc不会申请大小为0的内存
@@ -1223,40 +1225,40 @@ pub unsafe trait GlobalAlloc {
     ...
 }
 ```
-在内核编程或大的框架系统编程中，开发人员通常开发自定义的堆内存管理模块，模块实现GlobalAlloc Trait并添加#[global_allocator]标识。对于用户态，RUST标准库有默认的GlobalAlloc实现。
+在内核编程或大的框架系统编程中，开发人员通常开发自定义的堆内存管理模块，模块实现`GlobalAlloc Trait`并添加#[global_allocator]标识。对于用户态，Rust标准库有默认的`GlobalAlloc`实现。
 ```rust
 extern "Rust" {
     // 编译器会将实现了GlobalAlloc Trait，并标记 #[global_allocator]的四个方法自动转化为以下的函数
-    #[rustc_allocator]
-    #[rustc_allocator_nounwind]
-    fn __rust_alloc(size: usize, align: usize) -> *mut u8;
-    #[rustc_allocator_nounwind]
-    fn __rust_dealloc(ptr: *mut u8, size: usize, align: usize);
-    #[rustc_allocator_nounwind]
-    fn __rust_realloc(ptr: *mut u8, old_size: usize, align: usize, new_size: usize) -> *mut u8;
-    #[rustc_allocator_nounwind]
-    fn __rust_alloc_zeroed(size: usize, align: usize) -> *mut u8;
+    #[Rustc_allocator]
+    #[Rustc_allocator_nounwind]
+    fn __Rust_alloc(size: usize, align: usize) -> *mut u8;
+    #[Rustc_allocator_nounwind]
+    fn __Rust_dealloc(ptr: *mut u8, size: usize, align: usize);
+    #[Rustc_allocator_nounwind]
+    fn __Rust_realloc(ptr: *mut u8, old_size: usize, align: usize, new_size: usize) -> *mut u8;
+    #[Rustc_allocator_nounwind]
+    fn __Rust_alloc_zeroed(size: usize, align: usize) -> *mut u8;
 }
 
-//对__rust_xxxxx_再次封装
+//对__Rust_xxxxx_再次封装
 pub unsafe fn alloc(layout: Layout) -> *mut u8 {
-    unsafe { __rust_alloc(layout.size(), layout.align()) }
+    unsafe { __Rust_alloc(layout.size(), layout.align()) }
 }
 
 pub unsafe fn dealloc(ptr: *mut u8, layout: Layout) {
-    unsafe { __rust_dealloc(ptr, layout.size(), layout.align()) }
+    unsafe { __Rust_dealloc(ptr, layout.size(), layout.align()) }
 }
 
 pub unsafe fn realloc(ptr: *mut u8, layout: Layout, new_size: usize) -> *mut u8 {
-    unsafe { __rust_realloc(ptr, layout.size(), layout.align(), new_size) }
+    unsafe { __Rust_realloc(ptr, layout.size(), layout.align(), new_size) }
 }
 
 pub unsafe fn alloc_zeroed(layout: Layout) -> *mut u8 {
-    unsafe { __rust_alloc_zeroed(layout.size(), layout.align()) }
+    unsafe { __Rust_alloc_zeroed(layout.size(), layout.align()) }
 }
 
 ```
-再实现Allocator Trait，对以上四个函数做封装处理。作为RUST其他模块对堆内存的申请和释放接口。
+再实现`Allocator Trait`，对以上四个函数做封装处理。作为Rust其他模块对堆内存的申请和释放接口。
 
 ```rust
 pub unsafe trait Allocator {
@@ -1275,7 +1277,7 @@ pub unsafe trait Allocator {
     ...
 }
 ```
-Global 实现了 Allocator Trait。Rust大部分alloc库数据结构的实现使用Global作为Allocator。
+`Global` 实现了 `Allocator Trait`。Rust大部分`alloc`库数据结构的实现使用`Global`作为`Allocator`。
 ```rust
 unsafe impl Allocator for Global {
     fn allocate(&self, layout: Layout) -> Result<NonNull<[u8]>, AllocError> {
@@ -1299,8 +1301,8 @@ unsafe impl Allocator for Global {
 }
 ```
 
-Allocator使用GlobalAlloc接口获取内存，然后将GlobalAlloc申请到的* mut u8转换为确定大小的单一指针NonNull<[u8]>， 并处理申请内存可能出现的不成功。NonNull<[u8]>此时内存布局与 T的内存布局已经相同，后继可以转换为真正需要的T的指针并进一步转化为相关类型的引用，从而符合RUST类型系统安全并进行后继的处理。
-以上是堆内存的申请和释放。 基于泛型，RUST也巧妙实现了栈内存的申请和释放机制 `mem::MaybeUninit<T>`
+`Allocator`使用`GlobalAlloc`接口获取内存，然后将`GlobalAlloc`申请到的`* mut u8`转换为确定大小的单一指针`NonNull<[u8]>`， 并处理申请内存可能出现的不成功。`NonNull<[u8]>`此时内存布局与 T的内存布局已经相同，后继可以转换为真正需要的T的指针并进一步转化为相关类型的引用，从而符合Rust类型系统安全并进行后继的处理。
+以上是堆内存的申请和释放。 基于泛型，Rust也巧妙实现了栈内存的申请和释放机制 `mem::MaybeUninit<T>`
 
 用Box的内存申请做综合举例：
 ```rust
@@ -1319,48 +1321,49 @@ Allocator使用GlobalAlloc接口获取内存，然后将GlobalAlloc申请到的*
         Box(unsafe { Unique::new_unchecked(raw) }, alloc)
     }
 ```
-以上代码可以看到，NonNull<[u8]>可以直接通过cast 转换为NonNull<MaybeUninit<T>>, 这是另一种MaybeUninit<T>的生成方法，直接通过指针类型转换将未初始化的内存转换为MaybeUninit<T>。
+以上代码可以看到，`NonNull<[u8]>`可以直接通过`cast` 转换为`NonNull<MaybeUninit<T>>`, 这是另一种`MaybeUninit<T>`的生成方法，直接通过指针类型转换将未初始化的内存转换为`MaybeUninit<T>`。
 
 ## 小结
-本章主要分析了RUST标准库内存相关模块， 内存相关模块代码多数不复杂，主要是要对内存块与类型系统之间的转换要有比较深刻的理解，并能领会在实际编码过程中在那些场景会使用内存相关的代码和API。RUST的内存安全给编码加了非常多的限制，有些时候这些限制只有通过内存API来有效的突破。如将引用指向的变量所有权转移出来的take函数。后继我们会看到几乎每个标准库的模块都大量的使用了ptr, mem模块中的方法和函数。只要是大型系统，不熟悉内存模块的代码，基本上无法做出良好的程序。
+本章主要分析了Rust标准库内存相关模块， 内存相关模块代码多数不复杂，主要是要对内存块与类型系统之间的转换要有比较深刻的理解，并能领会在实际编码过程中在那些场景会使用内存相关的代码和API。Rust的内存安全给编码加了非常多的限制，有些时候这些限制只有通过内存API来有效的突破。如将引用指向的变量所有权转移出来的`take`函数。后继我们会看到几乎每个标准库的模块都大量的使用了`ptr`, `mem`模块中的方法和函数。只要是大型系统，不熟悉内存模块的代码，基本上无法做出良好的程序。
 
-# RUST的固有（intrinsic）函数库
+# Rust的固有（intrinsic）函数库
 代码路径：
-%USER%\.rustup\toolchains\nightly-x86_64-pc-windows-msvc\lib\rustlib\src\rust\library\core\src\intrinsic.rs
+%USER%\.Rustup\toolchains\nightly-x86_64-pc-windows-msvc\lib\Rustlib\src\Rust\library\core\src\intrinsic.rs
 
-intrinsic库函数是指由编译器内置实现的函数，一般如下特点的函数用固有函数：
+`intrinsic`库函数是指由编译器内置实现的函数，一般如下特点的函数用固有函数：
 1. 与CPU架构相关性很大，必须利用汇编实现或者利用汇编才能具备最高性能的函数，
 2. 和编译器密切相关的函数，由编译器来实现最为合适。
-上面内存库章节中已经介绍了内存部分的intrinsic库函数，本节对其他部分做简略介绍
+上面内存库章节中已经介绍了内存部分的`intrinsic`库函数，本节对其他部分做简略介绍
 ## intrinsic 原子操作函数
-原子操作函数主要用于多核CPU，多线程CPU时对数据的原子操作。intrinsic库中atomic_xxx及atomic_xxx_xxx类型的函数即为原子操作函数。原子操作函数主要用于并发编程中做临界保护，并且是其他临界保护机制的基础，如Mutex，RWlock等。
+原子操作函数主要用于多核CPU，多线程CPU时对数据的原子操作。`intrinsic`库中`atomic_xxx`及`atomic_xxx_xxx`类型的函数即为原子操作函数。原子操作函数主要用于并发编程中做临界保护，并且是其他临界保护机制的基础，如`Mutex`，`RWlock`等。
 ## 数学函数及位操作函数
-各种整数及浮点的数学函数实现。这一部分放在intrinsic主要是因为现代CPU对浮点计算由很多支持，这些数学函数由汇编语言来实现更具备效率，那就有必要由编译器来内置实现。
+各种整数及浮点的数学函数实现。这一部分放在`intrinsic`主要是因为现代`CPU`对浮点计算由很多支持，这些数学函数由汇编语言来实现更具备效率，那就有必要由编译器来内置实现。
 ## intrinsic 指令优化及调试函数
-断言类: assert_xxxx 类型的函数
-函数栈：caller_location
+断言类: `assert_xxxx` 类型的函数
+函数栈：`caller_location`
 ## 小结
-intrinsic函数库是从编译器层面完成跨CPU架构的一个手段，intrinsic通常被上层的库所封装。但在操作系统编程和框架编程时，仍然会不可避免的需要接触。
+`intrinsic`函数库是从编译器层面完成跨CPU架构的一个手段，`intrinsic`通常被上层的库所封装。但在操作系统编程和框架编程时，仍然会不可避免的需要接触。
 
-# RUST基本类型代码分析(一)
-原生数据类型，Option类型，Result类型的某些代码是分析其他模块的基础，因此先对这些类型的部分代码做个基础分析。
+# Rust基本类型代码分析(一)
+原生数据类型，`Option`类型，`Result`类型的某些代码是分析其他模块的基础，因此先对这些类型的部分代码做个基础分析。
 
 ## 整形数据类型
 代码目录如下：
-%USER%\.rustup\toolchains\nightly-x86_64-pc-windows-msvc\lib\rustlib\src\rust\library\core\src\num
+%USER%\.Rustup\toolchains\nightly-x86_64-pc-windows-msvc\lib\Rustlib\src\Rust\library\core\src\num
 
 整形数据类型标准函数库主要包括：
 1. 整形位操作函数：左移，右移，为1的位数目，为0的位数目，头部为0的位数目，尾部为0的位数目，头部为1的位数目，尾部为1的位数目，循环左移，循环右移
 2. 整形字节序函数：字节序反转，位序反转，大小端变换
 3. 数学函数：针对溢出做各种不同处理的加减乘除，传统的整形数学库函数如对数，幂，绝对值，取两者大值及两者小值
    
+
 整形有有符号整形，无符号整形，大整形(大于计算机字长的整形)，但基本内容都是实现以上方法
 ### 无符号整形类型相关库代码分析
 标准库用宏简化的对不同位长的无符号整形的方法实现。本文着重介绍若干不易注意的方法，如大小端转换，对数学方法仅给出加法做为代表。代码如下：
 ```rust
 macro_rules! uint_impl {
     ($SelfT:ty, $ActualT:ident, $SignedT:ident, $BITS:expr, $MaxV:expr,
-        //以下主要是rust doc文档需要
+        //以下主要是Rust doc文档需要
         $rot:expr, $rot_op:expr, $rot_result:expr, $swap_op:expr, $swapped:expr,
         $reversed:expr, $le_bytes:expr, $be_bytes:expr,
         $to_xe_bytes_doc:expr, $from_xe_bytes_doc:expr) => {
@@ -1384,7 +1387,7 @@ macro_rules! uint_impl {
         ...
         ...
 ```
-字节序变换是网络编程与结构化数据文件的必须功能，RUST将之在整形的方法里实现：
+字节序变换是网络编程与结构化数据文件的必须功能，Rust将之在整形的方法里实现：
 ```rust
         //内部字节交换，后继大小端变换使用
         pub const fn swap_bytes(self) -> Self {
@@ -1469,7 +1472,7 @@ macro_rules! uint_impl {
             unsafe { mem::transmute(bytes) }
         }
 ```
-RUST的整数类形各种算术方法突出的展示了RUST对安全的极致关注。算术方法也更好的支持了链式调用的函数式编程风格。对于算术溢出，RUST给出了各种情况下的处理方案：
+Rust的整数类形各种算术方法突出的展示了Rust对安全的极致关注。算术方法也更好的支持了链式调用的函数式编程风格。对于算术溢出，Rust给出了各种情况下的处理方案：
 ```rust
         //对溢出做检查的加法运算,溢出情况下会返回wrapping_add的值，即溢出后值回绕
         //这里每种类型运算都以加法为例，其他诸如减、乘、除、幂次请参考官方标准库手册
@@ -1517,8 +1520,8 @@ RUST的整数类形各种算术方法突出的展示了RUST对安全的极致关
         pub const fn max_value() -> Self { Self::MAX }
 }
 ```
-算术算法基本上是使用了intrinsics提供的函数。
-下面用u8给出一个具体的实例
+算术算法基本上是使用了`intrinsics`提供的函数。
+下面用`u8`给出一个具体的实例
 ```rust
 impl u8 {
     //利用宏实现 u8类型的方法
@@ -1546,20 +1549,20 @@ impl u16 {
 ...
 ```
 
-RUST整形库代码逻辑并不复杂，宏也很简单。但因为RUST将其他语言的独立的数学库函数，单独的大小端变换等集成入整形(浮点类型)，有可能造成出于习惯而无法找到相应的函数。
+Rust整形库代码逻辑并不复杂，宏也很简单。但因为Rust将其他语言的独立的数学库函数，单独的大小端变换等集成入整形(浮点类型)，有可能造成出于习惯而无法找到相应的函数。
 
-## RUST Option类型标准库代码分析
+## Rust Option类型标准库代码分析
 代码路径：
-%USER%\.rustup\toolchains\nightly-x86_64-pc-windows-msvc\lib\rustlib\src\rust\library\core\src\option.rs
+%USER%\.Rustup\toolchains\nightly-x86_64-pc-windows-msvc\lib\Rustlib\src\Rust\library\core\src\option.rs
 
-Option<T> 主要用来在编程中，类型T的变量可以不存在，代表一种异常。以往会选择T类型的一个值代表不存在的异常情况，从而导致异常情况处理只能依赖于程序员，采用Option<T>后，对异常情况的处理会由编译器负责。
-在初始化时无法确定T类型的值时，除了MaybeUninit<T>外，还可以用Option<T>来声明变量并初始化为None。
+`Option<T>` 主要用来在编程中，类型T的变量可以不存在，代表一种异常。以往会选择T类型的一个值代表不存在的异常情况，从而导致异常情况处理只能依赖于程序员，采用`Option<T>`后，对异常情况的处理会由编译器负责。
+在初始化时无法确定T类型的值时，除了`MaybeUninit<T>`外，还可以用`Option<T>`来声明变量并初始化为`None`。
 
-从Option<T>的标准库代码中可以发现，Option<T>实际上是不属于RUST语言最基础的语法的，它是在RUST语言最基础的enum语法的基础上派生出来的一种库类型。这展示了RUST语言的一个设计思维，编译器仅仅做最基础的部分，其他的交由库来解决。实际上，在学习RUST时，很多重要的常用类型都是标准库提供并解决了非常多的需求。如RefCell<T>, Arc<T>等。需要细心地体会和学习RUST如何构建这些基础设施并养成习惯。
+从`Option<T>`的标准库代码中可以发现，`Option<T>`实际上是不属于Rust语言最基础的语法的，它是在Rust语言最基础的enum语法的基础上派生出来的一种库类型。这展示了Rust语言的一个设计思维，编译器仅仅做最基础的部分，其他的交由库来解决。实际上，在学习Rust时，很多重要的常用类型都是标准库提供并解决了非常多的需求。如`RefCell<T>`, `Arc<T>`等。需要细心地体会和学习Rust如何构建这些基础设施并养成习惯。
 
-Option<T>主要是解封装方法及Try trait。但Option<T>更酷的打开方式应该是用以map为代表的方法来完成函数链式调用。
+`Option<T>`主要是解封装方法及`Try trait`。但`Option<T>`更酷的打开方式应该是用以`map`为代表的方法来完成函数链式调用。
 
-Option<T>的若干重点方法源代码如下：
+`Option<T>`的若干重点方法源代码如下：
 ```rust
 impl<T> Option<T> {
     //当希望获取Option封装的变量的借用的时候，使用这个函数
@@ -1799,7 +1802,7 @@ error[E0507]: cannot move out of a shared reference
    |     help: consider removing the `&`: `e`
 
 ```
-可见，如果match 引用，那对后继的绑定是有讲究的。对引用做match，本意便是不想要转移所有权。因此，在match的分支中就不能有引发所有权移动的绑定出现。
+可见，如果`match` 引用，那对后继的绑定是有讲究的。对引用做`match`，本意便是不想要转移所有权。因此，在`match`的分支中就不能有引发所有权移动的绑定出现。
 
 再请参考如下代码：
 ```rust
@@ -1814,9 +1817,9 @@ fn main() {
     }
 }
 ```
-如果不想转移所有权，那上面代码的match就应该是一个标准的写法，对结构内部的变量也需要用引用来绑定，尤其是结构内部变量如果没有实现Copy Trait，那就必须用引用，否则也会引发编译告警。
+如果不想转移所有权，那上面代码的`match`就应该是一个标准的写法，对结构内部的变量也需要用引用来绑定，尤其是结构内部变量如果没有实现`Copy Trait`，那就必须用引用，否则也会引发编译告警。
 
-为了编码上的方便，RUST针对以上的代码，支持如下简化形式：
+为了编码上的方便，Rust针对以上的代码，支持如下简化形式：
 ```rust
 
 struct TestStructA {a:i32,b:i32}
@@ -1831,15 +1834,15 @@ fn main() {
     }
 }
 ```
-如果不知道RUST的这个语义，很可能会对这里的类型绑定感到疑惑。
-从实际的使用场景分析，对结构体引用做match，其目的就是对结构体内部的成员的引用做pattern绑定。而且如果结构体内部的成员不支持Copy，那也不可能对结构体成员做pattern绑定。所以，此语法也是在RUST的所有权定义下的一个必然的简化选择。
+如果不知道Rust的这个语义，很可能会对这里的类型绑定感到疑惑。
+从实际的使用场景分析，对结构体引用做`match`，其目的就是对结构体内部的成员的引用做`pattern`绑定。而且如果结构体内部的成员不支持`Copy`，那也不可能对结构体成员做`pattern`绑定。所以，此语法也是在Rust的所有权定义下的一个必然的简化选择。
 
-## RUST Result类型标准库代码分析
+## Rust Result类型标准库代码分析
 代码路径：
-%USER%\.rustup\toolchains\nightly-x86_64-pc-windows-msvc\lib\rustlib\src\rust\library\core\src\result.rs
-Result<T,E>采用了与Option<T>类似的思路来处理函数或方法返回值存在异常的情况。
-Result<T,E>的Try trait十分重要，另外，以map为代表的函数同样打开函数链式调用的通道。
-Result<T,E>值得关注方法的源代码如下：
+`%USER%\.Rustup\toolchains\nightly-x86_64-pc-windows-msvc\lib\Rustlib\src\Rust\library\core\src\result.rs`
+`Result<T,E>`采用了与`Option<T>`类似的思路来处理函数或方法返回值存在异常的情况。
+`Result<T,E>`的`Try trait`十分重要，另外，以`map`为代表的函数同样打开函数链式调用的通道。
+`Result<T,E>`值得关注方法的源代码如下：
 ```rust
 
 impl<T, E> Result<T, E> {
@@ -1945,7 +1948,7 @@ impl<T, E> Result<T, E> {
     }
 }
 ```
-Result<T,E>的解封装函数如下：
+`Result<T,E>`的解封装函数如下：
 ```rust
 impl<T, E: fmt::Debug> Result<T, E> {
     //解封装，Ok解封装，Err输出参数信息并退出
@@ -2028,13 +2031,13 @@ impl<T, E> Result<Option<T>, E> {
 
 ```
 
-# RUST标准库的基础Trait
+# Rust标准库的基础Trait
 
 ## 编译器内置Trait代码分析
 代码路径：
-%USER%\.rustup\toolchains\nightly-x86_64-pc-windows-msvc\lib\rustlib\src\rust\library\core\src\marker.rs
+`%USER%\.Rustup\toolchains\nightly-x86_64-pc-windows-msvc\lib\Rustlib\src\Rust\library\core\src\marker.rs`
 
-marker trait是没有实现体，是一种特殊的类型性质，这类性质无法用类型成员来表达，因此用trait来实现是最合适的。
+`marker trait`是没有实现体，是一种特殊的类型性质，这类性质无法用类型成员来表达，因此用`trait`来实现是最合适的。
 
 ```rust
 //线程之间可移动
@@ -2081,8 +2084,8 @@ pub trait StructuralEq {
     // Empty.
 }
 ```
-以下给出了一个针对所有的原生类型都实现Copy Trait的实现代码, 实现了Copy Trait的类型编译器不必调用drop来对类型进行内存释放。
-可以看到，RUST针对原生类型可以直接扩展Trait实现，者极大的提高了RUST的语法一致性及函数式编程的能力：
+以下给出了一个针对所有的原生类型都实现`Copy Trait`的实现代码, 实现了`Copy Trait`的类型编译器不必调用`drop`来对类型进行内存释放。
+可以看到，Rust针对原生类型可以直接扩展`Trait`实现，者极大的提高了Rust的语法一致性及函数式编程的能力：
 
 ```rust
 //Copy，略
@@ -2118,23 +2121,23 @@ mod copy_impls {
 
     impl<T: ?Sized> Copy for &T {}
 
-    //& mut T不支持Copy，以保证RUST的借用规则
+    //& mut T不支持Copy，以保证Rust的借用规则
 }
 ```
 
-PhantomData<T>类型可以在其他类型结构体中定义一个变量，标记此结构体逻辑上拥有，但不需要或不方便在结构体成员变量体现的某个属性。实质上，智能指针一般都需要利用Unique<T>，以PhantomData来实现对堆内存的逻辑拥有权.
-PhantomData最常用来标记生命周期及所有权。主要给编译器提示检验类型变量的生命周期和类型构造时输入的生命周期关系。也用来提示拥有PhantomData<T>的结构体会负责对T做drop操作。需要编译器做drop检查的时候更准确的判断出内存安全错误。
-PhantomData<T>属性与所有权或生命周期的关系由编译器自行推断。具体实例可参考官方标准库文档及后继相关章节。
-PhantomData是个单元结构体，单元结构体的变量名就是单元结构体的类型名。
-所以使用的时候直接使用PhantomData即可，编译器会将泛型的类型实例化信息自动带入PhantomData中
+`PhantomData<T>`类型可以在其他类型结构体中定义一个变量，标记此结构体逻辑上拥有，但不需要或不方便在结构体成员变量体现的某个属性。实质上，智能指针一般都需要利用`Unique<T>`，以`PhantomData`来实现对堆内存的逻辑拥有权.
+`PhantomData`最常用来标记生命周期及所有权。主要给编译器提示检验类型变量的生命周期和类型构造时输入的生命周期关系。也用来提示拥有`PhantomData<T>`的结构体会负责对T做drop操作。需要编译器做drop检查的时候更准确的判断出内存安全错误。
+`PhantomData<T>`属性与所有权或生命周期的关系由编译器自行推断。具体实例可参考官方标准库文档及后继相关章节。
+`PhantomData`是个单元结构体，单元结构体的变量名就是单元结构体的类型名。
+所以使用的时候直接使用`PhantomData`即可，编译器会将泛型的类型实例化信息自动带入`PhantomData`中
 ```rust
 pub struct PhantomData<T: ?Sized>;
 ```
 ## ops 运算符 Trait 代码分析
 代码路径如下：
-%USER%\.rustup\toolchains\nightly-x86_64-pc-windows-msvc\lib\rustlib\src\rust\library\core\src\ops\*.rs
+`%USER%\.Rustup\toolchains\nightly-x86_64-pc-windows-msvc\lib\Rustlib\src\Rust\library\core\src\ops\*.rs`
 
-RUST中，所有的运算符号都可以重载。对于Ops运算符，RUST都可以提供*两个不同类型*之间的运算。
+Rust中，所有的运算符号都可以重载。对于`Ops`运算符，Rust都可以提供*两个不同类型*之间的运算。
 ### 一个小规则
 在重载函数中，如果重载的符号出現，编译器用规定的默认操作来实现。例如：
 ```rust
@@ -2152,7 +2155,7 @@ RUST中，所有的运算符号都可以重载。对于Ops运算符，RUST都可
 
 ### 关系运算符Trait
 代码路径如下：
-%USER%\.rustup\toolchains\nightly-x86_64-pc-windows-msvc\lib\rustlib\src\rust\library\core\src\cmp.rs
+`%USER%\.Rustup\toolchains\nightly-x86_64-pc-windows-msvc\lib\Rustlib\src\Rust\library\core\src\cmp.rs`
 
 关系运算符的代码稍微复杂，这里给出较完整的代码。
 ```rust
@@ -2175,7 +2178,7 @@ pub trait Eq: PartialEq<Self> {
     fn assert_receiver_is_total_eq(&self) {}
 }
 ```
-对于"<,>,<=,>="等四种运算，同上，对于全域如果有可能出现无法比较的情况，仅实现PartialOrd<Rhs>，如下：
+对于"`<`,`>`,`<=`,`>=`"等四种运算，同上，对于全域如果有可能出现无法比较的情况，仅实现`PartialOrd<Rhs>`，如下：
 ```rust
 // "<" ">" ">=" "<=" 运算符重载结构, 事实上关系运算只需要重载这个Trait
 // Ord Trait 不用编码,
@@ -2311,9 +2314,9 @@ pub fn max_by_key<T, F: FnMut(&T) -> K, K: Ord>(v1: T, v2: T, mut f: F) -> T {
     max_by(v1, v2, |v1, v2| f(v1).cmp(&f(v2)))
 }
 ```
-以下是利用泛型和Adapter模式的典型的解决一类问题的RUST解决方案，下面是对有序的类型实现逆序的方案
+以下是利用泛型和`Adapter`模式的典型的解决一类问题的Rust解决方案，下面是对有序的类型实现逆序的方案
 ```rust
-//对于实现了PartialOrd的类型实现一个Ord的反转，这个设计是典型的RUST的思考方式，
+//对于实现了PartialOrd的类型实现一个Ord的反转，这个设计是典型的Rust的思考方式，
 //利用一个Adpater设计模式+泛型，很轻松的解决了一类需求
 //adapter的设计模式例子
 pub struct Reverse<T>(pub T);
@@ -2366,7 +2369,7 @@ mod impls {
     
     macro_rules! eq_impl {
         ($($t:ty)*) => ($(
-            #[stable(feature = "rust1", since = "1.0.0")]
+            #[stable(feature = "Rust1", since = "1.0.0")]
             impl Eq for $t {}
         )*)
     }
@@ -2377,10 +2380,10 @@ mod impls {
     //关系运算，利用宏减少代码, 这个宏仅仅针对浮点数
     macro_rules! partial_ord_impl {
         ($($t:ty)*) => ($(
-            #[stable(feature = "rust1", since = "1.0.0")]
+            #[stable(feature = "Rust1", since = "1.0.0")]
             impl PartialOrd for $t {
                 fn partial_cmp(&self, other: &$t) -> Option<Ordering> {
-                    //RUST的典型的代码思路，需要学习及仔细体会,
+                    //Rust的典型的代码思路，需要学习及仔细体会,
                     //专门为浮点做的比较
                     match (self <= other, self >= other) {
                         (false, false) => None,
@@ -2444,16 +2447,16 @@ mod impls {
 }
 
 ```
-以上较完整的给出了关系运算Trait的代码，可以看到，RUST标准库除了对原生类型做了Trait的实现，也针对受约束的泛型尽可能的做了关系运算符 Trait的实现，以便最大的减少后继的开发量。程序员需要精通RUST的标准库已经针对那些泛型类型做好了实现，避免再重复的造轮子。
+以上较完整的给出了关系运算`Trait`的代码，可以看到，Rust标准库除了对原生类型做了`Trait`的实现，也针对受约束的泛型尽可能的做了关系运算符 `Trait`的实现，以便最大的减少后继的开发量。程序员需要精通Rust的标准库已经针对那些泛型类型做好了实现，避免再重复的造轮子。
 
 ### ？运算符 Trait代码分析
-代码路径：try_trait.rs
+代码路径：`try_trait.rs`
 
-?操作是RUST支持函数式编程的一个重要支柱。不过即使不用于函数式编程，也可大幅简化代码。
-当一个类型实现了Try Trait时。可对这个类型做？操作简化代码。
-Try Trait也是try..catch在RUST中的一种实现方式，但从代码的表现形式上更加简化。另外，因为能够返回具体类型，这种实现方式就不仅局限于处理异常，可以扩展到其他类似的场景。
+?操作是Rust支持函数式编程的一个重要支柱。不过即使不用于函数式编程，也可大幅简化代码。
+当一个类型实现了`Try Trait`时。可对这个类型做？操作简化代码。
+`Try Trait`也是`try..catch`在Rust中的一种实现方式，但从代码的表现形式上更加简化。另外，因为能够返回具体类型，这种实现方式就不仅局限于处理异常，可以扩展到其他类似的场景。
 可以定义返回类型的方法，支持链式函数调用。
-Try Trait定义如下：
+`Try Trait`定义如下：
 ```rust
 pub trait Try: FromResidual {
     /// ?操作符正常结束的返回值类型
@@ -2507,7 +2510,7 @@ pub trait FromResidual<R = <Self as Try>::Residual> {
     fn from_residual(residual: R) -> Self;
 }
 ```
-Try Trait对? 操作支持的举例如下：
+`Try Trait`对? 操作支持的举例如下：
 ```rust
 //不用? 操作的代码
  pub fn simple_try_fold_3<A, T, R: Try<Output = A>>(
@@ -2543,7 +2546,7 @@ Try Trait对? 操作支持的举例如下：
        ControlFlow::Break(r) => return (T as Try)::from_residual(r),
    }
 ```
-ControlFlow类型代码如下, 主要用于指示代码控制流程指示， 逻辑上可类比于continue, break 关键字 代码如下：
+`ControlFlow`类型代码如下, 主要用于指示代码控制流程指示， 逻辑上可类比于`continue`, `break` 关键字 代码如下：
 ```rust
 pub enum ControlFlow<B, C = ()> {
     //代码过程继续执行，可以从C中得到代码过程的中间结果
@@ -2553,13 +2556,13 @@ pub enum ControlFlow<B, C = ()> {
 }
 ```
 
-#### Option<T>的Try Trait实现
+#### `Option<T>`的Try Trait实现
 实现代码如下：
 ```rust
 impl<T> ops::Try for Option<T> {
     type Output = T;
     // Infallible是一种错误类型，但该错误永远也不会发生，这里需要返回None，
-    // 所以需要用Option类型，但因为只用None。所以Some使用Infallible来表示不会被使用，这也表现了RUST的安全理念，一定在类型定义的时候保证代码安全。
+    // 所以需要用Option类型，但因为只用None。所以Some使用Infallible来表示不会被使用，这也表现了Rust的安全理念，一定在类型定义的时候保证代码安全。
     type Residual = Option<convert::Infallible>;
 
     fn from_output(output: Self::Output) -> Self {
@@ -2582,7 +2585,7 @@ impl<T> const ops::FromResidual for Option<T> {
     }
 }
 ```
-所以，一个Option<T>？等同于如下代码：
+所以，一个`Option<T>`？等同于如下代码：
 ```rust
    match(Option<T>.branch()) {
        ControlFlow::Continue(a) => a,
@@ -2590,15 +2593,15 @@ impl<T> const ops::FromResidual for Option<T> {
        ControlFlow::Break(None) => return (Option<T>::from_residual(None)),
    }
 ```
-Result<T,E>类型的Try Trait请自行分析
+`Result<T,E>`类型的`Try Trait`请自行分析
 
 #### 小结
-利用Try Trait，程序员可以实现自定义类型的?，提供函数式编程的有力手段并简化代码，提升代码的理解度。
+利用`Try Trait`，程序员可以实现自定义类型的?，提供函数式编程的有力手段并简化代码，提升代码的理解度。
 
 ### Range 运算符代码分析
 代码路径：  
-%USER%\.rustup\toolchains\nightly-x86_64-pc-windows-msvc\lib\rustlib\src\rust\library\core\src\ops\range.rs
-Range是符号 .. , start..end , start.. , ..end , ..=end，start..=end 形式
+`%USER%\.Rustup\toolchains\nightly-x86_64-pc-windows-msvc\lib\Rustlib\src\Rust\library\core\src\ops\range.rs`
+`Range`是符号` .. `, `start..end` , `start.. `, `..end` , `..=end`，`start..=end` 形式
 #### Range相关的边界结构Bound
 源代码：
 ```rust
@@ -2611,13 +2614,13 @@ pub enum Bound<T> {
     Unbounded,
 }
 ```
-Include边界的值包含，Exclued边界的值不包含，Unbounded边界值不存在
+`Include`边界的值包含，`Exclued`边界的值不包含，`Unbounded`边界值不存在
 #### RangeFull
 ` ..  `的数据结构。
 ```rust
 struct RangeFull;
 ```
-#### Range<Idx>
+#### `Range<Idx>`
 `start.. end`的数据结构
 ```rust
 pub struct Range<Idx> {
@@ -2625,19 +2628,19 @@ pub struct Range<Idx> {
     pub end: Idx,
 }
 ```
-#### RangeFrom<Idx>
+#### `RangeFrom<Idx>`
 `start..`的数据结构, 略
-#### RangeTo<Idx>
+#### `RangeTo<Idx>`
 `.. end`的数据结构, 略
-#### RangeInclusive<Idx>
+#### `RangeInclusive<Idx>`
 `start..=end`的数据结构,略
-#### RangeToInclusive<Idx>
+#### `RangeToInclusive<Idx>`
 `..=end`的数据结构,略
 
-以上的Idx需要满足Idx:PartialOrd<Idx>
+以上的`Idx`需要满足`Idx:PartialOrd<Idx>`
 
-#### RangeBounds<T: ?Sized>
-所有Range统一实现的Trait。
+#### `RangeBounds<T: ?Sized>`
+所有`Range`统一实现的`Trait`。
 ```rust
 pub trait RangeBounds<T: ?Sized> {
     /// 获取范围的起始值
@@ -2667,7 +2670,7 @@ pub trait RangeBounds<T: ?Sized> {
         T: PartialOrd<U>,
         U: ?Sized + PartialOrd<T>,
     {
-        //比较有意思的典型的RUST代码
+        //比较有意思的典型的Rust代码
         (match self.start_bound() {
             Included(start) => start <= item,
             Excluded(start) => start < item,
@@ -2681,22 +2684,22 @@ pub trait RangeBounds<T: ?Sized> {
 }
 
 ```
-RangeBounds针对RangeFull，RangeTo, RangeInclusive, RangeToInclusive, RangeFrom, Range结构都进行了实现。同时针对(Bound<T>, Bound<T>)的元组做了实现。
+`RangeBounds`针对`RangeFull`，`RangeTo`, `RangeInclusive`, `RangeToInclusive`, `RangeFrom`, `Range`结构都进行了实现。同时针对(`Bound<T>, Bound<T>`)的元组做了实现。
 
 #### Range的灵活性与独立性
-完全可以定义 ((0,0)..(100,100))； ("1st".."30th")这种极有表现力的Range。
-Range使用的时候，需要先定义一个取值集合，定义类型表示这个集合，针对类型实现PartialOrd。就可以对这个集合的类型用Range符号了。
-值得注意的是，对于Range<Idx>, 如果一个变量类型为U, 则如果实现了PartialOrd<U> for Idx， 那U就有可能属于Range, 即U可以与Idx不同。
-Range操作符多用于与Index运算符结合或与Iterator Trait结合使用，独立的Range在。在后继的Index运算符和Iterator中会研究Range是如何与他们结合的。
+完全可以定义 (`(0,0)..(100,100)`)； (`"1st".."30th"`)这种极有表现力的`Range`。
+`Range`使用的时候，需要先定义一个取值集合，定义类型表示这个集合，针对类型实现`PartialOrd`。就可以对这个集合的类型用`Range`符号了。
+值得注意的是，对于`Range<Idx>`, 如果一个变量类型为U, 则如果实现了`PartialOrd<U> for Idx`， 那U就有可能属于`Range`, 即U可以与Idx不同。
+`Range`操作符多用于与`Index`运算符结合或与`Iterator Trait`结合使用，独立的`Range`在。在后继的`Index`运算符和`Iterator`中会研究`Range`是如何与他们结合的。
 
 #### 小结
-基于泛型的Range类型提供了非常好的语法手段，只要某类型支持排序，那就可以定义一个在此类型基础上实现的Range类型。再结合Index和Iterator, 将高效的实现极具冲击力的代码。
+基于泛型的`Range`类型提供了非常好的语法手段，只要某类型支持排序，那就可以定义一个在此类型基础上实现的Range类型。再结合`Index`和`Iterator`, 将高效的实现极具冲击力的代码。
 
-### RUST的Index 运算符代码分析
+### Rust的Index 运算符代码分析
 代码路径：  
-%USER%\.rustup\toolchains\nightly-x86_64-pc-windows-msvc\lib\rustlib\src\rust\library\core\src\ops\index.rs
+`%USER%\.Rustup\toolchains\nightly-x86_64-pc-windows-msvc\lib\Rustlib\src\Rust\library\core\src\ops\index.rs`
 
-数组下标符号[]由Index, IndexMut两个Trait完成重载。数组下标符号重载使得程序更有可读性。两个Trait如下定义：
+数组下标符号`[]`由`Index`, `IndexMut`两个`Trait`完成重载。数组下标符号重载使得程序更有可读性。两个`Trait`如下定义：
 ```rust
 // [T][Idx] 形式重载
 pub trait Index<Idx: ?Sized> {
@@ -2711,7 +2714,7 @@ pub trait IndexMut<Idx: ?Sized>: Index<Idx> {
     fn index_mut(&mut self, index: Idx) -> &mut Self::Output;
 }
 ```
-由以上可以看出["Hary"], ["Bold"]之类的表达形式都是可以存在的。
+由以上可以看出`["Hary"]`, `["Bold"]`之类的表达形式都是可以存在的。
 
 #### 切片数据结构[T]的Index实现
 ```rust
@@ -2735,8 +2738,8 @@ where
     }
 }
 ```
-SliceIndex Trait 被设计同时满足Index及切片类型的一些方法的需求。因为这些需求在逻辑上是同领域的。集中在SliceIndex Trait模块性更好。如：
-`[T]::get<I:SliceIndex>(&self, I)->Option<&I::Output>` 就是直接调用SliceIndex中的方法来实现成员获取。
+`SliceIndex Trait` 被设计同时满足`Index`及切片类型的一些方法的需求。因为这些需求在逻辑上是同领域的。集中在`SliceIndex Trait`模块性更好。如：
+`[T]::get<I:SliceIndex>(&self, I)->Option<&I::Output>` 就是直接调用`SliceIndex`中的方法来实现成员获取。
 
 ```rust
 mod private_slice_index {
@@ -2812,8 +2815,8 @@ unsafe impl<T> SliceIndex<[T]> for usize {
     }
 }
 ```
-以上就是针对[T]的以无符号数作为下标取出单一元素的ops::Index 及 ops::IndexMut的底层实现。
-针对Range做下标的代码实现
+以上就是针对`[T]`的以无符号数作为下标取出单一元素的`ops::Index` 及 `ops::IndexMut`的底层实现。
+针对`Range`做下标的代码实现
 ```rust
 
 unsafe impl<T> SliceIndex<[T]> for ops::Range<usize> {
@@ -2874,7 +2877,7 @@ unsafe impl<T> SliceIndex<[T]> for ops::Range<usize> {
     }
 }
 ```
-以上是实现用Range从slice中取出子slice的实现。同样是使用裸指针来最高效的实现逻辑。实际上，不用裸指针就没法实现。
+以上是实现用`Range`从`slice`中取出子`slice`的实现。同样是使用裸指针来最高效的实现逻辑。实际上，不用裸指针就没法实现。
 
 ```rust
 unsafe impl<T> SliceIndex<[T]> for ops::RangeTo<usize> {
@@ -2893,10 +2896,10 @@ unsafe impl<T> SliceIndex<[T]> for ops::RangeTo<usize> {
     //其他方法也是直接对Range<usize>做一个调用略
 }
 ```
-RangeFrom, RangeInclusive, RangeToInclusive, RangeFull等与RangeTo的实现类似，略。
+`RangeFrom`, `RangeInclusive`, `RangeToInclusive`, `RangeFull`等与`RangeTo`的实现类似，略。
 
 ##### 小结
-RUST切片的下标计算展示了裸指针的使用技巧，在数组类的成员操作中，基本无法脱离裸指针。在这里，只要不越界，裸指针操作是安全的。
+Rust切片的下标计算展示了裸指针的使用技巧，在数组类的成员操作中，基本无法脱离裸指针。在这里，只要不越界，裸指针操作是安全的。
 
 #### 数组数据结构[T;N]的ops::Index实现
 
@@ -2922,17 +2925,17 @@ where
     }
 }
 ```
-以上， `self as &[T]` 即把[T;N]转化为了切片[T], 所以数组的Index就是[T]的Index实现
+以上， `self as &[T]` 即把`[T;N]`转化为了切片`[T]`, 所以数组的`Index`就是`[T]`的`Index`实现
 
-# RUST的Iterator实现代码分析 
+# Rust的Iterator实现代码分析 
 代码路径：  
-%USER%\.rustup\toolchains\nightly-x86_64-pc-windows-msvc\lib\rustlib\src\rust\library\core\src\iter\*.*  
+`%USER%\.Rustup\toolchains\nightly-x86_64-pc-windows-msvc\lib\Rustlib\src\Rust\library\core\src\iter\*.* ` 
 
-Iterator在函数式编程中是居于最核心的地位。在函数式编程中，最关键的就是把问题的解决方式设计成能够使用Iterator方案来解决。RUST基本上可以说是原生的Iterator语言，几乎所有的核心关键类型的方法库都依托于Iterator。
+`Iterator`在函数式编程中是居于最核心的地位。在函数式编程中，最关键的就是把问题的解决方式设计成能够使用`Iterator`方案来解决。Rust基本上可以说是原生的`Iterator`语言，几乎所有的核心关键类型的方法库都依托于`Iterator`。
 
-## RUST的Iterator与其他语言Iterator比较
-RUST定义了三种迭代器Trait:
-1. Iterator遍历的是变量本身
+## Rust的`Iterator`与其他语言`Iterator`比较
+Rust定义了三种迭代器`Trait`:
+1. `Iterator`遍历的是变量本身
 ```rust
 pub trait IntoIterator {
     type Item;
@@ -2940,21 +2943,21 @@ pub trait IntoIterator {
     fn into_iter(self) -> Self::IntoIter;
 }
 ```
-into_iter返回的迭代器迭代时，会消费变量及容器，完全迭代后容器将不再存在。
+`into_iter`返回的迭代器迭代时，会消费变量及容器，完全迭代后容器将不再存在。
 
-2. Iterator遍历的是变量不可变引用：
-这个一般不做Trait，而是容器类型实现一个方法：
+2. `Iterator`遍历的是变量不可变引用：
+这个一般不做`Trait`，而是容器类型实现一个方法：
 ```pub fn iter(&self) -> I:Iterator```
 此方法返回一个迭代器，这种迭代器适用的一个例子是对网络接口做遍历以获得统计值
 
-3. Iterator遍历的是变量的可变引用：
+3. `Iterator`遍历的是变量的可变引用：
 同2 容器类型实现方法：
 ```pub fn iter_mut(&self) -> I:Iterator ```
 这种迭代器适用的一个例子是定时器遍历长连接，更新连接活动时间。
-其他语言中没有变量迭代器，这是RUST独有的所有权和drop机制带来的一种迭代器。在适合的场景下会缩减代码量及提高效率。
-一般的，RUST对于实现上面三个Trait，要求额外实现下面的两种机制
-T::iter() 等同于 &T::into_iter()
-T::iter_mut() 等同于 &mut T::into_iter()
+其他语言中没有变量迭代器，这是Rust独有的所有权和`drop`机制带来的一种迭代器。在适合的场景下会缩减代码量及提高效率。
+一般的，Rust对于实现上面三个Trait，要求额外实现下面的两种机制
+`T::iter()` 等同于 `&T::into_iter()`
+`T::iter_mut()` 等同于 `&mut T::into_iter()`
 
 ## Iterator Trait 定义
 ```rust
@@ -2991,14 +2994,14 @@ impl<I: Iterator + ?Sized> Iterator for &mut I {
     }
 }
 ```
-上面代码：如果一个类型I已经实现了 Iterator, 那针对这个结构的可变引用类型 &mut I, 标准库已经做了统一的 Iterator Trait实现。
+上面代码：如果一个类型I已经实现了 `Iterator`, 那针对这个结构的可变引用类型 `&mut I`, 标准库已经做了统一的 `Iterator Trait`实现。
 
 ## ops::Range类型的Iterator实现
 代码路径：  
 
-%USER%\.rustup\toolchains\nightly-x86_64-pc-windows-msvc\lib\rustlib\src\rust\library\core\src\iter\range.rs
+`%USER%\.Rustup\toolchains\nightly-x86_64-pc-windows-msvc\lib\Rustlib\src\Rust\library\core\src\iter\range.rs`
 
-Range被直接实现Iterator trait，没有iter()这样生成迭代器的调用。
+`Range`被直接实现`Iterator trait`，没有`iter()`这样生成迭代器的调用。
 定义如下：
 ```rust 
 impl<A: Step> Iterator for ops::Range<A> {
@@ -3025,7 +3028,7 @@ impl<A: Step> Iterator for ops::Range<A> {
     
 }
 ```
-Range Iterator的具体实现RangeIteratorImpl trait
+`Range` `Iterator`的具体实现`RangeIteratorImpl trait`
 ```rust
 impl<A: Step> RangeIteratorImpl for ops::Range<A> {
     type Item = A;
@@ -3082,9 +3085,9 @@ pub trait Step: Clone + PartialOrd + Sized {
     }
 }
 ```
-照此，可以实现一个自定义类型的类型, 并支持Step Trait，如此，即可使用Range符号的Iterator。例如，一个二维的点的range,例如Range<(i32, i32)>的变量((0,0)..(10,10)), 三维的点的range，数列等。
+照此，可以实现一个自定义类型的类型, 并支持`Step Trait`，如此，即可使用`Range`符号的`Iterator`。例如，一个二维的点的`range`,例如`Range<(i32, i32)>`的变量(`(0,0)..(10,10)`), 三维的点的`range`，数列等。
 
-一下是为所有证书类型实现Step的宏：
+一下是为所有证书类型实现`Step`的宏：
 ```rust
 
 macro_rules! step_identical_methods {
@@ -3144,7 +3147,7 @@ macro_rules! step_integer_impls {
                 }
 
                 fn forward_checked(start: Self, n: usize) -> Option<Self> {
-                    //将类型转换可能不成功显化，这是需要养成的RUST的特有思维
+                    //将类型转换可能不成功显化，这是需要养成的Rust的特有思维
                     match Self::try_from(n) {
                         //checked_add完成溢出检查
                         Ok(n) => start.checked_add(n),
@@ -3165,13 +3168,13 @@ macro_rules! step_integer_impls {
     }
 }
 ```
-Range实现Iterator的代码不复杂，但是从类型转换及加减法的处理上深刻的体现了RUST的安全理念。
+`Range`实现`Iterator`的代码不复杂，但是从类型转换及加减法的处理上深刻的体现了Rust的安全理念。
 
 ## slice的Iterator实现
 代码路径：  
-%USER%\.rustup\toolchains\nightly-x86_64-pc-windows-msvc\lib\rustlib\src\rust\library\core\src\slice\iter.rs  
+%USER%\.Rustup\toolchains\nightly-x86_64-pc-windows-msvc\lib\Rustlib\src\Rust\library\core\src\slice\iter.rs  
 
-首先定义了适合&[T]的Iter结构：
+首先定义了适合`&[T]`的`Iter`结构：
 ```rust
 pub struct Iter<'a, T: 'a> {
     //当前元素的指针，与end用不同的类型表示
@@ -3188,7 +3191,7 @@ pub struct IterMut<'a, T: 'a> {
     _marker: PhantomData<&'a mut T>,
 }
 ```
-这里，一个疑惑就是为什么不用下标及切片长度来作为Iter结构。这里主要是因为可变的Iterator实现无法支持。
+这里，一个疑惑就是为什么不用下标及切片长度来作为`Iter`结构。这里主要是因为可变的`Iterator`实现无法支持。
 例如，给出如下结构：
 ```rust
 pub struct IterMut <'a, T:'a> {
@@ -3197,7 +3200,7 @@ pub struct IterMut <'a, T:'a> {
     slice: 'a mut &[T]
 }
 ```
-显然，当IterMut结构是可变借用时，无法再返回一个内部成员的借用用作迭代器的迭代返回值。
+显然，当`IterMut`结构是可变借用时，无法再返回一个内部成员的借用用作迭代器的迭代返回值。
 ```rust
 impl<'a, T> IterMut<'a, T> {
     pub(super) fn new(slice: &'a mut [T]) -> Self {
@@ -3389,16 +3392,16 @@ macro_rules! len {
 
 
 ```
-对于切片，RUST的所有权，借用等规定导致其迭代器实际上是一个非常好的编码训练工具，代码粗略看一遍后值得自己将其实现一遍，可以有效提高对RUST的认识和编码水平。
+对于切片，Rust的所有权，借用等规定导致其迭代器实际上是一个非常好的编码训练工具，代码粗略看一遍后值得自己将其实现一遍，可以有效提高对Rust的认识和编码水平。
 
 ## <a id="str_iter">字符串Iterator代码分析</a>
-题外话，&str.len()返回字符串切片字节占用数，&str.chars().count()返回字符数目。
-字符串切片获取Iterator有如下3个函数
-&str::chars() 获得以UTF-8编码的字符串的Iterator
-&str::bytes() 获得一个[u8]的Iterator
-&str::char_indices() 获得一个元组，第一个成员是字符字节数组的序号，第二个成员是字符本身
-bytes()主要用于提高在程序员确定采用ASCII字符串下的运行效率。
-我们以&str::chars()的Iterator来看一下具体的实现
+题外话，`&str.len()`返回字符串切片字节占用数，`&str.chars().count()`返回字符数目。
+字符串切片获取`Iterator`有如下3个函数
+`&str::chars()` 获得以UTF-8编码的字符串的`Iterator`
+`&str::bytes()` 获得一个`[u8]`的`Iterator`
+`&str::char_indices()` 获得一个元组，第一个成员是字符字节数组的序号，第二个成员是字符本身
+`bytes()`主要用于提高在程序员确定采用ASCII字符串下的运行效率。
+我们以`&str::chars()`的`Iterator`来看一下具体的实现
 ```rust
 pub struct Chars<'a> {
     //利用slice通用的iter做实例化,实际是一个adapter设计模式
@@ -3464,7 +3467,7 @@ pub fn next_code_point<'a, I: Iterator<Item = &'a u8>>(bytes: &mut I) -> Option<
     Some(ch)
 }
 ```
-&str的Iterator实现是一个说明Iterator设计模式优越性的经典实例。如果直接使用循环，则&str与&[T]必然会有很多的重复代码，使用Iterator模式后，重复代码被抽象到了Iterator模块中。&str复用了&[T]的iter。
+`&str`的`Iterator`实现是一个说明`Iterator`设计模式优越性的经典实例。如果直接使用循环，则`&str`与`&[T]`必然会有很多的重复代码，使用`Iterator`模式后，重复代码被抽象到了`Iterator`模块中。&str复用了`&[T]`的`iter`。
 
 ## array 的Iterator实现
 
@@ -3474,7 +3477,7 @@ pub trait Unsize<T: ?Sized> {
     // Empty.
 }
 ```
-实现了Unsize Trait，可以把一个固定内存大小的变量强制转换为相关的可变大小类型， 如[T;N]实现了Unsize<[T]>, 因此[T;N]可以转换为[T]，一般是指针转换。
+实现了`Unsize Trait`，可以把一个固定内存大小的变量强制转换为相关的可变大小类型， 如`[T;N]`实现了`Unsize<[T]>`, 因此`[T;N]`可以转换为`[T]`，一般是指针转换。
 
 ### Iter所用的结构
 ```rust
@@ -3492,14 +3495,14 @@ pub struct IntoIter<T, const N: usize> {
     alive: Range<usize>,
 }
 ```
-上面这个结构是因为需要对array内成员做消费设计的。因为数组成员不支持所有权转移，所以采用了这种设计方式。数组的Iterator实现是理解所有权的一个极佳例子。
+上面这个结构是因为需要对`array`内成员做消费设计的。因为数组成员不支持所有权转移，所以采用了这种设计方式。数组的`Iterator`实现是理解所有权的一个极佳例子。
 
 ### into_iter实现
 ```rust
 impl<T, const N: usize> IntoIter<T, N> {
     pub fn new(array: [T; N]) -> Self {
         // 
-        // 因为RUST特性目前还不支持数组的transmute，所以用了内存跨类型的transmute_copy，此函数将从栈中申请一块内存。
+        // 因为Rust特性目前还不支持数组的transmute，所以用了内存跨类型的transmute_copy，此函数将从栈中申请一块内存。
         // 拷贝完毕后，原数组的所有权已经转移到data，data内数据事实上已经初始化，但仍然还是MaybeUninit<T>的类型。此时，需要对原数组调用mem::forget反应所有权已经失去。
         // mem::forget不会导致内存泄漏。
         unsafe {
@@ -3554,7 +3557,7 @@ impl<T, const N: usize> Drop for IntoIter<T, N> {
 }
 
 ```
-数组的Iterator最关键的点就是如何将数组成员的所有权取出，这是RUST语法带来的额外的麻烦和复杂性。最终的解决办法显示了RUST编码的所有权转移的一些通用的底层技巧。
+数组的`Iterator`最关键的点就是如何将数组成员的所有权取出，这是Rust语法带来的额外的麻烦和复杂性。最终的解决办法显示了Rust编码的所有权转移的一些通用的底层技巧。
 
 ```rust
 impl<T, const N: usize> IntoIterator for [T; N] {
@@ -3567,10 +3570,10 @@ impl<T, const N: usize> IntoIterator for [T; N] {
     }
 }
 ```
-以上创建消费数组成员的Iterator。
+以上创建消费数组成员的`Iterator`。
 
 ### iter(), iter_mut()实现
-下面的数组成员引用的Iterator实质上是将数组强制转换为切片类型，应用切片类型的迭代器。
+下面的数组成员引用的`Iterator`实质上是将数组强制转换为切片类型，应用切片类型的迭代器。
 ```rust
 impl<'a, T, const N: usize> IntoIterator for &'a [T; N] {
     type Item = &'a T;
@@ -3594,11 +3597,11 @@ impl<'a, T, const N: usize> IntoIterator for &'a mut [T; N] {
 }
 ```
 
-## Iterator的适配器代码分析
+## `Iterator`的适配器代码分析
 
-### Map 适配器代码分析
+### `Map` 适配器代码分析
 
-Map相关代码如下：
+`Map`相关代码如下：
 ```rust
 
 pub trait Iterator {
@@ -3633,7 +3636,7 @@ impl<I, F> Map<I, F> {
     }
 }
 ```
-Map适配器结构相当直接而简单。
+`Map`适配器结构相当直接而简单。
 ```rust
 //针对Map实现Iterator
 impl<B, I: Iterator, F> Iterator for Map<I, F>
@@ -3656,7 +3659,7 @@ where
     ...
 }
 ```
-### Chain 适配器代码分析
+### `Chain` 适配器代码分析
 相关代码如下：
 ```rust
 pub trait Iterator {
@@ -3740,13 +3743,13 @@ where
 
 ```
 ### 其他
-Iterator的adapter还有很多，如StedBy, Filter, Zip, Intersperse等等。具体请参考标准库手册。基本上所有的adapter都是遵循Adapter的设计模式来实现的。且每一个适配器的结构及代码逻辑都是比较简单且易理解的。
+`Iterator`的`adapter`还有很多，如`StedBy`, `Filter`, `Zip`, `Intersperse`等等。具体请参考标准库手册。基本上所有的`adapter`都是遵循`Adapter`的设计模式来实现的。且每一个适配器的结构及代码逻辑都是比较简单且易理解的。
 ### 小结
-RUST的Iterater的adapter是突出的体现RUST的语法优越性的特性，借助Trait和强大的泛型机制，与c/c++/java相比较，RUST以很少的代码在标准库就实现了最丰富的adapter。而其他语言标准库往往不存在这些适配器，需要其他库来实现。
-Iterator的adapter实现了强大的基于Iterator的函数式编程基础设施。函数式编程的基础框架之一便是基于Iterator和闭包实现丰富的adapter。这也凸显了RUST在语言级别对函数式编程的良好支持。
+Rust的`Iterater`的`adapter`是突出的体现Rust的语法优越性的特性，借助`Trait`和强大的泛型机制，与c/c++/java相比较，Rust以很少的代码在标准库就实现了最丰富的`adapter`。而其他语言标准库往往不存在这些适配器，需要其他库来实现。
+`Iterator`的`adapter`实现了强大的基于`Iterator`的函数式编程基础设施。函数式编程的基础框架之一便是基于`Iterator`和闭包实现丰富的`adapter`。这也凸显了Rust在语言级别对函数式编程的良好支持。
 
-## Option的Iterator实现代码分析
-Option实现Iterator是比较令人疑惑的，毕竟用Iterator肯定代码更多，逻辑也复杂。主要目的应该是为了重用Iterator构建的各种adapter，及为了函数式编程的需要。仅分析IntoIterator Trait所涉及的结构及方法
+## `Option`的`Iterator`实现代码分析
+`Option`实现`Iterator`是比较令人疑惑的，毕竟用`Iterator`肯定代码更多，逻辑也复杂。主要目的应该是为了重用`Iterator`构建的各种`adapter`，及为了函数式编程的需要。仅分析`IntoIterator Trait`所涉及的结构及方法
 相关类型结构定义：
 ```rust
 //into_iter的结构
@@ -3800,16 +3803,16 @@ impl<A> Iterator for IntoIter<A> {
         self.inner.size_hint()
     }
 }
-```   
+```
 
-Result<T,E>的 Iterator与Option<T>的Iterator非常相似，略
+`Result<T,E>`的 `Iterator`与`Option<T>`的`Iterator`非常相似，略
 
-# RUST基本类型代码分析(二)
+# Rust基本类型代码分析(二)
 ## 整形类型标准库代码分析
 ### NonZero数据类型
 `NonZeroU8, NonZeroU16，NonZeroU32, NonZeroU64, NonZeroU128, NonZeroUsize`
 `NonZeroI8, NonZeroI16, NonZeroI32, NonZeroI64, NonZeroI128, NonZeroIsize`
-以上为NonZero的类型，内存结构与相应的整形数据完全相同，可以转换。上文提过，当需要0表示特殊含义时，使用NonZero类型以保证代码安全。
+以上为`NonZero`的类型，内存结构与相应的整形数据完全相同，可以转换。上文提过，当需要0表示特殊含义时，使用`NonZero`类型以保证代码安全。
 重要函数：
 ```rust
 //利用宏简化定义代码
@@ -3900,9 +3903,9 @@ nonzero_integers! {
     NonZeroIsize(isize);
 }
 ```
-NonZero 类型典型的体现了RUST程序设计的安全原则，所有的异常应该用类型系统表示出来，以强制获得处理。不要用临时性的措施。这样可以最大限度的避免bug的产生。
+`NonZero` 类型典型的体现了Rust程序设计的安全原则，所有的异常应该用类型系统表示出来，以强制获得处理。不要用临时性的措施。这样可以最大限度的避免bug的产生。
 
-### 整形数据ops数学运算符，位运算符重载实现代码分析
+### 整形数据`ops`数学运算符，位运算符重载实现代码分析
 以Add为例说明：
 ```rust
 Add<Rhs = Self> {
@@ -3930,7 +3933,7 @@ add_impl! { usize u8 u16 u32 u64 u128 isize i8 i16 i32 i64 i128 f32 f64 }
 其他数学运算符及位运算符与此接近，因为代码逻辑简单，请参考标准库手册，略
 
 
-## bool类型方法代码分析
+## `bool`类型方法代码分析
 ```rust
     pub fn then<T, F: FnOnce() -> T>(self, f: F) -> Option<T> {
         if self { Some(f()) } else { None }
@@ -3940,10 +3943,10 @@ add_impl! { usize u8 u16 u32 u64 u128 isize i8 i16 i32 i64 i128 f32 f64 }
         if self { Some(f()) } else { None }
     }
 ```
-配合ops::Try，以上函数主要是在语言级别更好的支持函数式编程
+配合`ops::Try`，以上函数主要是在语言级别更好的支持函数式编程
 
-## RUST字符(char)类型标准库代码分析
-RUST的字符标准库主要是编程中常用到的字符相关操作,所有标准库的函数都可以作为RUST的训练，本节摘录一些显示RUST编码特点的内容。
+## Rust字符(`char`)类型标准库代码分析
+Rust的字符标准库主要是编程中常用到的字符相关操作,所有标准库的函数都可以作为Rust的训练，本节摘录一些显示Rust编码特点的内容。
 
 由字符串转换为字符类型：
 见如下代码：
@@ -3966,8 +3969,8 @@ impl FromStr for char {
     }
 }
 ```
-str::chars()函数请见前文<a href="#str_iter">字符串Iterator代码分析</a>
-u32转换为char,代码如下：
+`str::chars()`函数请见前文<a href="#str_iter">字符串`Iterator`代码分析</a>
+`u32`转换为`char`,代码如下：
 ```rust
 impl TryFrom<u32> for char {
     type Error = CharTryFromError;
@@ -3982,7 +3985,7 @@ impl TryFrom<u32> for char {
     }
 }
 ```
-从任一进制的数值转换为char,代码如下：
+从任一进制的数值转换为`char`,代码如下：
 ```rust
 pub fn from_digit(num: u32, radix: u32) -> Option<char> {
     //不支持大于36进制的数
@@ -3998,7 +4001,7 @@ pub fn from_digit(num: u32, radix: u32) -> Option<char> {
     }
 }
 ```
-将字符转换为某一进制的数值,以下例子充分的说明了RUST的安全性，相对于只有一种加法的C，RUST显著的降低了程序Bug出现的可能性
+将字符转换为某一进制的数值,以下例子充分的说明了Rust的安全性，相对于只有一种加法的C，Rust显著的降低了程序Bug出现的可能性
 ```rust
     pub fn to_digit(self, radix: u32) -> Option<u32> {
         assert!(radix <= 36, "to_digit: radix is too high (maximum 36)");
@@ -4015,7 +4018,7 @@ pub fn from_digit(num: u32, radix: u32) -> Option<char> {
         (digit < radix).then_some(digit)
     }
 ```
-将字符转换为"\u{xxxx}"的形式：
+将字符转换为``\u{xxxx}`的形式：
 ```rust
 //escape_unicode充分的展示了函数式编程的设计思想
 //即以迭代器为中心来设计问题解决方案，
@@ -4129,11 +4132,11 @@ impl fmt::Display for EscapeUnicode {
     }
 }
 ```
-EscapeUnicode 实现了Display Trait。可以调用to_string来输出字符串
-RUST的字符模块的其他转换函数与EscapeUnicode采用了类似的设计，下面列出这些转换函数，但代码分析省略
-`pub fn escape_debug(self) -> EscapeDebug` char的Debug转换输出
-`pub fn to_lowercase(self) -> ToLowercase` char转换为小写
-`pub fn to_uppercase(self) -> ToUppercase` char转换为大写
+`EscapeUnicode` 实现了`Display Trait`。可以调用`to_string`来输出字符串
+Rust的字符模块的其他转换函数与`EscapeUnicode`采用了类似的设计，下面列出这些转换函数，但代码分析省略
+`pub fn escape_debug(self) -> EscapeDebug` `char`的`Debug`转换输出
+`pub fn to_lowercase(self) -> ToLowercase` `char`转换为小写
+`pub fn to_uppercase(self) -> ToUppercase` `char`转换为大写
 
 编码为UTF-8的字符串
 ```rust
@@ -4150,7 +4153,7 @@ RUST的字符模块的其他转换函数与EscapeUnicode采用了类似的设计
     pub fn encode_utf8_raw(code: u32, dst: &mut [u8]) -> &mut [u8] {
         let len = len_utf8(code);
         match (len, &mut dst[..]) {
-            //rust语法的强大展现，逻辑很简单，分析略
+            //Rust语法的强大展现，逻辑很简单，分析略
             (1, [a, ..]) => {
                 *a = code as u8;
             }
@@ -4182,8 +4185,8 @@ RUST的字符模块的其他转换函数与EscapeUnicode采用了类似的设计
 ```
 
 ## 字符串标准库代码分析
-字符串模块的一个核心是Iterator，已经在Iterator章节中有过说明。
-除了Iterator，字符串其他的方法及函数库代码摘要分析如下：
+字符串模块的一个核心是`Iterator`，已经在`Iterator`章节中有过说明。
+除了`Iterator`，字符串其他的方法及函数库代码摘要分析如下：
 ```rust
     pub const fn len(&self) -> usize {
         //字符串的len是字符串字节数目
@@ -4240,7 +4243,7 @@ RUST的字符模块的其他转换函数与EscapeUnicode采用了类似的设计
     //其他可以用Index实现的get_xxx函数及split_at函数，略
     ...
 ```
-下面通过字符串的查找函数给出RUST良好的程序结构设计的一个例子：
+下面通过字符串的查找函数给出Rust良好的程序结构设计的一个例子：
 ```rust
     //字符串查找函数，可以用模式匹配查找子串
     //支持如下例子中的查找    
@@ -4257,12 +4260,12 @@ RUST的字符模块的其他转换函数与EscapeUnicode采用了类似的设计
     /// assert_eq!(s.find(|c: char| c.is_whitespace() || c.is_lowercase()), Some(1));
     /// assert_eq!(s.find(|c: char| (c < 'o') && (c > 'a')), Some(4));
     /// 
-    /// 字符数组的查找，注意RUST中字符数组与字符串是不同的两个类型
+    /// 字符数组的查找，注意Rust中字符数组与字符串是不同的两个类型
     /// assert_eq!(s.find(['老', 'G']))
 ```
-由以上注释可以看到，rust的字符串查找函数功能强大，使用直观且易于理解。后继代码将展现RUST具备的：
-1. 良好的扩展性，即使是原生类型，也可以直接在其上增加自定义Trait, 从而得到最直观的代码表现，而其他语言如C++/Java是无法在已经定义好的类型上做扩充的。只能创建新类型来实现对已有类型的功能扩展。不但在代码上不直观及冗余，也造成了额外的学习负担。
-2. Trait语义的强大，即使对于闭包类型，也可以实现Trait。
+由以上注释可以看到，Rust的字符串查找函数功能强大，使用直观且易于理解。后继代码将展现Rust具备的：
+1. 良好的扩展性，即使是原生类型，也可以直接在其上增加自定义`Trait`, 从而得到最直观的代码表现，而其他语言如C++/Java是无法在已经定义好的类型上做扩充的。只能创建新类型来实现对已有类型的功能扩展。不但在代码上不直观及冗余，也造成了额外的学习负担。
+2. `Trait`语义的强大，即使对于闭包类型，也可以实现`Trait`。
    
 ```rust
     pub fn find<'a, P: Pattern<'a>>(&'a self, pat: P) -> Option<usize> {
@@ -4271,8 +4274,8 @@ RUST的字符模块的其他转换函数与EscapeUnicode采用了类似的设计
     }
 ```
 要设计这样一个find方法:
-1. 显然，参数需要是一个泛型，但泛型应该支持同样的接口，即Pattern trait
-2. 需要利用find的输入泛型参数，self来构造一个结构，并以这个结构为基础来实现方法完成查找。Pattern trait 的类型显然不可能作为这个结构(字符，字符切片，字符数组，闭包函数，字符串). 这个结构只能由Pattern trait的方法构造，事实上，Pattern trait最重要的工作就是构造这个结构。
+1. 显然，参数需要是一个泛型，但泛型应该支持同样的接口，即`Pattern trait`
+2. 需要利用`find`的输入泛型参数，self来构造一个结构，并以这个结构为基础来实现方法完成查找。`Pattern trait` 的类型显然不可能作为这个结构(字符，字符切片，字符数组，闭包函数，字符串). 这个结构只能由`Pattern trait`的方法构造，事实上，`Pattern trait`最重要的工作就是构造这个结构。
 3. 2构造的结构应该支持统一的接口，真正的实现查找
 
 具体的实现定义如下：
@@ -4294,7 +4297,7 @@ RUST的字符模块的其他转换函数与EscapeUnicode采用了类似的设计
         ...
     }
 ```
-以下为Searcher trait定义。
+以下为`Searcher trait`定义。
 ```rust    
     //Pattern匹配搜索算法的具体实现Trait
     pub unsafe trait Searcher<'a> {
@@ -4342,7 +4345,7 @@ RUST的字符模块的其他转换函数与EscapeUnicode采用了类似的设计
         Done,
     }
 ```
-下面为单字符的Pattern trait的系列实现，仅展示一下相应的逻辑关系。
+下面为单字符的`Pattern trait`的系列实现，仅展示一下相应的逻辑关系。
 ```rust
     //针对char类型的Searcher Trait具现化类型
     pub struct CharSearcher<'a> { /*略*/ }
@@ -4360,8 +4363,8 @@ RUST的字符模块的其他转换函数与EscapeUnicode采用了类似的设计
         ...
     }
 ```
-下面为多字符的Pattern trait的实现，因为是比较典型的设计，所以重点的进行分析：
-首先，设计字符匹配的trait，并在闭包，字符数组及其引用，字符切片类型中实现
+下面为多字符的`Pattern trait`的实现，因为是比较典型的设计，所以重点的进行分析：
+首先，设计字符匹配的`trait`，并在闭包，字符数组及其引用，字符切片类型中实现
 ```rust
     //支持  "abc".find(&['a','b'])的形态
     //      "abc".find(&['a','b'][..]) 的形态 &['a','b'][..] 实质是&[char]类型，注意与&str类型的区别
@@ -4403,8 +4406,8 @@ RUST的字符模块的其他转换函数与EscapeUnicode采用了类似的设计
             self.iter().any(|&m| m == c)
         }
     }
- ```
-然后是基于泛型的统一的Pattern trait和Searcher的实现
+```
+然后是基于泛型的统一的`Pattern trait`和`Searcher`的实现
  ```rust   
     //利用输入类型构造一个泛型结构
     struct MultiCharEqPattern<C: MultiCharEq>(C);
@@ -4449,8 +4452,8 @@ RUST的字符模块的其他转换函数与EscapeUnicode采用了类似的设计
             SearchStep::Done
         }
     }
-```
-下面是如何将MultiCharEqPattern及MultiCharEqSearcher应用在各类型的Pattern实现中。
+ ```
+下面是如何将`MultiCharEqPattern`及`MultiCharEqSearcher`应用在各类型的`Pattern`实现中。
 ```rust
 
     /////////////////////////////////////////////////////////////////////////////
@@ -4611,10 +4614,10 @@ RUST的字符模块的其他转换函数与EscapeUnicode采用了类似的设计
         pattern_methods!(CharPredicateSearcher<'a, F>, MultiCharEqPattern, CharPredicateSearcher);
     }
 ```
-多字符搜索代码不复杂，但结构设计则可圈可点。而且似乎是不得不这样做设计。RUST利用泛型及trait能够自然的得到比较好的设计结果。
+多字符搜索代码不复杂，但结构设计则可圈可点。而且似乎是不得不这样做设计。Rust利用泛型及trait能够自然的得到比较好的设计结果。
 我们针对泛型做一个方法时，自然会对泛型用一个共用的trait——Pattern来约束。因为方法实现需要不同于泛型但紧密关联的另一个结构体，那这个结构体类型便自然的形成trait里的一个关联类型Searcher。而这个关联类型也自然应该用另一个trait——Searcher来约束。
 Searcher的变量应该在Pattern里面生成出来。Searcher trait应该提供查找的方法。
-这就是RUST语法自然导致好的设计的一个例子。
+这就是Rust语法自然导致好的设计的一个例子。
 
 以下对子字符串搜索给出一些详细的解释，主要说明TwoWay算法
 ```rust
@@ -4941,7 +4944,7 @@ Searcher的变量应该在Pattern里面生成出来。Searcher trait应该提供
         }
     }
 ```
-以上对字符串查找的方法进行了分析，利用Pattern的还有以下的方法：
+以上对字符串查找的方法进行了分析，利用`Pattern`的还有以下的方法：
 ```rust    
     //生成一个支持Iterator的结构完成split
     pub fn split<'a, P: Pattern<'a>>(&'a self, pat: P) -> Split<'a, P> {
@@ -4982,11 +4985,11 @@ where
 {
     let len = v.len();
     
-    // 因为是对泛型排序，RUST的排序算法比较复杂， 需要指出，&mut [T] 保证了外界不会有对数组或数组元素的引用，而数组元素本身的内存
+    // 因为是对泛型排序，Rust的排序算法比较复杂， 需要指出，&mut [T] 保证了外界不会有对数组或数组元素的引用，而数组元素本身的内存
     // 浅拷贝等同于所有权转移，不会出现内存安全问题。
     unsafe {
         if len >= 2 && is_less(v.get_unchecked(len - 1), v.get_unchecked(len - 2)) {
-            // ManuallyDrop把drop的权利从rust编译器接管
+            // ManuallyDrop把drop的权利从Rust编译器接管
             let mut tmp = mem::ManuallyDrop::new(ptr::read(v.get_unchecked(len - 1)));
             // CopyOnDrop会在drop的时候做src到dest的拷贝
             let mut hole = CopyOnDrop { src: &mut *tmp, dest: v.get_unchecked_mut(len - 2) };
@@ -5005,14 +5008,14 @@ where
     }
 }
 ```
-上面的排序算法最重要的是理解在元素转移的过程为什么没有影响所有权，为什么没有引发内存安全问题。同时，最基础的排序算法也要使用mem及ptr模块的库,可见不熟悉mem及ptr模块，就无法熟练使用RUST。
+上面的排序算法最重要的是理解在元素转移的过程为什么没有影响所有权，为什么没有引发内存安全问题。同时，最基础的排序算法也要使用`mem`及`ptr`模块的库,可见不熟悉`mem`及`ptr`模块，就无法熟练使用Rust。
 
 # 内部可变类型代码分析
 
 ## Borrow Trait 代码分析
 代码路径如下：   
-%USER%\.rustup\toolchains\nightly-x86_64-pc-windows-msvc\lib\rustlib\src\rust\library\core\src\option.rs  
-Borrow Trait代码定义如下：
+`%USER%\.Rustup\toolchains\nightly-x86_64-pc-windows-msvc\lib\Rustlib\src\Rust\library\core\src\option.rs  `
+`Borrow Trait`代码定义如下：
 ```rust
 //实现Borrow Trait的类型一般是封装结构，如智能指针Box<T>，Rc<T>, String，Cell, RefCell等，通过borrow将
 //内部变量的引用提供给外部。通常的情况下，这些也都实现了Deref，AsRef等Trait把内部变量暴露出来，所以这些
@@ -5062,18 +5065,19 @@ impl<T: ?Sized> BorrowMut<T> for &mut T {
 
 ## Cell模块类型代码分析
 代码路径：
-%USER%\.rustup\toolchains\nightly-x86_64-pc-windows-msvc\lib\rustlib\src\rust\library\core\src\cell.rs  
+`%USER%\.Rustup\toolchains\nightly-x86_64-pc-windows-msvc\lib\Rustlib\src\Rust\library\core\src\cell.rs  `
 
-Cell模块提供了内部可变性的功能。对应于以下场景：
+`Cell`模块提供了内部可变性的功能。对应于以下场景：
 一个变量存在多个引用，希望通过这些引用都可以修改此变量。
-RUST的可变引用与不可变引用不能同时共存，这导致了无法通过普通的引用语法完成上述场景。RUST提供的方案是Cell方案。思路很简单，提供一个封装结构，此封装结构以非可变引用存在于其他类型结构体成员变量中。然后在这个封装结构的基础上，利用unsafe 代码完成内部变量的改变。
-Cell模块类型的层次如下：
-1. UnsafeCell<T>主要提供了获取内部变量原生可变指针的方法。
-2. Cell<T>基于UnsafeCell<T>的基础上实现了安全的内部可变性, Cell<T>的多个不可变引用都可以用set方法改变内部的T类型变量。Cell<T>本身没有可变引用及不可变引用的区别，与RUST的内存安全性理念有些不符合。程序员使用RefCell<T>完成内部可变性是更合适的方案。
-3. RefCell<T>基于Cell<T>及UnsafeCell<T>，并实现Borrow Trait 及 BorrowMut Trait，可以实现在生命周期不重合的情况下的多个可变引用，且可变引用与不可变引用不可以同时存在。RefCell<T>是与RUST内存安全理念相契合的内部可变性实现方案。
+Rust的可变引用与不可变引用不能同时共存，这导致了无法通过普通的引用语法完成上述场景。Rust提供的方案是`Cell`方案。思路很简单，提供一个封装结构，此封装结构以非可变引用存在于其他类型结构体成员变量中。然后在这个封装结构的基础上，利用`unsafe` 代码完成内部变量的改变。
+`Cell`模块类型的层次如下：
+1. `UnsafeCell<T>`主要提供了获取内部变量原生可变指针的方法。
+2. `Cell<T>`基于`UnsafeCell<T>`的基础上实现了安全的内部可变性, `Cell<T>`的多个不可变引用都可以用set方法改变内部的T类型变量。`Cell<T>`本身没有可变引用及不可变引用的区别，与Rust的内存安全性理念有些不符合。程序员使用`RefCell<T>`完成内部可变性是更合适的方案。
+3. `RefCell<T>`基于`Cell<T>`及`UnsafeCell<T>`，并实现`Borrow Trait` 及 `BorrowMut Trait`，可以实现在生命周期不重合的情况下的多个可变引用，且可变引用与不可变引用不可以同时存在。`RefCell<T>`是与Rust内存安全理念相契合的内部可变性实现方案。
    
-UnsafeCell是RUST的内部可变结构的最底层基础设施，Cell结构和RefCell结构都是用UnsafeCell来实现内部可变性的。 
-RUST不提供同时存在两个以上的可变引用的方案。
+
+`UnsafeCell`是Rust的内部可变结构的最底层基础设施，`Cell`结构和`RefCell`结构都是用`UnsafeCell`来实现内部可变性的。 
+Rust不提供同时存在两个以上的可变引用的方案。
 ```rust
 
 pub struct UnsafeCell<T: ?Sized> {
@@ -5115,16 +5119,16 @@ impl<T> const From<T> for UnsafeCell<T> {
     }
 }
 ```
-可以看到，UnsafeCell的get函数返回了裸指针，UnsafeCell逃脱RUST对引用安全检查的方法实际上就是个通常的unsafe 的裸指针操作，没有任何神秘性可言。
+可以看到，`UnsafeCell`的`get`函数返回了裸指针，`UnsafeCell`逃脱Rust对引用安全检查的方法实际上就是个通常的 `unsafe` 的裸指针操作，没有任何神秘性可言。
 
-Cell<T> 内部包装UnsafeCell<T>， 利用UnsafeCell<T>的方法获得裸指针后，用unsafe代码对内部变量进行赋值，从而绕开了RUST语言编译器对引用的约束。Cell<T>的赋值没有任何限制，实际上和直接使用裸指针赋值是等同的，但因为没有直接暴露裸指针，所以保证了不会出现悬垂指针。
+`Cell<T> `内部包装`UnsafeCell<T>`， 利用`UnsafeCell<T>`的方法获得裸指针后，用`unsafe`代码对内部变量进行赋值，从而绕开了Rust语言编译器对引用的约束。`Cell<T>`的赋值没有任何限制，实际上和直接使用裸指针赋值是等同的，但因为没有直接暴露裸指针，所以保证了不会出现悬垂指针。
 ```rust
 #[repr(transparent)]
 pub struct Cell<T: ?Sized> {
     value: UnsafeCell<T>,
 }
 ```
-Cell<T>创建方法：
+`Cell<T>`创建方法：
 ```rust
 impl<T> const From<T> for Cell<T> {
     fn from(t: T) -> Cell<T> {
@@ -5137,7 +5141,7 @@ impl<T> Cell<T> {
         Cell { value: UnsafeCell::new(value) }
     }
 ```
-Cell<T> 改变内部变量的方法:
+`Cell<T>` 改变内部变量的方法:
 ```rust
     
     pub fn set(&self, val: T) {
@@ -5240,7 +5244,7 @@ impl<T, const N: usize> Cell<[T; N]> {
 }
 ```
 
-以下为RefCell<T>类型相关的结构， 删除了一些和debug相关的内容，使代码简化及理解简单
+以下为`RefCell<T>`类型相关的结构， 删除了一些和`debug`相关的内容，使代码简化及理解简单
 ```rust
 /// 满足以下需求：
 
@@ -5252,7 +5256,7 @@ pub struct RefCell<T: ?Sized> {
     value: UnsafeCell<T>,
 }
 ```
-引用计数类型BorrowFlag的定义：
+引用计数类型`BorrowFlag`的定义：
 ```rust
 // 正整数表示RefCell执行borrow()调用生成的不可变引用"Ref"的数目
 // 负整数表示RefCell执行borrow_mut()调用生成的可变引用"RefMut"的数目
@@ -5316,7 +5320,7 @@ impl Clone for BorrowRef<'_> {
     }
 }
 ```
-下面是从RefCell<T>取得不可变引用的具体实现类型及逻辑。
+下面是从`RefCell<T>`取得不可变引用的具体实现类型及逻辑。
 ```rust
 //RefCell<T> borrow()调用获取的类型
 pub struct Ref<'b, T: ?Sized + 'b> {
@@ -5371,7 +5375,7 @@ impl<'b, T: ?Sized> Ref<'b, T> {
 
 impl<'b, T: ?Sized + Unsize<U>, U: ?Sized> CoerceUnsized<Ref<'b, U>> for Ref<'b, T> {}
 ```
-以下是borrow_mut()的相关结构及逻辑:
+以下是`borrow_mut()`的相关结构及逻辑:
 ```rust
 //作用与BorrowRef相同
 struct BorrowRefMut<'b> {
@@ -5436,7 +5440,7 @@ impl<T: ?Sized> DerefMut for RefMut<'_, T> {
     }
 }
 ```
-对RefCell<T>的方法实现：
+对`RefCell<T>`的方法实现：
 变量创建方法：
 ```rust
 impl<T> RefCell<T> {
@@ -5481,7 +5485,7 @@ impl<T> RefCell<T> {
     }
 }
 ```
-下面实际上已经实现了Borrow trait,
+下面实际上已经实现了`Borrow trait`,
 ```rust
 impl<T: ?Sized> RefCell<T> {
     //Borrow Trait实现
@@ -5494,7 +5498,7 @@ impl<T: ?Sized> RefCell<T> {
         match BorrowRef::new(&self.borrow) {
             Some(b) => {
                 // 保证了self.borrow一定是is_reading()为真，直接从裸指针
-                //转换，对RUST来讲，转换后的引用与原变量没有内存安全的联系。
+                //转换，对Rust来讲，转换后的引用与原变量没有内存安全的联系。
                 // 从这个函数看，RefCell<T>应该尽量使用RefCell的方法操作，除非绝对把握
                 // 不要直接将内部变量的正常引用导出，否则安全隐患巨大。
                 Ok(Ref { value: unsafe { &*self.value.get() }, borrow: b })
@@ -5514,7 +5518,7 @@ impl<T: ?Sized> RefCell<T> {
         match BorrowRefMut::new(&self.borrow) {
             Some(b) => {
                 // 一定不存在非可变引用，也仅有本次的可变引用，这个可变引用直接从
-                // 裸指针转换，对RUST编译器，转换后的可变引用与原变量没有内存安全的联系。
+                // 裸指针转换，对Rust编译器，转换后的可变引用与原变量没有内存安全的联系。
                 Ok(RefMut { value: unsafe { &mut *self.value.get() }, borrow: b })
             }
             None => Err(BorrowMutError {
@@ -5565,7 +5569,7 @@ impl<T: Default> RefCell<T> {
     }
 }
 ```
-系统编译器内嵌trait实现：
+系统编译器内嵌`trait`实现：
 ```rust
 //支持线程间转移
 unsafe impl<T: ?Sized> Send for RefCell<T> where T: Send {}
@@ -5609,13 +5613,13 @@ impl<T> const From<T> for RefCell<T> {
 
 impl<T: CoerceUnsized<U>, U> CoerceUnsized<RefCell<U>> for RefCell<T> {}
 ```
-RefCell<T>的代码实现，是理解RUST解决问题的思维的好例子。 编程中，RefCell的计数器是针对RUST语法的一个精巧的设计，利用drop的自动调用，编程只需要关注new，这就节省了程序员极大的精力，也规避了错误的发生。borrow_mut()机制则解决了多个可修改借用。
-利用RUST的非安全个性和自动drop的机制，可以自行设计出RefCell<T>这样的标准库解决方案，而不是借助于编译器。这是RUST的一个突出特点，也是其能与C一样成为系统级语言的原因。
+`RefCell<T>`的代码实现，是理解Rust解决问题的思维的好例子。 编程中，`RefCell`的计数器是针对Rust语法的一个精巧的设计，利用`drop`的自动调用，编程只需要关注`new`，这就节省了程序员极大的精力，也规避了错误的发生。`borrow_mut()`机制则解决了多个可修改借用。
+利用Rust的非安全个性和自动`drop`的机制，可以自行设计出`RefCell<T>`这样的标准库解决方案，而不是借助于编译器。这是Rust的一个突出特点，也是其能与C一样成为系统级语言的原因。
 ## Pin及UnPin
-Pin<T>主要解决需要程序员在编程时要时刻注意处理可能的变量地址改变的情况。利用Pin<T>，程序员只需要在初始的时候注意到这个场景并定义好。后继就可以不必再关心。
-Pin是一个对指针&mut T的包装结构，包装后因为&mut T的独占性。封装结构外，不可能再存在变量的引用及不可变引用。所有的引用都只能使用Pin<T>来完成，导致RUST的需要引用的一些内存操作无法进行，如实质上是指针交换的调用mem::swap，从而保证了指针指向的变量在代码中会被固定在某个内存位置。当然，编译器也不会再做优化。
+`Pin<T>`主要解决需要程序员在编程时要时刻注意处理可能的变量地址改变的情况。利用`Pin<T>`，程序员只需要在初始的时候注意到这个场景并定义好。后继就可以不必再关心。
+`Pin`是一个对指针`&mut T`的包装结构，包装后因为`&mut T`的独占性。封装结构外，不可能再存在变量的引用及不可变引用。所有的引用都只能使用`Pin<T>`来完成，导致Rust的需要引用的一些内存操作无法进行，如实质上是指针交换的调用`mem::swap`，从而保证了指针指向的变量在代码中会被固定在某个内存位置。当然，编译器也不会再做优化。
 
-实现Unpin Trait的类型不受Pin的约束，RUST中实现Copy trait的类型基本上都实现了Unpin Trait。
+实现`Unpin Trait`的类型不受`Pin`的约束，Rust中实现`Copy trait`的类型基本上都实现了`Unpin Trait`。
 结构定义
 ```rust
 #[repr(transparent)]
@@ -5624,7 +5628,7 @@ pub struct Pin<P> {
     pointer: P,
 }
 ```
-Pin变量创建：
+`Pin`变量创建：
 ```rust
 impl<P: Deref<Target: Unpin>> Pin<P> {
     // 支持Unpin类型可以用new创建Pin<T>
@@ -5642,8 +5646,8 @@ impl<P: Deref> Pin<P> {
     ...
 }
 ```
-Pin自身的new方法仅针对Pin实际上不起作用的Unpin类型。对于其他不支持Unpin的类型，通常使用智能指针提供的Pin创建方法，如Boxed::pin。
-new_unchecked则提供给其他智能指针的安全的创建方法内部使用。
+`Pin`自身的`new`方法仅针对`Pin`实际上不起作用的`Unpin`类型。对于其他不支持`Unpin`的类型，通常使用智能指针提供的`Pin`创建方法，如`Boxed::pin`。
+`new_unchecked`则提供给其他智能指针的安全的创建方法内部使用。
 
 ```rust
 impl <P: Deref<Target: Unpin>> Pin<P> {
@@ -5682,7 +5686,7 @@ impl <P:DerefMut> Pin<P> {
     }
 }
 impl <'a, T:?Sized> Pin<&'a T> {
-    //&T 不会导致在安全RUST领域的类如mem::replace之类的地址改变操作
+    //&T 不会导致在安全Rust领域的类如mem::replace之类的地址改变操作
     pub const fn get_ref(self) -> &'a T {
         self.pointer
     }
@@ -5787,17 +5791,17 @@ impl<'a, T: ?Sized> Pin<&'a mut T> {
     }
 }
 ```
-利用Pin的封装及基于trait约束的方法实现，使得指针pin在内存中的需求得以实现。是RUST利用封装语义完成语言需求的又一经典案例
-## Lazy<T>分析
+利用`Pin`的封装及基于`trait`约束的方法实现，使得指针`pin`在内存中的需求得以实现。是Rust利用封装语义完成语言需求的又一经典案例
+## `Lazy<T>`分析
 
-OnceCell是一种内部可变的类型，其用于初始化没有初始值，仅支持赋值一次的类型。
+`OnceCell`是一种内部可变的类型，其用于初始化没有初始值，仅支持赋值一次的类型。
 ```rust
 pub struct OnceCell<T> {
     // Option<T>支持None作为初始化的值
     inner: UnsafeCell<Option<T>>,
 }
 ```
-OnceCell封装UnsafeCell以支持内部可变性。
+`OnceCell`封装`UnsafeCell`以支持内部可变性。
 创建方法:
 ``` rust
 impl<T> const From<T> for OnceCell<T> {
@@ -5886,7 +5890,7 @@ impl<T> OnceCell<T> {
     }
 }
 ```
-OnceCell<T>对trait的实现：
+`OnceCell<T>`对`trait`的实现：
 ```rust
 impl<T> Default for OnceCell<T> {
     fn default() -> Self {
@@ -5913,7 +5917,7 @@ impl<T: PartialEq> PartialEq for OnceCell<T> {
     }
 }
 ```
-基于OnceCell<T>实现惰性结构Lazy<T>,惰性结构在第一次调用解引用的时候被赋值，随后使用这个值。
+基于`OnceCell<T>`实现惰性结构`Lazy<T>`,惰性结构在第一次调用解引用的时候被赋值，随后使用这个值。
 此结构强迫代码区分初始化必须有值及不必赋值的情况。
 ```rust
 /// 惰性类型，在第一次使用时进行赋值和初始化
@@ -5959,14 +5963,14 @@ impl<T: Default> Default for Lazy<T> {
 ```
 
 ## 小结
-从内部可变类型，以及前面的NonNull<T>, Unique<T>, NonZeroSize<T>,可以看到RUST灵活的利用封装结构，提供了一系列在语言原生类型增强的功能。
+从内部可变类型，以及前面的`NonNull<T>`, `Unique<T>`, `NonZeroSize<T>`,可以看到Rust灵活的利用封装结构，提供了一系列在语言原生类型增强的功能。
 
 # 智能指针
 
-## Box<T>代码分析
-除了数组外的智能指针的堆内存申请，一般都先由Box<T>来完成，然后再将申请到的内存转移到智能指针自身的结构中。
+## `Box<T>`代码分析
+除了数组外的智能指针的堆内存申请，一般都先由`Box<T>`来完成，然后再将申请到的内存转移到智能指针自身的结构中。
 
-以下为Box<T>结构定义及创建方法相关内容：
+以下为`Box<T>`结构定义及创建方法相关内容：
 ```rust
 //Box结构
 pub struct Box<
@@ -5976,7 +5980,7 @@ pub struct Box<
   //用Unique<T>表示对申请的堆内存拥有所有权  
 >(Unique<T>, A);
 ```
-Box<T>的创建方法：
+`Box<T>`的创建方法：
 ```rust
 //以Global作为默认的堆内存分配器的实现
 impl<T> Box<T> {
@@ -6080,9 +6084,9 @@ unsafe impl< T: ?Sized, A: Allocator> Drop for Box<T, A> {
     }
 }
 ```
-以上是Box的最常用的创建方法的代码。对于所有的堆申请，申请后的内存变量类型是MaybeUninit<T>，然后对MaybeUninit<T>用ptr::write完成初始化，随后再assume_init进入正常变量状态，这是rust的基本套路。
+以上是`Box`的最常用的创建方法的代码。对于所有的堆申请，申请后的内存变量类型是`MaybeUninit<T>`，然后对`MaybeUninit<T>`用`ptr::write`完成初始化，随后再`assume_init`进入正常变量状态，这是Rust的基本套路。
 
-Box<T>的Pin方法：
+`Box<T>`的Pin方法：
 ```rust
 impl<T> Box<T> {
     //如果T没有实现Unpin Trait, 则内存不会移动
@@ -6114,7 +6118,7 @@ impl<T, A: Allocator> Box<T, A> {
     ...
 }
 ```
-Box<[T]>的方法：
+`Box<[T]>`的方法：
 ```rust
 impl<T,A:Allocator> Box<T, A> {
     //切片
@@ -6166,11 +6170,11 @@ impl<T,A:Allocator> Box<T, A> {
     ...
 }
 ```
-以上即为Box<T>创建及析构的所有相关代码，其中较难理解的是leak方法。在RUST中，惯例对内存申请一般会使用Box<T>来实现，如果需要将申请的内存以另外的智能指针结构做封装，则调用Box::leak将堆指针传递出来
-## RawVec<T>代码分析
+以上即为`Box<T>`创建及析构的所有相关代码，其中较难理解的是leak方法。在Rust中，惯例对内存申请一般会使用`Box<T>`来实现，如果需要将申请的内存以另外的智能指针结构做封装，则调用`Box::leak`将堆指针传递出来
+## `RawVec<T>`代码分析
 
-RawVec<T>用于指向一块从堆内存申请出来的某一类型数据的数组buffer，可以未初始化或初始化为零。与数组有关的智能指针底层的内存申请基本上都采用了RawVec<T>
-RawVec<T>的结构体，创建及Drop相关方法：
+`RawVec<T>`用于指向一块从堆内存申请出来的某一类型数据的数组`buffer`，可以未初始化或初始化为零。与数组有关的智能指针底层的内存申请基本上都采用了`RawVec<T>`
+`RawVec<T>`的结构体，创建及`Drop`相关方法：
 ```rust
 enum AllocInit {
     /// 内存块没有初始化
@@ -6297,7 +6301,7 @@ unsafe impl<#[may_dangle] T, A: Allocator> Drop for RawVec<T, A> {
     }
 }
 ```
-RawVec转换为Box<[T],A>:
+`RawVec`转换为`Box<[T],A>`:
 ```rust
 impl<T, A: Allocator> RawVec<T, A> {
     //将内存块中0到len-1之间的内存块，转换为Box<[MaybeUninit<T>]>类型，len应该小于self.capacity,
@@ -6308,7 +6312,7 @@ impl<T, A: Allocator> RawVec<T, A> {
             "`len` must be smaller than or equal to `self.capacity()`"
         );
         
-        //RUST不再对self做drop调用
+        //Rust不再对self做drop调用
         let me = ManuallyDrop::new(self);
         unsafe {
             //me作为解引用，获取ptr, 然后直接将裸指针强制转换为MaybeUninit<T>，
@@ -6320,7 +6324,7 @@ impl<T, A: Allocator> RawVec<T, A> {
         }
     }
 ```
-RawVec<T>内部成员获取方法：
+`RawVec<T>`内部成员获取方法：
 ```rust
     pub fn ptr(&self) -> *mut T {
         self.ptr.as_ptr()
@@ -6334,7 +6338,7 @@ RawVec<T>内部成员获取方法：
         &self.alloc
     }
 ```
-RawVec内存空间预留，扩充，收缩相关方法：
+`RawVec`内存空间预留，扩充，收缩相关方法：
 ```rust
 
     //保留空间，确保申请的内存大小满足输入参数的规定，否则的话，扩充内存
@@ -6516,9 +6520,9 @@ fn capacity_overflow() -> ! {
 }
 ```
 
-## Cow写时复制结构解析
+## `Cow`写时复制结构解析
 
-与Borrow Trait互为逆的ToOwned Trait。 一般满足 T.borrow() 返回 &U，  U.to_owned()返回T
+与`Borrow Trait`互为逆的`ToOwned Trait`。 一般满足 `T.borrow()` 返回 `&U，  U.to_owned()`返回T
 ```rust
 pub trait ToOwned {
     // 必须实现Borrow<Self> Trait， Owned.borrow()->&Self
@@ -6549,7 +6553,7 @@ where
     }
 }
 ```
-Cow解决一类复制问题: 在与原有变量没有变化时使用原有变量的引用来访问变量，当发生变化时，完成对变量的复制生成新的变量。
+`Cow`解决一类复制问题: 在与原有变量没有变化时使用原有变量的引用来访问变量，当发生变化时，完成对变量的复制生成新的变量。
 ```rust
 pub enum Cow<'a, B: ?Sized + 'a>
 where
@@ -6562,7 +6566,7 @@ where
     Owned(<B as ToOwned>::Owned),
 }
 ```
-Cow的创建一般用`let a = Cow::Borrowed(&T)这种方式直接完成，因为是写时复制，所以需要用Borrowed()来得到初始值，否则不符合语义要求。
+`Cow`的创建一般用`let a = Cow::Borrowed(&T)`这种方式直接完成，因为是写时复制，所以需要用`Borrowed()`来得到初始值，否则不符合语义要求。
 
 典型的trait实现：
 ```rust
@@ -6620,7 +6624,7 @@ impl<B: ?Sized + ToOwned> Clone for Cow<'_, B> {
     }
 }
 ```
-Cow<'a, T>的一些方法
+`Cow<'a, T>`的一些方法
 ```rust
 impl<B: ?Sized + ToOwned> Cow<'_, B> {
     pub const fn is_borrowed(&self) -> bool {
@@ -6666,7 +6670,7 @@ impl<'a, T: Clone> From<&'a [T]> for Cow<'a, [T]> {
     }
 }
 ```
-从Cow<'a, T>可以看到RUST基础语法的强大能力，大家可以思考一下如何用其他语言来实现这一写时复制的类型，会发现很难实现。
+从`Cow<'a, T>`可以看到Rust基础语法的强大能力，大家可以思考一下如何用其他语言来实现这一写时复制的类型，会发现很难实现。
 ## Vec 分析
 动态数组，结构体及创建，析构方法相关：
 ```rust
@@ -6732,7 +6736,7 @@ impl<T> Vec<T> {
     pub unsafe fn from_raw_parts(ptr: *mut T, length: usize, capacity: usize) -> Self;
 }
 
-//由Box转换为Vec，这是RUST的最令人无语的地方，内存安全导致必须对类型做各种其他语言不需要的复杂的变换
+//由Box转换为Vec，这是Rust的最令人无语的地方，内存安全导致必须对类型做各种其他语言不需要的复杂的变换
 pub fn into_vec<T, A: Allocator>(b: Box<[T], A>) -> Vec<T, A> {
     unsafe {
         let len = b.len();
@@ -6826,7 +6830,7 @@ impl<T, A: Allocator> Vec<T, A> {
         self.len() == 0
     }
 ```
-Vec容量相关方法：
+`Vec`容量相关方法：
 ```rust
     //在当前的len的基础上扩张输入的参数的内存容量
     //不一定会出发对内存的重新申请，因为RawVec的容量可能是够的
@@ -6881,7 +6885,7 @@ Vec容量相关方法：
         }
     }
 ```
-将Vec<T>转换成其他类型
+将`Vec<T>`转换成其他类型
 ```rust
     //转换为Box<[T], A>类型。
     pub fn into_boxed_slice(mut self) -> Box<[T], A> {
@@ -7038,10 +7042,10 @@ Vec容量相关方法：
     ...
 }
 ```
-Vec<T>的所有难点实际上都在RUST的各种指针类型转换及内存读写的所有权处理上。这也是所有的RUST的数据结构基础类型实现上相对比其他语言需要额外理解的复杂之处。    
+`Vec<T>`的所有难点实际上都在Rust的各种指针类型转换及内存读写的所有权处理上。这也是所有的Rust的数据结构基础类型实现上相对比其他语言需要额外理解的复杂之处。    
 
 
-# RUST不采用类的理
+# Rust不采用类的理
 面对对象语言如C++,Java以类为中心，并以类的继承为最基本的一个设计理念。但继承实际上是极易被错误使用，并导致整个软件结构混乱的根源之一。
 类起源基于C的struct总结出来的良好的设计模式：
 ```rust
@@ -7054,11 +7058,11 @@ struct xxx {
 这个模式中，利用struct内部的函数指针实现了不同实体可以对外提供若干相同的方法，更好的实现了抽象。
 以类为基础的语言，强化了成员和方法组合成对象的设计理念。用继承的方式来实现函数指针的多态性。但如果认真分析，会发现函数指针的多态性实际上更匹配的实现是在类中定义一个接口类的变量，变化这个变量来实现多态性。二十三种设计模式就充分的展示了这一原则。也就是常说的"使用组合而不是继承"
 
-为了去除继承的滥用，RUST，Go等语言都不再使用类作为语言核心。取代的是使用结构+接口的模式。继承只能在接口进行。
+为了去除继承的滥用，Rust，Go等语言都不再使用类作为语言核心。取代的是使用结构+接口的模式。继承只能在接口进行。
 
-RUST接口类的类似实现:
+Rust接口类的类似实现:
 1.单元结构体，程序中使用直接用单元结构体的名字，实例即其本身。
-2.可以用实现接口（Trait）的单元结构体来实现象C++和Java一样纯函数集的接口类。再利用结构内部定义dyn Trait变量的形式实现组合模式
+2.可以用实现接口（`Trait`）的单元结构体来实现象C++和Java一样纯函数集的接口类。再利用结构内部定义`dyn Trait`变量的形式实现组合模式
 
 举个例子
 ```rust
@@ -7076,4 +7080,4 @@ impl SomeTrait for RealizeSomeTrait1 { fn1(...)->i32 {}；fn2(...){}}
 let A = xxx<RealizeSomeTrait1>{   };
 let A = xxx {.., behavior : RealizeSomeTrait1}
 ```
-如果用泛型，则struct xxx实质会变成多个类型，无法对调用它的代码完成抽象化；用dyn Trait则不存在这个问题。
+如果用泛型，则struct xxx实质会变成多个类型，无法对调用它的代码完成抽象化；用`dyn Trait`则不存在这个问题。
