@@ -2,11 +2,11 @@
 代码路径：  
 %USER%\.rustup\toolchains\nightly-x86_64-pc-windows-msvc\lib\rustlib\src\rust\library\core\src\iter\*.*  
 
-Iterator在函数式编程中是居于最核心的地位。在函数式编程中，最关键的就是把问题的解决方式设计成能够使用Iterator方案来解决。RUST基本上可以说是原生的Iterator语言，几乎所有的核心关键类型的方法库都依托于Iterator。
+Iterator在函数式编程中是居于最核心的地位。在函数式编程中，最关键的就是把问题的解决方式设计成能够使用Iterator方案来解决。RUST基本上可以说是原生的Iterator语言，几乎所有的核心关键复合类型都对Iterator作出实现。
 
 ## RUST的Iterator与其他语言Iterator比较
-RUST定义了三种迭代器Trait:
-1. Iterator遍历的是变量本身
+RUST定义了三种迭代器:
+1. 对变量本身进行遍历的的into_iter，需要实现如下trait
 ```rust
 pub trait IntoIterator {
     type Item;
@@ -16,17 +16,17 @@ pub trait IntoIterator {
 ```
 into_iter返回的迭代器迭代时，会消费变量及容器，完全迭代后容器将不再存在。
 
-2. Iterator遍历的是变量不可变引用：
+2. 对变量不可变引用进行遍历的iter：
 这个一般不做Trait，而是容器类型实现一个方法：
 ```pub fn iter(&self) -> I:Iterator```
 此方法返回一个迭代器，这种迭代器适用的一个例子是对网络接口做遍历以获得统计值
 
-3. Iterator遍历的是变量的可变引用：
+3. 对变量的可变引用进行遍历的iter_mut：
 同2 容器类型实现方法：
 ```pub fn iter_mut(&self) -> I:Iterator ```
 这种迭代器适用的一个例子是定时器遍历长连接，更新连接活动时间。
-其他语言中没有变量迭代器，这是RUST独有的所有权和drop机制带来的一种迭代器。在适合的场景下会缩减代码量及提高效率。
-一般的，RUST对于实现上面三个Trait，要求额外实现下面的两种机制
+其他语言一般仅实现3。对变量本身遍历的迭代器是RUST独有的所有权和drop机制带来的一种迭代器。在适合的场景下会缩减代码量及提高效率。
+一般的，RUST要求额外实现下面的两种机制
 T::iter() 等同于 &T::into_iter()
 T::iter_mut() 等同于 &mut T::into_iter()
 
@@ -72,7 +72,7 @@ impl<I: Iterator + ?Sized> Iterator for &mut I {
 
 %USER%\.rustup\toolchains\nightly-x86_64-pc-windows-msvc\lib\rustlib\src\rust\library\core\src\iter\range.rs
 
-Range被直接实现Iterator trait，没有iter()这样生成迭代器的调用。
+Range被直接实现Iterator trait，没有用其他辅助结构。
 定义如下：
 ```rust 
 impl<A: Step> Iterator for ops::Range<A> {
@@ -120,7 +120,7 @@ impl<A: Step> RangeIteratorImpl for ops::Range<A> {
     ...
 }
 ```
-由上面的代码可以看出，每一次next实际都对Range本身做出了修改。
+由上面的代码可以看出，每一次next实际都对Range本身做出了修改，这一修改是使用mem::replace实现的。要理解这是为什么。
 
 只有基于实现`Step Trait`的类型的Range才支持了Iterator, 而代码关键是Step Trait的方法，
  `Step Trait`的定义如下：
@@ -158,7 +158,7 @@ pub trait Step: Clone + PartialOrd + Sized {
 ```
 照此，可以实现一个自定义类型的类型, 并支持Step Trait，如此，即可使用Range符号的Iterator。例如，一个二维的点的range,例如Range<(i32, i32)>的变量((0,0)..(10,10)), 三维的点的range，数列等。
 
-一下是为所有证书类型实现Step的宏：
+一下是为所有整数类型实现Step的宏：
 ```rust
 
 macro_rules! step_identical_methods {
@@ -174,20 +174,20 @@ macro_rules! step_identical_methods {
         }
 
         fn forward(start: Self, n: usize) -> Self {
-            // debug 情况下 以下代码会panic，release以下代码会被优化掉
+            // debug 编译情况下 以下代码对溢出会panic，release以下代码会被优化掉
             if Self::forward_checked(start, n).is_none() {
                 let _ = Self::MAX + 1;
             }
-            // release中的加法 
+            // release 编译采用的加法 
             start.wrapping_add(n as Self)
         }
 
         fn backward(start: Self, n: usize) -> Self {
-            // debug情况，以下代码会panic，release挥别优化掉.
+            // debug编译，以下代码对溢出会panic，release挥别优化掉.
             if Self::backward_checked(start, n).is_none() {
                 let _ = Self::MIN - 1;
             }
-            // release下的用法
+            // release编译采用的加法
             start.wrapping_sub(n as Self)
         }
     };
@@ -262,7 +262,7 @@ pub struct IterMut<'a, T: 'a> {
     _marker: PhantomData<&'a mut T>,
 }
 ```
-这里，一个疑惑就是为什么不用下标及切片长度来作为Iter结构。这里主要是因为可变的Iterator实现无法支持。
+这里，一个疑惑就是为什么不用下标及切片长度来作为Iter结构。这是因为可变的Iterator实现无法支持。
 例如，给出如下结构：
 ```rust
 pub struct IterMut <'a, T:'a> {
@@ -466,6 +466,9 @@ macro_rules! len {
 对于切片，RUST的所有权，借用等规定导致其迭代器实际上是一个非常好的编码训练工具，代码粗略看一遍后值得自己将其实现一遍，可以有效提高对RUST的认识和编码水平。
 
 ## <a id="str_iter">字符串Iterator代码分析</a>
+字符串&str本质上是一个[u8]类型，并在此类型的基础上实现了对utf-8的处理。
+因此，对字符串的Iterator的设计自然想到用适配器的模式来重用[u8]切片类型的Iterator的基础设施。
+
 题外话，&str.len()返回字符串切片字节占用数，&str.chars().count()返回字符数目。
 字符串切片获取Iterator有如下3个函数
 &str::chars() 获得以UTF-8编码的字符串的Iterator
@@ -554,8 +557,7 @@ pub trait Unsize<T: ?Sized> {
 ```rust
 pub struct IntoIter<T, const N: usize> {
     /// data是迭代中的数组.
-    /// 这个数组中，只有data[alive]是有效的，访问其他的部分，即data[..alive.start]
-    /// 及data[end..]会发生UB
+    /// 这个数组中，只有data[alive]是有效的，访问其他的部分，即data[..alive.start] 及data[end..]会发生UB
     /// [MaybeUninit<T>;N]的用法需要体会，
     data: [MaybeUninit<T>; N],
 
@@ -814,7 +816,7 @@ where
 
 ```
 ### 其他
-Iterator的adapter还有很多，如StedBy, Filter, Zip, Intersperse等等。具体请参考标准库手册。基本上所有的adapter都是遵循Adapter的设计模式来实现的。且每一个适配器的结构及代码逻辑都是比较简单且易理解的。
+Iterator的adapter还有很多，如StepBy, Filter, Zip, Intersperse等等。具体请参考标准库手册。基本上所有的adapter都是遵循Adapter的设计模式来实现的。且每一个适配器的结构及代码逻辑都是比较简单且易理解的。
 ### 小结
 RUST的Iterater的adapter是突出的体现RUST的语法优越性的特性，借助Trait和强大的泛型机制，与c/c++/java相比较，RUST以很少的代码在标准库就实现了最丰富的adapter。而其他语言标准库往往不存在这些适配器，需要其他库来实现。
 Iterator的adapter实现了强大的基于Iterator的函数式编程基础设施。函数式编程的基础框架之一便是基于Iterator和闭包实现丰富的adapter。这也凸显了RUST在语言级别对函数式编程的良好支持。
