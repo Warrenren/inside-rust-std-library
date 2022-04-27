@@ -24,6 +24,7 @@ unsafe操作我们不做讨论。
 对于上述1-6，都需要进行明确Send trait及Sync Trait的定义。 这里要注意的是RUST结构体内的成员默认私有，所以即使类型结构体有能多线程并发操作的成员，也不代表类型本身就能够被多线程并发操作。
 所以即使一个结构体类型中有不支持Sync或Send的成员，结构体对Send或Sync的不支持也需要显式声明。
 
+这里，RUST的auto trait有一个规则，即当一个类型的所有成员都实现某一auto trait时，可以自动推出此类型实现了auto trait。但当一个类型中有成员某有实现auto trait时，并不能自动推出此类型不可能实现auto trait。
 ```rust
 //Send由编译器自动生成，
 pub unsafe auto trait Send {
