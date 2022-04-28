@@ -13,5 +13,21 @@ Box<T>/RawVec<T>是两个堆内存申请的基本结构，善用这两个结构�
 每一个智能指针实际上也是RUST对经典的数据结构实现的精妙例程。    
 RUST对不同操作系统的适配让程序员不必象C那样再重复的耗费精力并且还沾沾自喜于此份工作。    
 仅支持异步编程的async/await，Future也体现了RUST的作最基础的工作的态度。    
+...  
 ...
+(This book focuses on the analysis of RUST's standard library code.  
+This book is as far as possible to find a reading context for the standard library code. At the same time, the analysis is not only for the function of the code, but also for the requirements behind the code and some ideas of code design.  
+The hallmark of C proficiency is mastery of pointer. The raw pointer in RUST is also one of the most basic and core difficulties of RUST. Therefor, the raw pointer and  associated memory modules are used as the starting point for code analysis, and the familiarity with raw pointer and memory naturally leads to a profound understanding of the nature of ownership, borrowing, and the life cycle. The hardest part of RUST is over.  
+Generics are an integral part of RUST's syntax, and for other languages, the absence of generics does not affect language use. Generics and their trait - based generic constraints are another code base of RUST.  
+Based on the analysis of primitive types, it can be seen that RUST makes use of trait syntax to make primitive types infinitely extensible, which is a demonstration of RUST's more expressive syntax ability.  
+Types such as Option<T>/Result<T, E> are actually defined entirely by the standard library and are not the basic content of the lowest level of the RUST language, as you can see from code analysis.  
+All operators can be overloaded and can cross type overloading. Operator overloading in RUST reveals many of RUST's coding secrets and tricks.  
+Iterator plus closures are the foundation of functional programming. The adapters of Iterator make up the infrastructure of functional programming. RUST implements them completely, implementing iterators for almost every type and preparing them as well as possible for functional programming.  
+The Cell/RefCell/Pin/Lazy source code demonstrates how creative problem solving can be done within RUST's basic syntax.  
+Box/RawVec are the two basic structures of heap memory allocation and freeing.   
+Each smart pointer is actually an elegant routine of RUST's implementation of classical data structures.  
+RUST's adaptation of different operating systems saves programmers from the repetitive effort and complacency of C.  
+Supporting only async/await for asynchronous programming, Future also embodies RUST's attitude of doing the most basic work.  
+... 
 ...
+)
