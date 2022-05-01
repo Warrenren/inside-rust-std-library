@@ -44,6 +44,20 @@ pub trait Iterator {
         (0, None)
     }
 
+    //将Iterator中所有的成员做累积操作
+    //init作为f的初始值输入，
+    fn fold<B, F>(mut self, init: B, mut f: F) -> B
+    where
+        Self: Sized,
+        F: FnMut(B, Self::Item) -> B,
+    {
+        let mut accum = init;
+        while let Some(x) = self.next() {
+            accum = f(accum, x);
+        }
+        accum
+    }
+
     //其他方法
     ...
     ...
@@ -66,6 +80,64 @@ impl<I: Iterator + ?Sized> Iterator for &mut I {
 }
 ```
 上面代码：如果一个类型I已经实现了 Iterator, 那针对这个结构的可变引用类型 &mut I, 标准库已经做了统一的 Iterator Trait实现。
+## Iterator与其他集合类型转换结构与分析
+RUST提供了*集合类型*与Iterator互相转换的trait：
+```rust
+//从Iterator创建集合
+pub trait FromIterator<A>: Sized {
+    //从Iterator中创建集合
+    fn from_iter<T: IntoIterator<Item = A>>(iter: T) -> Self;
+}
+
+//从集合获得Iterator
+pub trait IntoIterator {
+    type Item;
+    type IntoIter: Iterator<Item = Self::Item>;
+    
+    fn into_iter(self) -> Self::IntoIter;
+}
+
+//对实现Iterator trait的集合类型实现IntoIterator
+impl<I: Iterator> IntoIterator for I {
+    type Item = I::Item;
+    type IntoIter = I;
+
+    fn into_iter(self) -> I {
+        self
+    }
+}
+
+//此trait用于从一个Iterator给集合扩充成员
+pub trait Extend<A> {
+    //将Iterator的成员增加到集合
+    fn extend<T: IntoIterator<Item = A>>(&mut self, iter: T);
+
+    /// 仅增加一个成员
+    fn extend_one(&mut self, item: A) {
+        //Option实现了Iterator
+        self.extend(Some(item));
+    }
+
+    //扩充容量以备后用
+    fn extend_reserve(&mut self, additional: usize) {
+        let _ = additional;
+    }
+}
+```
+Iterator中的转换方法：
+```rust
+pub trait Iterator {
+    ...
+    ...
+
+    fn collect<B: FromIterator<Self::Item>>(self) -> B
+    where
+        Self: Sized,
+    {
+        FromIterator::from_iter(self)
+    }
+    ...
+}
 
 ## ops::Range类型的Iterator实现
 代码路径：  
@@ -404,7 +476,7 @@ macro_rules! iterator {
                     }
                     return None;
                 }
-                // 否则，失效前n-1个元素，然后做neet
+                // 否则，失效前n-1个元素，然后做next
                 unsafe {
                     self.post_inc_start(n as isize);
                     Some(next_unchecked!(self))
@@ -820,6 +892,8 @@ Iterator的adapter还有很多，如StepBy, Filter, Zip, Intersperse等等。具
 ### 小结
 RUST的Iterater的adapter是突出的体现RUST的语法优越性的特性，借助Trait和强大的泛型机制，与c/c++/java相比较，RUST以很少的代码在标准库就实现了最丰富的adapter。而其他语言标准库往往不存在这些适配器，需要其他库来实现。
 Iterator的adapter实现了强大的基于Iterator的函数式编程基础设施。函数式编程的基础框架之一便是基于Iterator和闭包实现丰富的adapter。这也凸显了RUST在语言级别对函数式编程的良好支持。
+
+
 
 ## Option的Iterator实现代码分析
 Option实现Iterator是比较令人疑惑的，毕竟用Iterator肯定代码更多，逻辑也复杂。主要目的应该是为了重用Iterator构建的各种adapter，及为了函数式编程的需要。仅分析IntoIterator Trait所涉及的结构及方法
