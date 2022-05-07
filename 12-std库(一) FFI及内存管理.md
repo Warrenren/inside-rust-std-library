@@ -1,10 +1,12 @@
 # 茶歇 
-与操作系统无关的部分至此告一段落。后继将主要分析 library/std/src目录下的代码。 
-std库的代码分为操作系统相关与操作系统无关两个大的部分：
-操作系统相关：目录 library/std/src/sys; library/src/src/os 中的代码，其中os目录中的代码只由sys目录中的代码使用。
+不必操作系统支持的RUST库至此告一段落。后继将主要分析 library/std/src目录下的代码。 
+std库的代码分为操作系统相关与操作系统无关两个大的部分：    
+操作系统相关：目录 library/std/src/sys;  
+                library/src/src/os 中的代码，其中os目录中的代码只由sys目录中的代码使用。   
+
 操作系统无关：其他部分。
 
-其中library/std/src/ffi目录下主要是C语言与RUST语言互操作需要的模块，包括类型，C语言字符串，OS的字符串，可变参数等。
+其中library/std/src/ffi目录下主要是C语言与RUST语言互操作需要的模块，包括类型，C语言字符串，OS的字符串，可变参数等
 
 后继分析按照如下思路进行：
 1. 按照操作系统的内存管理，进程/线程管理，进程/线程间通信，文件系统/IO/网络/时间，异步编程，杂项的顺序做分析
@@ -160,9 +162,9 @@ extern "rust-intrinsic" {
 ## CStr及CString代码分析
 代码路径：library/std/src/ffi/c_str.rs  
 RUST定义CStr及CString主要的目的就是与C的各种库函数交互。
-因此CStr及CString不涉及字符串的迭代器，格式化，加减，分裂，字符查找等等操作。只是负责做String及str与C语言之间的转换及与转换相关及调试相关的若干功能。
-之所以设计CString，是因为如果需要保存C语言的字符串，需要用堆内存的方式来完成。同时，传递给C语言的字符串，需要位于堆内存中代码才会比较简单。
-一般的处理C语言交互传入的字符串的过程是:首先需要用CStr将字符串进行包装，使得保证后继操作复合RUST的安全规则；如果需要对字符串做保存，那需要用CStr生成一个CString。当然，也可以直接转化为String，要根据具体的情况和需求处理，但仅使用String的方式在某些场景下显然效率不高并且也是不合适的。
+因此CStr及CString不涉及字符串的迭代器，格式化，加减，分裂，字符查找等等操作。只是负责做String及str与C语言之间的转换及与转换相关及调试相关的若干功能。   
+之所以设计CString，是因为如果需要保存C语言的字符串，需要用堆内存的方式来完成。同时，传递给C语言的字符串，需要位于堆内存中代码才会比较简单及安全。  
+一般的处理C语言交互传入的字符串的过程是:首先需要用CStr将字符串进行包装，使得保证后继操作复合RUST的安全规则；如果需要对字符串做保存，那需要用CStr生成一个CString。当然，也可以直接转化为String，要根据具体的情况和需求处理，但仅使用String的方式在某些场景下显然效率不高并且也是不合适的。  
 如果是需要将RUST的str转换成C语言的字符串，则先转换成CString，
 
 CString及CStr类型结构定义如下：
@@ -486,11 +488,11 @@ impl ops::Deref for CString {
 CString, CStr其他代码略。
 
 ## 代码工程中的一个技巧
-在对不同的CPU架构，不同的操作系统进行适配的时候，通常在代码中采用如下的组织方式：
-1. 有接口定义文件，在C语言中一般用头文件，在RUST中用mod.rs文件，这个文件负责向其他模块提供一致的API访问界面
-2. 每种CPU架构或者每种操作系统各自建立一个目录(模块)
-3. 每种CPU架构或者每种操作系统各自实现接口的代码都在此目录下实现
-4. 利用编译参数控制对于特定CPU架构，操作系统仅编译特定目录下的代码
+在对不同的CPU架构，不同的操作系统进行适配的时候，通常在代码中采用如下的组织方式：  
+1. 有接口定义文件，在C语言中一般用头文件，在RUST中用mod.rs文件，这个文件负责向其他模块提供一致的API访问界面.     
+2. 每种CPU架构或者每种操作系统各自建立一个目录(模块).  
+3. 每种CPU架构或者每种操作系统各自实现接口的代码都在此目录下实现.   
+4. 利用编译参数控制对于特定CPU架构，操作系统仅编译特定目录下的代码.    
 举例如下：
 ```rust
 mod common;
@@ -523,11 +525,11 @@ cfg_if::cfg_if! {
     }
 }
 ```
-RUST对编译的控制是直接在本身的代码中实现的，利用mod 语法控制了编译的目录。这是RUST的一个优势，C语言需要在Makefile里面来控制编译那个目录。
-RUST用`pub use self::windows::*`的语法，将特定的操作系统的模块重导出为 `std::sys::*`，从而对其他的RUST模块实现了对不同操作系统API接口访问的统一。
-类似的设计方式可能会在多种场景下遇到，例如对不同数据库API的适配，对不同3D API的适配等等。
-## OsString 代码分析
-操作系统系统调用采用的String很可能与C语言不同，也可能与RUST不同。基于与CStr及CString类似的理由，RUST也实现了OsStr及OsString。显然，这个模块包括了操作系统相关及操作系统无关的两个部分：
+RUST对编译的控制是直接在本身的代码中实现的，利用mod 语法控制了编译的目录。这是RUST的一个优势，C语言需要在Makefile里面来控制编译那个目录。  
+RUST用`pub use self::windows::*`的语法，将特定的操作系统的模块重导出为 `std::sys::*`，从而对其他的RUST模块实现了对不同操作系统API接口访问的统一。  
+类似的设计方式可能会在多种场景下遇到，例如对不同数据库API的适配，对不同3D API的适配等等。  
+## OsString 代码分析. 
+操作系统系统调用采用的String很可能与C语言不同，也可能与RUST不同。基于与CStr及CString类似的理由，RUST也实现了OsStr及OsString。显然，这个模块包括了操作系统相关及操作系统无关的两个部分：  
 操作系统无关部分代码路径如下：  
 library/src/std/src/ffi/os_str.rs    
 操作系统相关部分代码路径如下，(仅列出linux及windows)： 
@@ -589,7 +591,7 @@ impl OsString {
 OsString及OStr的方法与CString及CStr高度类似，分析略。
 
 # std的内存管理分析
-std库与core库在内存管理RUST提供的机制是统一的。即Allocator trait 与 GlobalAlloc trait
+std库与core库在内存管理RUST提供的机制是统一的。即Allocator trait 与 GlobalAlloc trait. 
 std库用System 作为这两个trait的实现载体，core库中使用的是Global，但Global没有实现GlobalAlloc trait：  
 ```rust
 //单元结构体，仅用来作为内存管理的实现载体
@@ -740,13 +742,13 @@ unsafe impl Allocator for System {
 ```
 以上是std库的通用实现,代码位置：library/std/src/alloc.rs
 
-以下是unix操作系统相关的部分，代码位置：library/std/src/sys/unix/alloc.rs  
-不同的操作系统，其内存申请的系统调用都不一致，因此对GlobalAlloc的实现也不一致。  
+以下是unix操作系统相关的部分，代码位置：library/std/src/sys/unix/alloc.rs    
+不同的操作系统，其内存申请的系统调用都不一致，因此对GlobalAlloc的实现也不一致。   
 ```rust
 unsafe impl GlobalAlloc for System {
     unsafe fn alloc(&self, layout: Layout) -> *mut u8 {
-        // 用libc来实现内存申请，这里适配的难点在于对齐的适配，libc的对齐实际上是不能指定的。
-        // 实际上，在读这个代码前我就从来没有意识到适配会出现这个问题，只有在申请的内存对齐小于MIN_ALIGN以及申请的内存大小大于对齐大小时才能调用libc的malloc做申请
+        // 用libc来实现内存申请，这里适配的难点在于对齐的适配，libc的对齐实际上是不能指定的。  
+        // 实际上，在读这个代码前我就从来没有意识到适配会出现这个问题，只有在申请的内存对齐小于MIN_ALIGN以及申请的内存大小大于对齐大小时才能调用libc的malloc做申请.  
         if layout.align() <= MIN_ALIGN && layout.align() <= layout.size() {
             libc::malloc(layout.size()) as *mut u8
         } else {
