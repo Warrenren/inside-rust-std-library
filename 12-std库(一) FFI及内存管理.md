@@ -1,16 +1,19 @@
 # 茶歇 
-与操作系统无关的部分至此告一段落。后继将主要分析 library/std/src目录下的代码。 
+与操作系统无关的部分至此告一段落。后继将主要分析 library/std/src目录下的代码。    
+std库的最主要的工作就是在操作系统系统调用及类型定义的基础上完成RUST自身与操作系统资源相关的各种类型结构定义，方法实现，模型简化等。  
+因为截止目前，生产用操作系统基本都是用C语言完成，所以，操作系统的系统调用也都是C语言及C的语言库。这导致分析RUST的std库必然涉及到大量的C语言的操作系统库的内容。除了c/c++程序员以外，其他语言的程序员对C的操作系统的系统调用的熟悉程度可能会成为阅读本书后继部分的一大障碍，但描述操作系统调用超出了本书的范围。因此本书后继部分将默认读者已经熟悉了操作系统调用及其惯常使用的方式，逻辑及代码。  
+
 std库的代码分为操作系统相关与操作系统无关两个大的部分：
 操作系统相关：目录 library/std/src/sys; library/src/src/os 中的代码，其中os目录中的代码只由sys目录中的代码使用。
 操作系统无关：其他部分。
-
-其中library/std/src/ffi目录下主要是C语言与RUST语言互操作需要的模块，包括类型，C语言字符串，OS的字符串，可变参数等。
 
 后继分析按照如下思路进行：
 1. 按照操作系统的内存管理，进程/线程管理，进程/线程间通信，文件系统/IO/网络/时间，异步编程，杂项的顺序做分析
 2. 每部分分析先给出RUST对操作系统定义的统一trait， 给出linux及wasi的操作系统相关部分实现的代码摘要分析，然后对操作系统无关实现部分的摘要分析。
 
 # RUST中与C语言互通
+因为涉及到大量的C语言库函数的调用，所以，我们首先要搞清楚如何与C语言互操作的内容。RUST与C语言互操作，主要就是完成RUST到C语言的类型转换，以及函数调用语义的实现。    
+代码路径： library/std/src/ffi/*.*
 ## C语言类型定义适配
 代码路径：library/core/ffi/mod.rs  
 ```rust
@@ -527,7 +530,7 @@ RUST对编译的控制是直接在本身的代码中实现的，利用mod 语法
 RUST用`pub use self::windows::*`的语法，将特定的操作系统的模块重导出为 `std::sys::*`，从而对其他的RUST模块实现了对不同操作系统API接口访问的统一。
 类似的设计方式可能会在多种场景下遇到，例如对不同数据库API的适配，对不同3D API的适配等等。
 ## OsString 代码分析
-操作系统系统调用采用的String很可能与C语言不同，也可能与RUST不同。基于与CStr及CString类似的理由，RUST也实现了OsStr及OsString。显然，这个模块包括了操作系统相关及操作系统无关的两个部分：
+操作系统系统调用采用的字符串类型很可能与C语言不同,单纯只有CStr及CString满足不了需求。按照与CStr及CString类似的实现，RUST也实现了OsStr及OsString。显然，这个模块包括了操作系统相关及操作系统无关的两个部分：
 操作系统无关部分代码路径如下：  
 library/src/std/src/ffi/os_str.rs    
 操作系统相关部分代码路径如下，(仅列出linux及windows)： 
@@ -589,8 +592,12 @@ impl OsString {
 OsString及OStr的方法与CString及CStr高度类似，分析略。
 
 # std的内存管理分析
-std库与core库在内存管理RUST提供的机制是统一的。即Allocator trait 与 GlobalAlloc trait
-std库用System 作为这两个trait的实现载体，core库中使用的是Global，但Global没有实现GlobalAlloc trait：  
+std库与core库在内存管理RUST提供的机制是统一的。即Allocator trait 与 GlobalAlloc trait。  
+从std库可以发现RUST为什么将内存管理分成了Allocator及GlobalAlloc两个trait。  
+GlobalAlloc trait是操作系统无关及操作系统相关的界面接口。GlobalAlloc的主要功能就是对操作系统的系统调用进行封装，并完成RUST的内存类型与操作系统的系统调用的类型转换。   
+Allocator是RUST自身的内存管理模块，其他的RUST模块如果有内存需求，同过Allocator triat来完成。Allocator使用GlobalAlloc完成对操作系统的使用。
+
+std库用System 作为这两个trait的实现载体，core库中用Global重新实现了Allocator，Global没有实现GlobalAlloc,因为Global需要适配非操作系统情况，具体请参考02-内存一章, System的代码如下：  
 ```rust
 //单元结构体，仅用来作为内存管理的实现载体
 pub struct System;
@@ -742,6 +749,7 @@ unsafe impl Allocator for System {
 
 以下是unix操作系统相关的部分，代码位置：library/std/src/sys/unix/alloc.rs  
 不同的操作系统，其内存申请的系统调用都不一致，因此对GlobalAlloc的实现也不一致。  
+类unix的操作系统主要使用了libc的库函数实现操作系统的系统调用。后继还会看到更多的libc中与操作系统交互的代码，分析RUST std库的代码，必须熟练的掌握libc库。
 ```rust
 unsafe impl GlobalAlloc for System {
     unsafe fn alloc(&self, layout: Layout) -> *mut u8 {
@@ -756,6 +764,7 @@ unsafe impl GlobalAlloc for System {
                     return ptr::null_mut();
                 }
             }
+            //见随后的分析
             aligned_malloc(&layout)
         }
     }
@@ -775,6 +784,7 @@ unsafe impl GlobalAlloc for System {
     }
 
     unsafe fn dealloc(&self, ptr: *mut u8, _layout: Layout) {
+        //都使用free做释放
         libc::free(ptr as *mut libc::c_void)
     }
 
@@ -825,4 +835,4 @@ cfg_if::cfg_if! {
     }
 }
 ```
-RUST程序需要处理内存对齐，所以暴露了一些不常见的libc内存函数。
+RUST程序需要处理内存对齐，所以调用了一些不常见的libc内存函数。 
