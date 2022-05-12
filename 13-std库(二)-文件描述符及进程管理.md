@@ -495,7 +495,7 @@ pub fn anon_pipe() -> io::Result<(AnonPipe, AnonPipe)> {
     unsafe {
         //pipe2系统调用，fds的类型RUST做了推断，O_CLOEXEC表示后继exec调用的时候会自动close
         cvt(libc::pipe2(fds.as_mut_ptr(), libc::O_CLOEXEC))?;
-        //返回两个匿名管道
+        //返回两个匿名管道,AnonPipe生命周期终结的时候会close此处创建的fd
         Ok((AnonPipe(FileDesc::from_raw_fd(fds[0])), AnonPipe(FileDesc::from_raw_fd(fds[1]))))
     }
 }
