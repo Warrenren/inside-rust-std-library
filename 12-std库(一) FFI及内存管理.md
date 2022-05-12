@@ -8,7 +8,7 @@ std库的代码分为操作系统相关与操作系统无关两个大的部分�
 操作系统无关：其他部分。
 
 后继分析按照如下思路进行：   
-1. 按照操作系统的内存管理，进程/线程管理，进程/线程间通信，文件系统/IO/网络/时间，异步编程，杂项的顺序做分析   
+1. 按照操作系统的内存管理，文件管理/IO，进程/线程管理，进程/线程间通信，网络，时间，异步编程，杂项的顺序做分析   
 2. 每部分分析先给出RUST对操作系统定义的统一trait， 给出linux及wasi的操作系统相关部分实现的代码摘要分析，然后对操作系统无关实现部分的摘要分析。
 
 # RUST中与C语言互通
@@ -589,7 +589,7 @@ impl OsString {
     ...
 }
 ```
-OsString及OStr的方法与CString及CStr高度类似，分析略。
+OsString及OStr在unix上的结构定义与RUST的String及str基本一致，代码略
 
 # std的内存管理分析
 std库与core库在内存管理RUST提供的机制是统一的。即Allocator trait 与 GlobalAlloc trait。  
@@ -799,6 +799,7 @@ unsafe impl GlobalAlloc for System {
     }
 }
 
+//此函数用于libc的realloc无法支持RUST语义时使用
 pub unsafe fn realloc_fallback(
     alloc: &System,
     ptr: *mut u8,
