@@ -160,6 +160,54 @@ extern "rust-intrinsic" {
 }
 
 ```
+
+## 系统调用的封装
+操作系统的系统调用一般出错返回-1, 为了简化对此情况的处理，将这个出错封装到RUST的Result类型，RUST实现了以下机制:    
+
+```rust
+//对系统调用出错的判断
+pub trait IsMinusOne {
+    fn is_minus_one(&self) -> bool;
+}
+
+macro_rules! impl_is_minus_one {
+    ($($t:ident)*) => ($(impl IsMinusOne for $t {
+        fn is_minus_one(&self) -> bool {
+            *self == -1
+        }
+    })*)
+}
+
+//对所有系统调用可能的返回类型实现了出错判断trait
+impl_is_minus_one! { i8 i16 i32 i64 isize }
+
+//对系统调用进行出错处理的封装，将错误转换为Result类型
+pub fn cvt<T: IsMinusOne>(t: T) -> crate::io::Result<T> {
+    //Error是对操作系统错误的封装
+    if t.is_minus_one() { Err(crate::io::Error::last_os_error()) } else { Ok(t) }
+}
+
+//对于被中断的系统调用做额外的处理封装
+pub fn cvt_r<T, F>(mut f: F) -> crate::io::Result<T>
+where
+    T: IsMinusOne,
+    F: FnMut() -> T,
+{
+    loop {
+        match cvt(f()) {
+            //如果返回是调用被中断, 则再次执行系统调用
+            Err(ref e) if e.kind() == ErrorKind::Interrupted => {}
+            other => return other,
+        }
+    }
+}
+
+//对系统调用的返回值进行判断，转换为io::Result的结果
+pub fn cvt_nz(error: libc::c_int) -> crate::io::Result<()> {
+    if error == 0 { Ok(()) } else { Err(crate::io::Error::from_raw_os_error(error)) }
+}
+
+```
 ## CStr及CString代码分析
 代码路径：library/std/src/ffi/c_str.rs    
 RUST定义CStr及CString主要的目的就是与C的各种库函数交互。    
