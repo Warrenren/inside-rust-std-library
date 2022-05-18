@@ -93,13 +93,13 @@ RUST是一门生存在泛型的基础之上的语言。其他语言不使用泛�
 //T:?Sized基本上就是所有的类型，直接impl <T> Borrow<T>实际上隐含了 T:Sized。所以 T:?Sized比T范围更广阔
 impl<T: ?Sized> Borrow<T> for T {
     fn borrow(&self) -> &T {
-        self
+        &self
     }
 }
 
 impl<T: ?Sized> BorrowMut<T> for T {
     fn borrow_mut(&mut self) -> &mut T {
-        self
+        &mut self
     }
 }
 ```
