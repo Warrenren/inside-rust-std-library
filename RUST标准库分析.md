@@ -242,11 +242,11 @@ pub trait Pointee {
     /// The type for metadata in pointers and references to `Self`.
     type Metadata: Copy + Send + Sync + Ord + Hash + Unpin;
 }
-//廋指针元数据是单元类型，即是空
+//瘦指针元数据是单元类型，即是空
 pub trait Thin = Pointee<Metadata = ()>;
 ```
 元数据的规则:
-* 对于固定大小类型的指针（实现了 `Sized` Trait）, RUST定义为廋指针(thin pointer)，元数据大小为0，类型为(),这里要注意，RUST中数组也是固定大小的类型，运行中对数组下标合法性的检测，就是比较是否已经越过了数组的内存大小。
+* 对于固定大小类型的指针（实现了 `Sized` Trait）, RUST定义为瘦指针(thin pointer)，元数据大小为0，类型为(),这里要注意，RUST中数组也是固定大小的类型，运行中对数组下标合法性的检测，就是比较是否已经越过了数组的内存大小。
 * 对于动态大小类型的指针(DST 类型)，RUST定义为胖指针(fat pointer 或 wide pointer), 元数据为：  
     * 对于结构类型，如果最后一个成员是动态大小类型(结构的其他成员不允许为动态大小类型)，则元数据为此动态大小类型  
     的元数据  
