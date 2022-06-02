@@ -1,26 +1,29 @@
 
 # std库文件描述符代码分析
-以linux为例，文件系统实际上成为操作系统的所有资源的管理体系的基础设施。因此，将之放在内存管理之后来做分析。
-RUST将文件管理的结构分成：
-1. 操作系统文件描述符的封装结构。对于RUST来说，操作系统的文件描述符与堆内存要处理的安全性类似。需要建立类似智能指针的结构完成对其的管理，并纳入到RUST的安全体系内。
-2. 1创建的类型结构主要用于解决安全问题，如果在同一个类型加上文件功能，会乱。因此在1的基础上建立RUST自身的文件描述符类型，用于处理文件的读写等功能
-3. 在2的基础上，实现普通的文件，目录文件，Socket，Pipe，IO设备文件等逻辑文件类型。
+以linux为例，文件系统实际上成为操作系统所有资源管理体系的基础设施。因此，将之放在内存管理之后来做分析。    
+RUST将文件管理的结构分成：   
+1. 操作系统文件描述符的封装结构。对于RUST来说，操作系统的文件描述符与堆内存要处理的安全性类似。需要建立类似智能指针的结构完成对其的管理，并纳入到RUST的安全体系内。    
+2. 1创建的类型结构主要用于解决安全问题，如果在同一个类型加上文件功能，会乱。因此在1的基础上建立RUST自身的文件描述符类型，用于处理文件的读写等功能     
+3. 在2的基础上，实现普通的文件，目录文件，Socket，Pipe，IO设备文件等逻辑文件类型。    
    
-本章将讨论1及2，3以后在涉及到各模块时再进行详细分析   
-代码目录： library/src/std/src/os/fd/raw.rs   
-          library/src/std/src/os/fd/owned.rs  
-          library/src/std/src/sys/unix/fd.rs
+本章将讨论1及2，3以后在涉及到各模块时再进行详细分析     
+代码目录： library/src/std/src/os/fd/raw.rs    
+          library/src/std/src/os/fd/owned.rs   
+          library/src/std/src/sys/unix/fd.rs    
         
-## 操作系统的文件描述符适配所有权封装
-RUST当然要使用操作系统调用返回的fd来操作文件，操作系统返回的文件RUST定义类型RawFd。RawFd本身和裸指针一样，是没有所有权概念的，但RUST中文件显然需要具备所有权，RUST在RawFd上定义了封装类型OwnedFd来实现针对RawFd的所有权，又定义了类型BorrowedFd作为OwnedFd的借用类型。  
-理解这两个类型，我们可以把RawFd类比与裸指针* const T， OwnedFd类比与 T, BorrowedFd类比于&T。
+## 操作系统的文件描述符的所有权设计
+RUST当然要使用操作系统调用返回的fd来操作文件，fd在RUST中被定义为类型RawFd。   
+可以把RawFd按照裸指针来理解，RawFd不能作为所有权的载体，但RUST中文件显然需要具备所有权，因此，RUST在RawFd上定义了封装类型OwnedFd来实现针对RawFd的所有权，又定义了类型BorrowedFd作为OwnedFd的借用类型。  
+理解这两个类型，我们可以把RawFd类比与裸指针* const T， OwnedFd类比于 T, BorrowedFd类比于&T。
 
 以linux操作系统为基础进行分析：
 ```rust
-//虽然是int型，但因为表示了系统的资源，所以可以类比于裸指针。后继被标识文件所有权的封装类型所封装后才能进入安全的RUST领域。
+//虽然是int型，但因为表示操作系统资源，所以可以类比于裸指针。
+//后继被标识文件所有权的封装类型所封装后才能进入安全的RUST领域。
 pub type RawFd = raw::c_int;
 
-//此trait用于从封装RawFd的类型中获取RawFd, 此时返回的RawFd安全性类似于裸指针。
+//此trait用于从封装RawFd的类型中获取RawFd,
+//此时返回的RawFd安全性类似于裸指针。
 pub trait AsRawFd {
     fn as_raw_fd(&self) -> RawFd;
 }
@@ -244,8 +247,9 @@ impl From<OwnedFd> for crate::net::UdpSocket {
 对于需要调用RUST以外语言实现的第三方库时，都会面临一个从第三方库获取的资源如何在RUST设计其所有权的问题。Unix的fd的方案给出了一个经典的设计方式。即把第三方库获取的资源在逻辑上类似于裸指针，如RawFd。然后用一个封装结构封装用于所有权实现，例如OwnedFd。用另一个封装结构用作借用，例如BorrowedFd。这个设计方案在真正的生产环境中会经常被用到。    
 
 ## RUST标准库文件描述符的结构与实现
-在OwnedFd的基础上创建的结构，用来完成对文件的通用操作
+在OwnedFd的基础上创建的结构，用来作为RUST操作系统相关的文件管理与操作系统无关的文件管理的界面。  
 ```rust
+//RUST的文件描述符类型结构
 pub struct FileDesc(OwnedFd);
 
 impl FileDesc {
@@ -441,9 +445,7 @@ impl FromRawFd for FileDesc {
 }
 
 ```
-文件描述符实际上代表了操作系统的资源，是后继各模块分析的一个基础。
-
-
+以RUST文件描述符模块是后继标准库模块分析的一个基础。
 
 # std库进程管理代码分析
 描述进程管理的需求以一个linux的shell命令比较合适：
@@ -454,9 +456,7 @@ impl FromRawFd for FileDesc {
 3. 指定第一个子进程的标准输入是管道的读出端
 4. 第一个子进程用execv执行more的可执行文件
 5. fork第二个子进程
-6. 打开"序言.md"文件
-7. 将管段的写入端作为第二个子进程的标准输出，将"序言.md"作为进程的标准输入
-8. 第二个子进程用execv执行cat可执行文件
+8. 第二个子进程用execv执行cat可执行文件, "序言.md"作为参数
 9. wait两个子进程结束
 上例如果用RUST来实现，代码简略如下：
 ```rust
@@ -469,12 +469,11 @@ impl FromRawFd for FileDesc {
                           .stdout(child_more.stdin.unwrap())
                           .spawn().expect("cat error");              
 ```
-可以看到，RUST大幅减轻了代码实现。  
+可以看到，RUST代码相当简单及易于理解。注意这里不要与system相比较，system实际上是在进程管理的基础之上实现的shell进程，不是一个层面。          
 以上基本简要包含了RUST进程管理的任务。      
-在创建一个进程及真正执行进程的二进制文件之间，父进程可以对子进程完成一些进程参数控制，通常就是对标准输入/标准输出/标准错误做重定向设置。匿名管道是专门为这个场景准备的进程间通信机制，用于将两个进程的标准输出及标准输入连接。   
-其他专用于父子进程通信的手段还有:父进程可以等待子进程结束，向子进程发送信号，获取子进程退出的返回值等。  
+在创建一个进程及真正执行进程的二进制文件之间，父进程可以对子进程完成一些进程参数控制，通常就是对标准输入/标准输出/标准错误做重定向设置。匿名管道是专门为这个场景准备的进程间通信机制，用于将两个进程的标准输出及标准输入连接。    
 
-进程间通信还有很多其他手段，放在后继专门章节做分析。本章只分析匿名管道。   
+进程间通信还有很多其他手段，放在后继专门章节做分析。本节对于进程间通信只分析匿名管道。   
 
 操作系统无关的代码路径：library/src/std/src/process.rs   
                       library/src/std/src/syscommon/process.rs
@@ -502,34 +501,20 @@ pub fn anon_pipe() -> io::Result<(AnonPipe, AnonPipe)> {
 //FileDesc的adapter
 impl AnonPipe {
     pub fn read(&self, buf: &mut [u8]) -> io::Result<usize> {
+        //就是对内部FileDesc的同名函数调用，
+        //后继的函数逻辑也相同，代码省略
         self.0.read(buf)
     }
 
-    pub fn read_vectored(&self, bufs: &mut [IoSliceMut<'_>]) -> io::Result<usize> {
-        self.0.read_vectored(bufs)
-    }
+    pub fn read_vectored(&self, bufs: &mut [IoSliceMut<'_>]) -> io::Result<usize> {...}
 
-    pub fn is_read_vectored(&self) -> bool {
-        self.0.is_read_vectored()
-    }
+    pub fn is_read_vectored(&self) -> bool {...}
 
-    pub fn write(&self, buf: &[u8]) -> io::Result<usize> {
-        self.0.write(buf)
-    }
+    pub fn write(&self, buf: &[u8]) -> io::Result<usize> {...}
 
-    pub fn write_vectored(&self, bufs: &[IoSlice<'_>]) -> io::Result<usize> {
-        self.0.write_vectored(bufs)
-    }
+    pub fn write_vectored(&self, bufs: &[IoSlice<'_>]) -> io::Result<usize> {...}
 
-    pub fn is_write_vectored(&self) -> bool {
-        self.0.is_write_vectored()
-    }
-}
-
-impl IntoInner<FileDesc> for AnonPipe {
-    fn into_inner(self) -> FileDesc {
-        self.0
-    }
+    pub fn is_write_vectored(&self) -> bool {...}
 }
 
 pub fn read2(p1: AnonPipe, v1: &mut Vec<u8>, p2: AnonPipe, v2: &mut Vec<u8>) -> io::Result<()> {
@@ -584,32 +569,8 @@ pub fn read2(p1: AnonPipe, v1: &mut Vec<u8>, p2: AnonPipe, v2: &mut Vec<u8>) -> 
     }
     //必然会在前面返回。这里会对p1及p2做所有权释放，会close掉创建的管道文件
 }
-
-impl AsRawFd for AnonPipe {
-    fn as_raw_fd(&self) -> RawFd {
-        self.0.as_raw_fd()
-    }
-}
-
-impl AsFd for AnonPipe {
-    fn as_fd(&self) -> BorrowedFd<'_> {
-        self.0.as_fd()
-    }
-}
-
-impl IntoRawFd for AnonPipe {
-    fn into_raw_fd(self) -> RawFd {
-        self.0.into_raw_fd()
-    }
-}
-
-impl FromRawFd for AnonPipe {
-    unsafe fn from_raw_fd(raw_fd: RawFd) -> Self {
-        Self(FromRawFd::from_raw_fd(raw_fd))
-    }
-}
 ```
-由以上的代码可以发现，涉及到操作系统的系统调用层面编程时，RUST实际需要大量C编程知识。讲述C编程超出了本书的本意，因此后面将不再更多的解释C调用相关的内容。
+由以上的代码可以发现，涉及到操作系统的系统调用层面编程时，RUST除了语法少量的差别外，可以认为是C程序的直接翻译。
 
 ## 标准输入输出重定向类型及实现
 ```rust
@@ -735,11 +696,12 @@ Command::new("ls")
 Command的具体使用方式请参考官方标准库文档获得指导。
 
 RUST中操作系统无关与操作系统相关的接口类型结构及实现：  
-RUST在进程管理中，没有使用trait的表达方式，而是直接使用了各操作系统统一实现相同名称的类型，再对此类型实现相同的方法。  
+RUST在进程管理的操作系统层的接口设计中，没有使用trait的设计方式。而是直接使用了各操作系统统一实现相同名称的类型，再对此类型实现相同的方法。这在C语言中设计经验中，也被广泛采用。因为不同的操作系统不可能在同一个应用中出现，所以采取这种设计方法完全可行且简化了设计。       
    
 ```rust
-//所有操作系统都有pub struct Process的类型, 类型结构定义各操作系统可以不同，但需要实现同样的方法。
-//unix的Process, unix的通常定义
+//所有操作系统相关代码都实现了pub struct Process的类型, 
+//类型结构定义各操作系统可以不同，但需要实现同样的方法。
+//unix的Process的通常定义, 仅关注linux的部分
 pub struct Process {
     //unix的进程pid
     pid: pid_t,
@@ -775,16 +737,17 @@ impl Process {
         }
     }
 
-    //等待子进程结束，会阻塞当前线程
+    //父进程等待子进程结束，会引发阻塞
     pub fn wait(&mut self) -> io::Result<ExitStatus> {
         use crate::sys::cvt_r;
-        //如果已经退出，返回
+
+        //判断子进程是否已经退出
         if let Some(status) = self.status {
             return Ok(status);
         }
 
         let mut status = 0 as c_int;
-        //调用libc的waitpid等待返回
+        //调用libc的waitpid等待子进程结束
         cvt_r(|| unsafe { libc::waitpid(self.pid, &mut status, 0) })?;
         //子进程已经退出，设置合适的状态
         self.status = Some(ExitStatus::new(status));
@@ -856,7 +819,7 @@ impl Process {
     }
 }
 ```
-由上可见，不同的操作系统实现了相同的类型名及类型方法。后继其他类型将只关注unix的实现。
+由上可见，不同的操作系统实现了相同的类型名及类型方法。本书将只关注linux的代码
 其他进程管理相关的类型结构及方法实现：  
 ```rust
 //Command完成进程准备的所有参数，进程启动等
@@ -919,7 +882,7 @@ impl Command {
         }
     }
 
-    //这个方法设置program进入两个arg参数
+    //这个方法设置进程的执行文件名program作为第一个arg参数
     pub fn set_arg_0(&mut self, arg: &OsStr) {
         // Set a new arg0
         let arg = os2c(arg, &mut self.saw_nul);
@@ -928,7 +891,7 @@ impl Command {
         self.args[0] = arg;
     }
 
-    //此方法增加增加一个命令行的参数
+    //此方法增加增加一个进程命令的参数
     pub fn arg(&mut self, arg: &OsStr) {
         let arg = os2c(arg, &mut self.saw_nul);
         //增加参数到argv
@@ -951,11 +914,11 @@ impl Command {
         let stdin = self.stdin.as_ref().unwrap_or(default_stdin);
         let stdout = self.stdout.as_ref().unwrap_or(&default);
         let stderr = self.stderr.as_ref().unwrap_or(&default);
-        //创建标准输入的子进程文件
+        //创建标准输入的子进程文件对,their用于子进程，our用于本进程
         let (their_stdin, our_stdin) = stdin.to_child_stdio(true)?;
-        //创建标准输出的子进程文件
+        //创建标准输出的子进程文件对
         let (their_stdout, our_stdout) = stdout.to_child_stdio(false)?;
-        //创建标准错误的子进程文件 
+        //创建标准错误的子进程文件对 
         let (their_stderr, our_stderr) = stderr.to_child_stdio(false)?;
         //完成本进程的设置
         let ours = StdioPipes { stdin: our_stdin, stdout: our_stdout, stderr: our_stderr };
@@ -964,7 +927,8 @@ impl Command {
         Ok((ours, theirs))
     }
 ```
-以下为创建进程的方法实现，从以下代码可见，在面向操作系统时，RUST并不比C更轻松，也不比C会有少犯错误的空间
+以下为创建进程的方法实现，从以下代码可见，在底层面向操作系统调用编程时，    
+RUST程序基本等同C程序，也不比C会有少犯错误的空间    
 ```rust
     //创建进程的具体执行方法
     pub fn spawn(
@@ -972,6 +936,7 @@ impl Command {
         default: Stdio,
         needs_stdin: bool,
     ) -> io::Result<(Process, StdioPipes)> {
+        //父子进程结果通信的魔数
         const CLOEXEC_MSG_FOOTER: [u8; 4] = *b"NOEX";
 
         //完成环境变量创建
@@ -1072,7 +1037,7 @@ impl Command {
         }
     }
 
-    //fork系统调用的RUST版本,不解释，实际上基本等同于C代码的RUST翻译
+    //fork系统调用的RUST版本,不做更多分析
     unsafe fn do_fork(&mut self) -> Result<(pid_t, pid_t), io::Error> {
         use crate::sync::atomic::{AtomicBool, Ordering};
 
@@ -1171,7 +1136,7 @@ impl Command {
             cvt_r(|| libc::dup2(fd, libc::STDERR_FILENO))?;
         }
 
-        //设置进程其他参数，具体请参考操作系统的编程书籍
+        //设置进程其他参数，具体请参考libc的编程手册获得相关函数指导
         {
             if let Some(_g) = self.get_groups() {
                 cvt(libc::setgroups(_g.len().try_into().unwrap(), _g.as_ptr()))?;
@@ -1198,11 +1163,14 @@ impl Command {
             //对进程接收的信号进行设置
             use crate::mem::MaybeUninit;
             //注意这里用MaybeUninit申请了一个栈变量，后继需要给C函数使用
+            //因为不能由RUST做drop，所以用uninit(),这是调用C的通常用法
             let mut set = MaybeUninit::<libc::sigset_t>::uninit();
+            //这些设置，execvp执行后，那边的代码会重新设置
             cvt(sigemptyset(set.as_mut_ptr()))?;
             cvt(libc::pthread_sigmask(libc::SIG_SETMASK, set.as_ptr(), ptr::null_mut()))?;
 
             {
+                //设置PIPE为默认处理
                 let ret = sys::signal(libc::SIGPIPE, libc::SIG_DFL);
                 if ret == libc::SIG_ERR {
                     return Err(io::Error::last_os_error());
@@ -1210,13 +1178,13 @@ impl Command {
             }
         }
 
-        //用于在执行二进制之前做些其他的操作,如统计信息和log日志之类
+        //用于在执行二进制之前做些提前设置的回调闭包操作,如统计信息和log日志之类
         //考虑很完善
         for callback in self.get_closures().iter_mut() {
             callback()?;
         }
 
-        //以下用于在exec出错的时候恢复环境变量,这个地方是体现RUST优越性的地方
+        //以下用于在exec出错的时候恢复环境变量,这个地方是RUST细心对安全考虑的地方
         //请细心体会以下下面利用生命周期的错误处理方式
         let mut _reset = None;
         if let Some(envp) = maybe_envp {
@@ -1236,12 +1204,13 @@ impl Command {
 
         //调用execvp执行二进制文件
         libc::execvp(self.get_program_cstr().as_ptr(), self.get_argv().as_ptr());
+        //返回证明出错
         Err(io::Error::last_os_error())
     }
 }
 ```
 
-RUST标准库中操作系统无关的进程管理结构及实现：
+RUST标准库中操作系统无关的子进程管理结构及实现：
 ```rust
 use crate::sys::process as imp;
 // Child用来保存创建的子进程的信息
@@ -1484,4 +1453,4 @@ pub fn abort() -> ! {
     crate::sys::abort_internal();
 }
 ```
-不熟悉操作系统的进程操作，基本就没有办法理解进程管理，因此，任何系统语言最关键的仍然是对操作系统系统调用的理解，而操作系统调用又离不开C语言的理解。所以, RUST的标准库最适合学习的是C程序员。
+不熟悉操作系统的进程操作，基本就没有办法理解进程管理，因此，任何系统语言最关键的仍然是对操作系统系统调用的理解，而操作系统调用又离不开C语言的理解。所以, RUST的标准库最适合C程序员。
