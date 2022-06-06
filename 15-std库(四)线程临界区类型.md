@@ -515,8 +515,8 @@ impl BarrierWaitResult {
 
 ```
 ### Once 类型分析
-当对全局变量的初始化必须在线程中(例如，库)执行且只需要执行一次时，对每一个全局变量定义一个锁是效率低下的做法。     
-RUST实现了类似pthread_once的机制。类型名定义为Once。Once可以将全局变量初始化以闭包的形式纳入其方法，确保线程安全且只执行一次。   
+Once是对全局变量的初始化必须在多个线程中(例如，库)竞争执行且只需要执行一次时的需求的方案。  
+C的pthread库实现了pthread_once来实现这个特性。RUST实现了自己的方案。Once的call_once方法使得可以用闭包的形式初始化全局变量，闭包内的代码不必考虑竞争，由Once确保线程安全且只初始化只被执行一次。   
 代码如下：  
 ```rust
 type Masked = ();
@@ -525,7 +525,7 @@ pub struct Once {
     //用一个变量即实现状态，又实现了等待队列的头节点
     //最后两位是Once的状态，前面是* const Waiter的裸指针地址
     //Waiter是4字节对齐，因此地址最后两位为0，
-    //这个设计技巧不值得倡导 
+    //这个设计技巧不值得倡导,这里是为了效率考虑 
     state_and_queue: AtomicPtr<Masked>,
     //state_and_queue中包含了一个等待的头节点的裸指针
     _marker: marker::PhantomData<*const Waiter>,
@@ -628,7 +628,7 @@ impl Once {
         loop {
             //判断当前状态
             match state_and_queue.addr() {
-                //没有等待线程
+                //没有等待线程且初始化完毕
                 COMPLETE => break,
                 //没有等待线程且已经POISONED，且不能忽视panic做初始化
                 POISONED if !ignore_poisoning => {
@@ -652,7 +652,6 @@ impl Once {
                     }
                     // 本线程获得初始化权利, 后面这段代码不会有竞争出现
                     // 创建其他线程等待的队列
-                    // 此处可能会有微妙的竞争出现
                     let mut waiter_queue = WaiterQueue {
                         //设置Once的state_and_que为队列头部
                         state_and_queue: &self.state_and_queue,
