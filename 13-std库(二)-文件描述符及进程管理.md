@@ -1,9 +1,8 @@
-
 # std库文件描述符代码分析
-以linux为例，文件系统实际上成为操作系统所有资源管理体系的基础设施。因此，将之放在内存管理之后来做分析。    
-RUST将文件管理的结构分成：   
-1. 操作系统文件描述符的封装结构。对于RUST来说，操作系统的文件描述符与堆内存要处理的安全性类似。需要建立类似智能指针的结构完成对其的管理，并纳入到RUST的安全体系内。    
-2. 1创建的类型结构主要用于解决安全问题，如果在同一个类型加上文件功能，会乱。因此在1的基础上建立RUST自身的文件描述符类型，用于处理文件的读写等功能     
+以linux为例，文件描述符实际上是操作系统所有资源的标识。也是对其他模块分析的一个基础。    
+RUST文件描述符管理的结构设计：   
+1. 对操作系统文件描述符的适配层。对于RUST来说，操作系统的文件描述符与获取的堆内存指针要处理的安全性类似。需要建立类似智能指针的结构完成对其的管理，从而纳入到RUST的安全体系内。      
+2. RUST自身的文件描述符类型结构，在1中最重要的是解决安全问题，缺乏文件的逻辑功能。文件的逻辑功能在RUST的文件描述符类型的方法中进行了实现。仍然是操作系统的适配层。          
 3. 在2的基础上，实现普通的文件，目录文件，Socket，Pipe，IO设备文件等逻辑文件类型。    
    
 本章将讨论1及2，3以后在涉及到各模块时再进行详细分析     
@@ -12,9 +11,11 @@ RUST将文件管理的结构分成：
           library/src/std/src/sys/unix/fd.rs    
         
 ## 操作系统的文件描述符的所有权设计
-RUST当然要使用操作系统调用返回的fd来操作文件，fd在RUST中被定义为类型RawFd。   
+RUST当然要使用操作系统调用返回的fd来操作文件，fd在RUST中被重定义为RawFd类型。不同系统的RawFd可能不一样，但类型名称都是RawFd。      
 可以把RawFd按照裸指针来理解，RawFd不能作为所有权的载体，但RUST中文件显然需要具备所有权，因此，RUST在RawFd上定义了封装类型OwnedFd来实现针对RawFd的所有权，又定义了类型BorrowedFd作为OwnedFd的借用类型。  
 理解这两个类型，我们可以把RawFd类比与裸指针* const T， OwnedFd类比于 T, BorrowedFd类比于&T。
+
+打开一个文件后(其他模块定义)，RUST底层会用系统返回的RawFd(fd)类型变量创建OwnedFd并存储到适当的类型中。当需要调用存在fd的系统调用时，从OwnedFd获取RawFd作为参数完成系统调用。
 
 以linux操作系统为基础进行分析：
 ```rust
@@ -247,7 +248,7 @@ impl From<OwnedFd> for crate::net::UdpSocket {
 对于需要调用RUST以外语言实现的第三方库时，都会面临一个从第三方库获取的资源如何在RUST设计其所有权的问题。Unix的fd的方案给出了一个经典的设计方式。即把第三方库获取的资源在逻辑上类似于裸指针，如RawFd。然后用一个封装结构封装用于所有权实现，例如OwnedFd。用另一个封装结构用作借用，例如BorrowedFd。这个设计方案在真正的生产环境中会经常被用到。    
 
 ## RUST标准库文件描述符的结构与实现
-在OwnedFd的基础上创建的结构，用来作为RUST操作系统相关的文件管理与操作系统无关的文件管理的界面。  
+在OwnedFd的基础上创建的结构，是文件操作的操作系统适配层的实现。以下代码分析linux操作系统的RUST文件描述符模块实现：     
 ```rust
 //RUST的文件描述符类型结构
 pub struct FileDesc(OwnedFd);
@@ -445,9 +446,10 @@ impl FromRawFd for FileDesc {
 }
 
 ```
-以RUST文件描述符模块是后继标准库模块分析的一个基础。
+以上代码要细心体会RUST所有权及借用概念是如何在文件描述符来使用的。
 
 # std库进程管理代码分析
+在服务器端，服务器程序经常需要创建进程以完成一些任务。在客户端进程管理最显著的应用场景是操作系统的shell。另外，在目前JS成为主导地位的界面编程中，一个桌面应用分为前端进程及后端进程也是一种可行的架构。   
 描述进程管理的需求以一个linux的shell命令比较合适：
 例如： cat 序言.md | more
 在shell程序执行这条命令时，做了以下的工作：
@@ -469,11 +471,15 @@ impl FromRawFd for FileDesc {
                           .stdout(child_more.stdin.unwrap())
                           .spawn().expect("cat error");              
 ```
-可以看到，RUST代码相当简单及易于理解。注意这里不要与system相比较，system实际上是在进程管理的基础之上实现的shell进程，不是一个层面。          
-以上基本简要包含了RUST进程管理的任务。      
-在创建一个进程及真正执行进程的二进制文件之间，父进程可以对子进程完成一些进程参数控制，通常就是对标准输入/标准输出/标准错误做重定向设置。匿名管道是专门为这个场景准备的进程间通信机制，用于将两个进程的标准输出及标准输入连接。    
+可以看到，RUST代码相当简单及易于理解。注意这里不要与C语言的system函数相比较，system实际上创建一个shell进程执行system的输入命令。属于在以上所述的基础在上一层的逻辑层面。            
+RUST进程管理的任务基本如上所述。       
+RUST进程管理在操作系统适配层涉及到：   
+1. 匿名管道    
+2. 进程管理    
 
-进程间通信还有很多其他手段，放在后继专门章节做分析。本节对于进程间通信只分析匿名管道。   
+适配层扩展主要是标准输入/输出/错误及重定向的RUST实现    
+
+RUST标准库对外提供的进程管理是Command及其的方法和函数。   
 
 操作系统无关的代码路径：library/src/std/src/process.rs   
                       library/src/std/src/syscommon/process.rs
@@ -482,11 +488,12 @@ impl FromRawFd for FileDesc {
                       library/src/std/src/sys/unix/pipe.rs
 
 ## 匿名管道
-匿名管道被设计用来在父子进程或者同一个父进程创建的子进程之间进行通信。一般只用于标准输入及输出的重定向。
+匿名管道被设计用来在父子进程或者同一个父进程创建的子进程之间进行通信。一般只用于标准输入及输出的重定向。以下是Linux的实现。    
 ```rust
 //匿名管道的资源用文件描述符表示
 pub struct AnonPipe(FileDesc);
 
+//创建管道的函数，管道只能通过这个函数完成创建
 pub fn anon_pipe() -> io::Result<(AnonPipe, AnonPipe)> {
     //匿名管道会创建两个文件描述符
     let mut fds = [0; 2];
@@ -494,11 +501,13 @@ pub fn anon_pipe() -> io::Result<(AnonPipe, AnonPipe)> {
     unsafe {
         //pipe2系统调用，fds的类型RUST做了推断，O_CLOEXEC表示后继exec调用的时候会自动close
         cvt(libc::pipe2(fds.as_mut_ptr(), libc::O_CLOEXEC))?;
-        //返回两个匿名管道,AnonPipe生命周期终结的时候会close此处创建的fd
+        //返回两个匿名管道,AnonPipe生命周期终结的时候会close此处创建的fd, 返回的第一个管道是读出，
+        // 第二个管道是写入
         Ok((AnonPipe(FileDesc::from_raw_fd(fds[0])), AnonPipe(FileDesc::from_raw_fd(fds[1]))))
     }
 }
 //FileDesc的adapter
+//管道创建以后的读写操作
 impl AnonPipe {
     pub fn read(&self, buf: &mut [u8]) -> io::Result<usize> {
         //就是对内部FileDesc的同名函数调用，
@@ -517,11 +526,12 @@ impl AnonPipe {
     pub fn is_write_vectored(&self) -> bool {...}
 }
 
+//为了进程管理专门实现的函数，可以从中看一下RUST的多路通道读的程序
 pub fn read2(p1: AnonPipe, v1: &mut Vec<u8>, p2: AnonPipe, v2: &mut Vec<u8>) -> io::Result<()> {
-    // 对两个同时读出，并将输出合并
+    // 获取C调用的文件描述符
     let p1 = p1.into_inner();
     let p2 = p2.into_inner();
-    //需要设置成非阻塞，用异步读的方式
+    //需要设置成非阻塞，后继用异步读的方式
     p1.set_nonblocking(true)?;
     p2.set_nonblocking(true)?;
 
@@ -537,13 +547,16 @@ pub fn read2(p1: AnonPipe, v1: &mut Vec<u8>, p2: AnonPipe, v2: &mut Vec<u8>) -> 
 
         //fds[0]读到v1
         if fds[0].revents != 0 && read(&p1, v1)? {
-            //出错，需要读出p2，此时重新设置成阻塞
+            // 见下面read返回Ok(true)的说明，
+            // 此函数的两个文件是联动的,读到其中一个即认为任务结束
+            // 另一个也很快会输出，后继要阻塞等能读到p2为止 
             p2.set_nonblocking(false)?;
-            //drop是因为返回为单元类型而做
+            //因为返回是Result<()>类型，此处用drop将Result<usize>转换为
+            // Result<()>
             return p2.read_to_end(v2).map(drop);
         }
         if fds[1].revents != 0 && read(&p2, v2)? {
-            //出错，需要读出p2,此时需要重新设置阻塞
+            //见上
             p1.set_nonblocking(false)?;
             return p1.read_to_end(v1).map(drop);
         }
@@ -558,7 +571,7 @@ pub fn read2(p1: AnonPipe, v1: &mut Vec<u8>, p2: AnonPipe, v2: &mut Vec<u8>) -> 
                 if e.raw_os_error() == Some(libc::EWOULDBLOCK)
                     || e.raw_os_error() == Some(libc::EAGAIN)
                 {
-                    //没有读到内容，但是指示需要阻塞
+                    //没有读到内容，但实际没有出错
                     Ok(false)
                 } else {
                     //读出错
@@ -570,37 +583,15 @@ pub fn read2(p1: AnonPipe, v1: &mut Vec<u8>, p2: AnonPipe, v2: &mut Vec<u8>) -> 
     //必然会在前面返回。这里会对p1及p2做所有权释放，会close掉创建的管道文件
 }
 ```
-由以上的代码可以发现，涉及到操作系统的系统调用层面编程时，RUST除了语法少量的差别外，可以认为是C程序的直接翻译。
-
+下节中既可以看到进程管理函数对pipe使用的例子。
 ## 标准输入输出重定向类型及实现
-```rust
-//如果进程需要做标准输入/输出/错误重定向，应该申请此类型为参数并设置
-pub struct StdioPipes {
-    //None表示不重定向，Some()表示重定向到匿名管道
-    pub stdin: Option<AnonPipe>,
-    pub stdout: Option<AnonPipe>,
-    pub stderr: Option<AnonPipe>,
-}
+在pipe的基础上，对重定向实现的支持类型结构。   
 
-//对子进程的标准输入输出做设置
-pub struct ChildPipes {
-    pub stdin: ChildStdio,
-    pub stdout: ChildStdio,
-    pub stderr: ChildStdio,
-}
-//对子进程标准输入/输出/错误进行指定,此时fd已经准备好已经创建
-pub enum ChildStdio {
-    //继承父进程的标准输入输出错误
-    Inherit,
-    //直接是unix的fd
-    Explicit(c_int),
-    //RUST包装后的句柄 
-    Owned(FileDesc),
-}
-//此类型用于在子进程准备阶段对子进程的标准输入/输出/错误做配置用
-//RUST的进程管理会根据Stdio的类型完成子进程的准备,仅仅是配置
+```rust
+//当创建子进程时，需要对子进程的标准输入/输出/错误每一个的配置
+//指定为此结构中的一种类型。
 pub enum Stdio {
-    //继承父进程
+    //继承父进程的fd
     Inherit,
     //设置为Null
     Null,
@@ -610,10 +601,35 @@ pub enum Stdio {
     Fd(FileDesc),
 }
 
-//针对enum实现方法的例子
+// 创建子进程时，父进程针对于子进程的标准输入/输出/错误的对应管道配置
+// 此时管道已经创建
+pub struct StdioPipes {
+    //None表示不重定向，Some()表示重定向到匿名管道
+    pub stdin: Option<AnonPipe>,
+    pub stdout: Option<AnonPipe>,
+    pub stderr: Option<AnonPipe>,
+}
+
+// 对于子进程的标准输入/输出/错误完成准备后，调用操作系统创建进程时，
+// 对子进程的标准输入/输出/错误每一个指定为下面结构中的一种类型
+pub enum ChildStdio {
+    //继承父进程的标准输入输出错误fd
+    Inherit,
+    //设置fd为参数
+    Explicit(c_int),
+    //从RUST的FileDesc中的信息设置fd 
+    Owned(FileDesc),
+}
+//准备完毕后，此类型结构具有子进程的标准输入/输出/错误的完整设置
+pub struct ChildPipes {
+    pub stdin: ChildStdio,
+    pub stdout: ChildStdio,
+    pub stderr: ChildStdio,
+}
+//针对Stdio实现方法
 impl Stdio {
-    //此方法在创建子进程时根据self的设置完成对子进程的标准输入/输出/错误的准备。
-    //并返回准备好的标准输入/输出/错误
+    // 此方法是父进程与子进程的标准输入/输出/错误的准备方法，每次准备三者其一,
+    // 此方法的输出会设置 StdioPipes及childPipes的变量
     pub fn to_child_stdio(&self, readable: bool) -> io::Result<(ChildStdio, Option<AnonPipe>)> {
         match *self {
             //指定为继承父进程，子进程为继承父进程，父进程没有与之相关的管道
@@ -633,9 +649,9 @@ impl Stdio {
 
             //配置为创建管道连接父子进程
             Stdio::MakePipe => {
-                //创建管道
+                //创建管道, 
                 let (reader, writer) = pipe::anon_pipe()?;
-                //根据读写标志设置自身管道的文件描述符, readable指子进程是读方
+                //根据读写标志设置自身管道的文件描述符, readable为真指子进程是读方
                 let (ours, theirs) = if readable { (writer, reader) } else { (reader, writer) };
                 //返回创建的管道描述符
                 Ok((ChildStdio::Owned(theirs.into_inner()), Some(ours)))
@@ -649,7 +665,7 @@ impl Stdio {
                 let path = unsafe { CStr::from_ptr(DEV_NULL.as_ptr() as *const _) };
                 //需要先打开/dev/null
                 let fd = File::open_c(&path, &opts)?;
-                //输出为/dev/null
+                //输出为/dev/null的fd
                 Ok((ChildStdio::Owned(fd.into_inner()), None))
             }
         }
@@ -677,9 +693,39 @@ impl ChildStdio {
         }
     }
 }
+//以下是上面代码的一个使用的实例：
+impl Command {
+    ......
 
+    //setup_io作为创建子进程的标准输入/输出/错误的准备函数
+    //形成父进程与子进程标准输入/输出/错误的必要的管道创建及
+    // 配对返回
+    pub fn setup_io(
+        &self,
+        default: Stdio,
+        needs_stdin: bool,
+    ) -> io::Result<(StdioPipes, ChildPipes)> {
+        let null = Stdio::Null;
+        let default_stdin = if needs_stdin { &default } else { &null };
+        //没有配置的话就使用默认配置, stdin/stdout/stderr是Stdio类型变量
+        let stdin = self.stdin.as_ref().unwrap_or(default_stdin);
+        let stdout = self.stdout.as_ref().unwrap_or(&default);
+        let stderr = self.stderr.as_ref().unwrap_or(&default);
+        //创建标准输入的子进程文件对,their用于子进程，our用于本进程
+        let (their_stdin, our_stdin) = stdin.to_child_stdio(true)?;
+        //创建标准输出的子进程文件对
+        let (their_stdout, our_stdout) = stdout.to_child_stdio(false)?;
+        //创建标准错误的子进程文件对 
+        let (their_stderr, our_stderr) = stderr.to_child_stdio(false)?;
+        //完成本进程的设置
+        let ours = StdioPipes { stdin: our_stdin, stdout: our_stdout, stderr: our_stderr };
+        //完成子进程的设置
+        let theirs = ChildPipes { stdin: their_stdin, stdout: their_stdout, stderr: their_stderr };
+        Ok((ours, theirs))
+    }
+}
 ```
-
+管道是类unix系统实现多个进程组合完成一个大的任务的有效特性。
 ## 进程管理
 使用RUST的创建进程的代码举例如下：
 ```rust
@@ -695,15 +741,15 @@ Command::new("ls")
 可以看到，RUST把C语言库中分散的进程准备及执行相关的内容整体组织进了Command结构的实现中，并利用函数式编程的链式调用使其语法易于理解，从后面的实现中也可以看出Command对程序员是一个巨大的福利。
 Command的具体使用方式请参考官方标准库文档获得指导。
 
-RUST中操作系统无关与操作系统相关的接口类型结构及实现：  
-RUST在进程管理的操作系统层的接口设计中，没有使用trait的设计方式。而是直接使用了各操作系统统一实现相同名称的类型，再对此类型实现相同的方法。这在C语言中设计经验中，也被广泛采用。因为不同的操作系统不可能在同一个应用中出现，所以采取这种设计方法完全可行且简化了设计。       
+RUST中操作系统适配层对其他模块提供的接口类型结构及实现：  
+RUST在进程管理的操作系统适配层的设计中，没有使用trait的设计方式。而是直接使用了各操作系统统一实现相同类型名称的类型，再对类型实现相同名字及参数的方法。       
+因为在编译中每种操作系统都会单独编译，所以这种方式方便有效，也是C语言跨操作系统经常采用的代码组织方法。  
    
 ```rust
-//所有操作系统相关代码都实现了pub struct Process的类型, 
-//类型结构定义各操作系统可以不同，但需要实现同样的方法。
-//unix的Process的通常定义, 仅关注linux的部分
+//以下以linux为例的Process进程类型结构, 
+//各操作系统针对Process的结构体成员定义可以不同，但必须是Process类型名并对Process实现同样的方法。
 pub struct Process {
-    //unix的进程pid
+    //进程pid
     pid: pid_t,
     //退出的状态
     status: Option<ExitStatus>,
@@ -711,7 +757,7 @@ pub struct Process {
     #[cfg(target_os = "linux")]
     pidfd: Option<PidFd>,
 }
-//unix的Process的方法实现
+//Process的方法实现
 impl Process {
     //linux的创建方法，应该在fork函数调用以后才能调用此方法
     #[cfg(target_os = "linux")]
@@ -819,13 +865,13 @@ impl Process {
     }
 }
 ```
-由上可见，不同的操作系统实现了相同的类型名及类型方法。本书将只关注linux的代码
+由上可见，不同的操作系统实现了相同的类型名及类型方法。    
 其他进程管理相关的类型结构及方法实现：  
 ```rust
-//Command完成进程准备的所有参数，进程启动等
-//以下为unix的定义
+//Command完成进程准备的所有参数，进程启动等, 操作系统适配层及标准库对外接口都有Command名称的类型，
+//要注意区别， 此处是操作系统适配层的实现。
 pub struct Command {
-    //进程的可执行文件名，由这个定义看，RUST对中文作为可执行文件名的支持存疑, 这个需要用代码做验证
+    //进程的可执行文件名.
     program: CString,
     //进程的命令行参数,同上，是否支持中文？  
     args: Vec<CString>,
@@ -927,8 +973,8 @@ impl Command {
         Ok((ours, theirs))
     }
 ```
-以下为创建进程的方法实现，从以下代码可见，在底层面向操作系统调用编程时，    
-RUST程序基本等同C程序，也不比C会有少犯错误的空间    
+以下为创建进程的方法实现，从以下代码可见，在底层面向操作系统调用编程时，      
+RUST可近似的认为C代码，复杂及容易出现问题。    
 ```rust
     //创建进程的具体执行方法
     pub fn spawn(
@@ -1209,27 +1255,31 @@ RUST程序基本等同C程序，也不比C会有少犯错误的空间
     }
 }
 ```
+以上是RUST操作系统适配层的代码分析。
 
-RUST标准库中操作系统无关的子进程管理结构及实现：
+RUST标准库对外提供的进程管理类型结构：
 ```rust
 use crate::sys::process as imp;
-// Child用来保存创建的子进程的信息
+// Child用来保存创建的子进程的信息, 
+// 其实质是Process的封装结构，Child被用来
+// 作为单个子进程的管理信息的类型结构。每个Child变量
+// 保存一个子进程的所有管理信息
 pub struct Child {
     //系统分配的子进程的标识句柄
     pub(crate) handle: imp::Process,
 
-    //子进程标准输入句柄,这里实际上是保存向子进程写输入的文件
+    //父进程用此向子进程标准输入写入通信信息
     pub stdin: Option<ChildStdin>,
 
-    //子进程标准输出句柄,这里实际上是保存从子进程读输出的文件
+    //父进程用此从子进程标准输出读出通信信息
     pub stdout: Option<ChildStdout>,
 
-    //子进程标准错误句柄,实际上是从子进程读错误的文件
+    //父进程用此从子进程标准错误读出错误信息
     pub stderr: Option<ChildStderr>,
 }
 
+//父进程保留的与子进程标准输入/输出/错误相对应的管道信息
 pub struct ChildStdin {
-    //见操作系统相关部分代码
     inner: AnonPipe,
 }
 pub struct ChildStdout {
@@ -1239,7 +1289,7 @@ pub struct ChildStderr {
     inner: AnonPipe,
 }
 
-//Command封装了所有进程管理的API
+//Command用于其他模块对进程管理操作的界面
 pub struct Command {
     inner: imp::Command,
 }
@@ -1308,7 +1358,7 @@ impl Command {
         self
     }
 
-    //配置标准输入
+    //配置标准输入, 此处的Stdio见后面的代码，与imp::Stdio不同。
     pub fn stdin<T: Into<Stdio>>(&mut self, cfg: T) -> &mut Command {
         self.inner.stdin(cfg.into().0);
         self
@@ -1453,4 +1503,4 @@ pub fn abort() -> ! {
     crate::sys::abort_internal();
 }
 ```
-不熟悉操作系统的进程操作，基本就没有办法理解进程管理，因此，任何系统语言最关键的仍然是对操作系统系统调用的理解，而操作系统调用又离不开C语言的理解。所以, RUST的标准库最适合C程序员。
+不熟悉操作系统的进程操作，基本就没有办法理解进程管理，因此，最关键的仍然是对操作系统系统调用的理解，而操作系统调用实际上又是C编程的较高级的内容。对RUST的std库的深入学习目前仍然需要有较高的C语言编程水平。
