@@ -8,8 +8,9 @@ marker trait是没有实现体，是一种特殊的类型性质，这类性质�
 
 Send trait是标识变量类型可以安全的在线程间转移所有权的marker。   
 Sync trait是标识变量类型的引用可以安全的由多线程并发访问的marker。
-对于auto trait，RUST的默认规则是如果T支持auto trait，则*const T, *mut T, [T], [T;N], &T, &mut T都自动支持该auto trait, 如果实际情况不符合这条默认规则，需要在代码中显式声明。  
-如果一个复合类型的所有成员都支持auto trait, 则该复合类型支持 auto trait。如果实际上不符合这条默认规则，也需要显式在代码作声明。 
+对于auto trait，RUST的默认规则是如果T支持auto trait，则`*const T, *mut T, [T], [T;N], &T, &mut T`都自动支持该auto trait, 如果实际情况不符合这条默认规则，需要在代码中显式声明。  
+如果一个复合类型的所有成员都支持auto trait, 则该复合类型支持auto trait。如果实际上不符合这条默认规则，也需要显式在代码作声明。  
+如果一个符合类型中有成员不支持auto trait, 但该复合类型支持auto trait, 需要在代码中作显式声明。    
 
 变量在线程间安全指的是对变量操作需要具备事务性，在一个事务周期内只允许一个线程对变量进行读写。  
 RUST中，因为所有权和借用语法，对于大部分类型，不会出现多线程的并发操作。因此RUST类型默认都是实现了Send trait和Sync trait的，如果类型不支持Send或Sync或者有约束条件，需要进行显式的定义。
@@ -73,8 +74,9 @@ pub trait StructuralEq {
     // Empty.
 }
 ```
+
 以下给出了一个针对所有的原生类型都实现Copy Trait的实现代码, 实现了Copy Trait的类型编译器不必调用drop来对类型进行内存释放。
-可以看到，RUST针对原生类型可以直接扩展Trait实现，者极大的提高了RUST的语法一致性及函数式编程的能力：
+这也是RUST针对原生类型可以直接实现trait的实例。任意模块可以定义一个trait,然后即可在原生类型上实现这个trait，这极大的提高了RUST的语法一致性及函数式编程的能力：
 
 ```rust
 //Copy，略
@@ -114,9 +116,9 @@ mod copy_impls {
 }
 ```
 
-PhantomData<T>类型可以在其他类型结构体中定义一个变量，标记此结构体逻辑上拥有，但不需要或不方便在结构体成员变量体现的某个属性。实质上，智能指针一般都需要利用Unique<T>，以PhantomData来实现对堆内存的逻辑拥有权.
+`PhantomData<T>`类型可以在其他类型结构体中定义一个变量，标记此结构体逻辑上拥有，但不需要或不方便在结构体成员变量体现的某个属性。实质上，智能指针一般都需要利用`Unique<T>`，以PhantomData来实现对堆内存的逻辑拥有权.
 PhantomData最常用来标记生命周期及所有权。主要给编译器提示检验类型变量的生命周期和类型构造时输入的生命周期关系。也用来提示拥有PhantomData<T>的结构体会负责对T做drop操作。需要编译器做drop检查的时候更准确的判断出内存安全错误。 
-PhantomData<T>属性与所有权或生命周期的关系由编译器自行推断。具体实例可参考官方标准库文档及后继相关章节。  
+`PhantomData<T>`属性与所有权或生命周期的关系由编译器自行推断。具体实例可参考官方标准库文档及后继相关章节。  
 PhantomData是个单元结构体，单元结构体的变量名就是单元结构体的类型名。  
 所以使用的时候直接使用PhantomData即可，编译器会将泛型的类型实例化信息自动带入PhantomData中  
 ```rust
@@ -126,7 +128,7 @@ pub struct PhantomData<T: ?Sized>;
 代码路径如下：
 %USER%\.rustup\toolchains\nightly-x86_64-pc-windows-msvc\lib\rustlib\src\rust\library\core\src\ops\*.rs
 
-RUST中，所有的运算符号都可以重载。对于Ops运算符，RUST可以提供*两个不同类型*之间的运算。
+RUST中，所有的运算符号都可以重载。Ops重载允许提供*两个不同类型*之间的运算。
 ### 一个小规则
 在重载函数中，如果重载的符号出現，编译器用规定的默认操作来实现。例如：
 ```rust
@@ -135,12 +137,56 @@ RUST中，所有的运算符号都可以重载。对于Ops运算符，RUST可以
             //下面函数内部的 & 符号不再引发重载，是编译器的默认按位与操作。
             fn bitand(self, rhs: u8) -> u8 { self & u8 }
         }
+
+
 ```
 ### 数学运算符 Trait
-易理解，略
+```rust
+pub trait Add<Rhs = Self> {
+    type Output;
+
+    //此函数会消费self, 设计一些复杂结构的加法
+    //时可能导致一些复杂性
+    fn add(self, rhs: Rhs) -> Self::Output;
+}
+
+macro_rules! add_impl {
+    ($($t:ty)*) => ($(
+        impl const Add for $t {
+            type Output = $t;
+
+            fn add(self, other: $t) -> $t { self + other }
+        }
+
+        forward_ref_binop! { impl const Add, add for $t, $t }
+    )*)
+}
+//实现了所有数据类型的加法
+add_impl! { usize u8 u16 u32 u64 u128 isize i8 i16 i32 i64 i128 f32 f64 }
+
+
+pub trait AddAssign<Rhs = Self> {
+    //使用可变引用，与Add不同
+    fn add_assign(&mut self, rhs: Rhs);
+}
+
+macro_rules! add_assign_impl {
+    ($($t:ty)+) => ($(
+        impl const AddAssign for $t {
+            fn add_assign(&mut self, other: $t) { *self += other }
+        }
+
+        forward_ref_op_assign! { impl const AddAssign, add_assign for $t, $t }
+    )+)
+}
+//实现了所有数据类型的加法
+add_assign_impl! { usize u8 u16 u32 u64 u128 isize i8 i16 i32 i64 i128 f32 f64 }
+
+```
+其他数学运算类似，略
 
 ### 位运算符 Trait
-易理解，略
+与数学运算类似，略
 
 ### 关系运算符Trait
 代码路径如下：
@@ -148,9 +194,9 @@ RUST中，所有的运算符号都可以重载。对于Ops运算符，RUST可以
 
 关系运算符的代码稍微复杂，这里给出较完整的代码。
 ```rust
-//"==" "!="的实现Trait，对于在整个类型定义域内存在值无法满足相等条件的，就只实现该Trait的类型
-//例如浮点类型 “NaN != NaN" , 实质上，在代码上，对于相等/不等判断只需要实现这个Trait即可
-//可以为一个类型实现不同与此类型的PartialEq
+//"==" "!="的运算符trait，PartialEq用于在整个类型
+//定义域内存在值无法满足相等条件的情况。例如浮点类型 “NaN != NaN" 
+//可以定义不同与self的泛型实现不同类型"=="及"!="的运算
 pub trait PartialEq<Rhs: ?Sized = Self> {
     /// “==” 重载方法
     fn eq(&self, other: &Rhs) -> bool;
@@ -161,13 +207,14 @@ pub trait PartialEq<Rhs: ?Sized = Self> {
     }
 }
 
-//对于全作用域所有值都可相等的类型。实现这个Trait，PartialEq和Eq区别实现，也是Rust安全性的体现之一
-//代码就用PartialEq即可
+//对于全作用域所有值都可相等的类型。实现Eq trait，
+//PartialEq和Eq区别实现，也是Rust安全性的体现之一
+//相等判断还是由PartialEq的方法负责
 pub trait Eq: PartialEq<Self> {
     fn assert_receiver_is_total_eq(&self) {}
 }
 ```
-对于"<,>,<=,>="等四种运算，同上，对于全域如果有可能出现无法比较的情况，仅实现PartialOrd<Rhs>，如下：
+对于"<,>,<=,>="等四种运算，如果全域有可能出现无法比较的情况，仅实现`PartialOrd<Rhs>`，如下：
 ```rust
 // "<" ">" ">=" "<=" 运算符重载结构, 事实上关系运算只需要重载这个Trait
 // Ord Trait 不用编码,
@@ -234,7 +281,7 @@ pub trait Ord: Eq + PartialOrd<Self> {
         }
     }
 }
-//用于表示关系结果的结构体
+//用于表示关系结果的结构体,注意此结构在函数式编程中的实用性
 #[derive(Clone, Copy, PartialEq, Debug, Hash)]
 #[repr(i8)]
 pub enum Ordering {
@@ -328,7 +375,7 @@ impl<T: PartialOrd> PartialOrd for Reverse<T> {
     ...
 }
 ```
-以下是关系运算在原生类型上的实现，可以参考
+以下是关系运算trait在原生类型上的实现
 ```rust
 // 具体的实现宏 
 mod impls {
@@ -338,9 +385,8 @@ mod impls {
     //PartialEq在原生类型上的实现,利用宏减少重复代码
     macro_rules! partial_eq_impl {
         ($($t:ty)*) => ($(
-            //Rhs是默认的
+            //Rhs类型默认为Self
             impl PartialEq for $t {
-                //编译器默认的符号
                 fn eq(&self, other: &$t) -> bool { (*self) == (*other) }
                 fn ne(&self, other: &$t) -> bool { (*self) != (*other) }
             }
@@ -376,8 +422,11 @@ mod impls {
             #[stable(feature = "rust1", since = "1.0.0")]
             impl PartialOrd for $t {
                 fn partial_cmp(&self, other: &$t) -> Option<Ordering> {
-                    //RUST的典型的代码思路，需要学习及仔细体会,
-                    //专门为浮点做的比较
+                    //RUST的典型的代码，要记住这种简练的语法表达
+                    //这个表达主要是考虑到浮点, 注意这里是用了impl PartialOrd<&B> for &A
+                    //从而self <= other导致对 （&f32).le()的调用
+                    //为什么不直接使用(*self <= *other, *self >= *other)呢
+                    //提交了PR
                     match (self <= other, self >= other) {
                         (false, false) => None,
                         (false, true) => Some(Greater),
