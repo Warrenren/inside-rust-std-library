@@ -503,6 +503,7 @@ Try trait定义如下：
 ```rust
 pub trait Try: FromResidual {
     /// ?操作如果结果正常，返回的解封装的正常变量类型
+    /// 具体实例可参考随后的Option的Try trait实现
     type Output;
 
     /// ?操作如果结果异常，返回解封装的异常变量类型
@@ -604,8 +605,10 @@ pub enum ControlFlow<B, C = ()> {
 ```rust
 impl<T> ops::Try for Option<T> {
     type Output = T;
-    // Infallible是一种错误类型，但该错误永远也不会发生，这里需要返回None，
-    // 所以需要用Option类型，但因为只用None。所以Some使用Infallible来表示不会被使用，这也表现了RUST的安全理念，一定在类型定义的时候保证代码安全。
+    // Infallible是一种错误类型，但该错误永远也不会发生，
+    // Residual 只可能是None，所以是Option类型，但是因为不会返回Some(),
+    // 所以T使用Infallible来表示不会有Some，这也表现了RUST的安全理念，
+    // 一定在类型定义的时候保证代码安全。
     type Residual = Option<convert::Infallible>;
 
     fn from_output(output: Self::Output) -> Self {
@@ -646,9 +649,27 @@ Result<T,E>类型的Try Trait请自行分析
 %USER%\.rustup\toolchains\nightly-x86_64-pc-windows-msvc\lib\rustlib\src\rust\library\core\src\ops\range.rs
 
 Range是符号 .. , start..end , start.. , ..end , ..=end，start..=end 形式   
-Range提供了直观的范围集合表达形式， 并可以利用PartialOrd trait规定范围集合内的值。 Range一般和Iterator, Index trait配合使用，可以直观的，方便的简化代码，并极具冲击力
+代码书写虽然采用了上面的形式，但编译器将其转换成了不同的具体结构。如下：
 
-#### Range相关的边界结构Bound
+` ..  `的数据结构是 `RangeFull`,如下：
+```rust
+struct RangeFull;
+```
+`start.. end`的数据结构 是 `Range<Idx>`,如下
+```rust
+pub struct Range<Idx> {
+    pub start: Idx,
+    pub end: Idx,
+}
+```
+`start..`的数据结构是`RangeFrom<Idx>`, 代码略
+`.. end`的数据结构是`RangeTo<Idx>`, 略
+`start..=end`的数据结构是`RangeInclusive<Idx>` 略
+`..=end`的数据结构是`RangeToInclusive<Idx>`,略
+
+以上的Idx需要满足Idx:PartialOrd<Idx>
+
+为了明确上述结构中的边界值是否属于Range内部，定义了Range的边界类型结构Bound
 源代码：
 ```rust
 pub enum Bound<T> {
@@ -660,33 +681,8 @@ pub enum Bound<T> {
     Unbounded,
 }
 ```
-Include边界的值包含，Exclued边界的值不包含，Unbounded边界值不存在
-#### RangeFull
-` ..  `的数据结构。
-```rust
-struct RangeFull;
-```
-#### Range<Idx>
-`start.. end`的数据结构
-```rust
-pub struct Range<Idx> {
-    pub start: Idx,
-    pub end: Idx,
-}
-```
-#### RangeFrom<Idx>
-`start..`的数据结构, 略
-#### RangeTo<Idx>
-`.. end`的数据结构, 略
-#### RangeInclusive<Idx>
-`start..=end`的数据结构,略
-#### RangeToInclusive<Idx>
-`..=end`的数据结构,略
-
-以上的Idx需要满足Idx:PartialOrd<Idx>
-
-#### RangeBounds<T: ?Sized>
-所有Range统一实现的Trait。
+利用`RangeBounds<T: ?Sized>`的trait实现了对Range的边界取值及判断某值是否在Range中。
+所有Range类型都实现了此trait。代码如下：  
 ```rust
 pub trait RangeBounds<T: ?Sized> {
     /// 获取范围的起始值
@@ -731,11 +727,32 @@ pub trait RangeBounds<T: ?Sized> {
 
 ```
 RangeBounds针对RangeFull，RangeTo, RangeInclusive, RangeToInclusive, RangeFrom, Range结构都进行了实现。同时针对(Bound<T>, Bound<T>)的元组做了实现。
+```rust
+impl<T> RangeBounds<T> for RangeFrom<T> {
+    fn start_bound(&self) -> Bound<&T> {
+        Included(&self.start)
+    }
+    fn end_bound(&self) -> Bound<&T> {
+        Unbounded
+    }
+}
+
+impl<T> RangeBounds<T> for Range<T> {
+    fn start_bound(&self) -> Bound<&T> {
+        Included(&self.start)
+    }
+    fn end_bound(&self) -> Bound<&T> {
+        Excluded(&self.end)
+    }
+}
+//其他略
+
+```
 
 #### Range的灵活性
 完全可以定义 ((0,0)..(100,100))； ("1st".."30th")这种极有表现力的Range。
 Range使用的时候，需要先定义一个取值集合，定义类型表示这个集合，针对类型实现PartialOrd。就可以对这个集合的类型用Range符号了。
-值得注意的是，对于Range<Idx>, 如果一个变量类型为U, 则如果实现了PartialOrd<U> for Idx， 那U就有可能属于Range, 即U可以与Idx不同。
+值得注意的是，对于`Range<Idx>` ,如果一个变量类型为U, 则如果实现了`PartialOrd<U> for Idx`， 那U就有可能属于Range, 即U可以与Idx不同。
 Range操作符多用于与Index运算符结合或与Iterator Trait结合使用，在后继的Index运算符和Iterator中会研究Range是如何与他们结合的。
 
 #### 小结
@@ -763,7 +780,7 @@ pub trait IndexMut<Idx: ?Sized>: Index<Idx> {
 由以上可以看出类似["Hary"], ["Bold"]之类的下标表达形式都是可以存在的。
 
 #### 切片数据结构[T]的Index实现
-切片的Index实现采用了一个辅助的trait  SliceIndex<[T]>来支持。
+切片的Index实现采用了一个辅助的trait  `SliceIndex<[T]>`来支持。
 ```rust
 impl<T, I> ops::Index<I> for [T]
 where
