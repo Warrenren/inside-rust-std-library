@@ -6,7 +6,9 @@ Iterator在函数式编程中是居于最核心的地位。在函数式编程中
 
 ## RUST的Iterator与其他语言Iterator比较
 RUST定义了三种迭代器:
-1. 对变量本身进行遍历的的into_iter，需要实现如下trait
+1. 对变量本身进行遍历的的into_iter，需要实现如下trait：
+
+
 ```rust
 pub trait IntoIterator {
     type Item;
@@ -16,25 +18,31 @@ pub trait IntoIterator {
 ```
 into_iter返回的迭代器迭代时，会消费变量及容器，完全迭代后容器将不再存在。
 
-2. 对变量不可变引用进行遍历的iter：
-这个一般不做Trait，而是容器类型实现一个方法：
-```pub fn iter(&self) -> I:Iterator```
-此方法返回一个迭代器，这种迭代器适用的一个例子是对网络接口做遍历以获得统计值
+2. 对变量不可变引用进行遍历的iter,类型一般实现以下方法获得此迭代器: 
 
-3. 对变量的可变引用进行遍历的iter_mut：
-同2 容器类型实现方法：
+```pub fn iter(&self) -> I:Iterator```
+这种迭代器在程序中经常使用，例如，遍历游戏玩家的列表以进行统计
+
+3. 对变量的可变引用进行遍历的iter_mut,类型一般实现以下方法获得此迭代器：
+
 ```pub fn iter_mut(&self) -> I:Iterator ```
-这种迭代器适用的一个例子是定时器遍历长连接，更新连接活动时间。
-其他语言一般仅实现3。对变量本身遍历的迭代器是RUST独有的所有权和drop机制带来的一种迭代器。在适合的场景下会缩减代码量及提高效率。
-一般的，RUST要求额外实现下面的两种机制
-T::iter() 等同于 &T::into_iter()
-T::iter_mut() 等同于 &mut T::into_iter()
+这种迭代器的一个例子是遍历游戏玩家，更新玩家在线时间。
+
+其他语言一般仅实现第3种迭代器。
+
+对变量本身遍历的迭代器是RUST独有的所有权和drop机制带来的一种迭代器。在适合的场景下会缩减代码量及提高效率。
+
+一般的，RUST要求额外实现下面的两种机制   
+T::iter() 等同于 &T::into_iter()    
+T::iter_mut() 等同于 &mut T::into_iter()     
 
 ## Iterator Trait 定义
 ```rust
 pub trait Iterator {
     /// 每次迭代时返回的变量类型.
     type Item;
+    
+    //灵魂方法
     fn next(&mut self) -> Option<Self::Item>;
     
     //size_hint返回值是此迭代器最少产生多少个有效迭代输出，最多产生多少有有效迭代输出。
@@ -63,6 +71,11 @@ pub trait Iterator {
     ...
 }
 
+//在定义一个trait后，
+//要考虑针对已经实现这种trait的
+//类型的引用/可变引用/切片/数组
+//能否用adapter的方式实现该trait
+//下面是Iterator的一个例子
 impl<I: Iterator + ?Sized> Iterator for &mut I {
     type Item = I::Item;
     fn next(&mut self) -> Option<I::Item> {
@@ -79,7 +92,6 @@ impl<I: Iterator + ?Sized> Iterator for &mut I {
     }
 }
 ```
-上面代码：如果一个类型I已经实现了 Iterator, 那针对这个结构的可变引用类型 &mut I, 标准库已经做了统一的 Iterator Trait实现。
 ## Iterator与其他集合类型转换结构与分析
 RUST提供了*集合类型*与Iterator互相转换的trait：
 ```rust
@@ -87,14 +99,6 @@ RUST提供了*集合类型*与Iterator互相转换的trait：
 pub trait FromIterator<A>: Sized {
     //从Iterator中创建集合
     fn from_iter<T: IntoIterator<Item = A>>(iter: T) -> Self;
-}
-
-//从集合获得Iterator
-pub trait IntoIterator {
-    type Item;
-    type IntoIter: Iterator<Item = Self::Item>;
-    
-    fn into_iter(self) -> Self::IntoIter;
 }
 
 //对实现Iterator trait的集合类型实现IntoIterator
