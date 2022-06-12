@@ -426,7 +426,7 @@ mod impls {
                     //这个表达主要是考虑到浮点, 注意这里是用了impl PartialOrd<&B> for &A
                     //从而self <= other导致对 （&f32).le()的调用
                     //为什么不直接使用(*self <= *other, *self >= *other)呢
-                    //提交了PR
+                    //提交了PR，最新的代码库已经修改了
                     match (self <= other, self >= other) {
                         (false, false) => None,
                         (false, true) => Some(Greater),
