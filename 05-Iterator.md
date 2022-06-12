@@ -138,6 +138,8 @@ pub trait Iterator {
     }
     ...
 }
+```
+以上说明，对于任意的集合类型，只要实现了FromIterator trait，即可通过collect生成。从而使得不同集合类型之间的转换变得统一，方便及松耦合。
 
 ## ops::Range类型的Iterator实现
 代码路径：  
@@ -255,7 +257,7 @@ macro_rules! step_identical_methods {
         }
 
         fn backward(start: Self, n: usize) -> Self {
-            // debug编译，以下代码对溢出会panic，release挥别优化掉.
+            // debug编译，以下代码在debug目标对溢出会panic，release会被优化掉.
             if Self::backward_checked(start, n).is_none() {
                 let _ = Self::MIN - 1;
             }
