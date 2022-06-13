@@ -36,7 +36,7 @@ RUST的现代语言特性决定了标准库无法象C语言那样把操作系统
 ## 标准库路径
 安装rust后，rust标准库的代码路径在作者机器上的路径如下：
 %USER%\.rustup\toolchains\nightly-x86_64-pc-windows-msvc\lib\rustlib\src\rust\library\core\src
-%USER%\.rustup\toolchains\nightly-x86_64-pc-windows-msvc\lib\rustlib\src\rust\library\alloc\src， 
+%USER%\.  rustup\toolchains\nightly-x86_64-pc-windows-msvc\lib\rustlib\src\rust\library\alloc\src， 
 %USER%\.rustup\toolchains\nightly-x86_64-pc-windows-msvc\lib\rustlib\src\rust\library\std\src
 本书主要分析上述三个目录下的代码
 
@@ -1814,7 +1814,7 @@ fn main() {
     }
 }
 ```
-如果不想转移所有权，那上面代码的match就应该是一个标准的写法，对结构内部的变量也需要用引用来绑定，尤其是结构内部变量如果没有实现Copy Trait，那就必须用引用，否则也会引发编译告警。
+如果不想转移所有权，那上面代码的match就应该是一个从正常语法理解的写法，对结构内部的变量也需要用引用来绑定，尤其是结构内部变量如果没有实现Copy Trait，那就必须用引用，否则也会引发编译告警。
 
 为了编码上的方便，RUST针对以上的代码，支持如下简化形式：
 ```rust
@@ -1831,7 +1831,7 @@ fn main() {
     }
 }
 ```
-如果不知道RUST的这个语义，很可能会对这里的类型绑定感到疑惑。
+这个是rust的标准写法，rust专门做了语法上的设计，如果不清楚这个设计，很可能会对这里的类型绑定感到疑惑。
 从实际的使用场景分析，对结构体引用做match，其目的就是对结构体内部的成员的引用做pattern绑定。而且如果结构体内部的成员不支持Copy，那也不可能对结构体成员做pattern绑定。所以，此语法也是在RUST的所有权定义下的一个必然的简化选择。
 
 ## RUST Result类型标准库代码分析
@@ -5612,6 +5612,9 @@ impl<T: CoerceUnsized<U>, U> CoerceUnsized<RefCell<U>> for RefCell<T> {}
 RefCell<T>的代码实现，是理解RUST解决问题的思维的好例子。 编程中，RefCell的计数器是针对RUST语法的一个精巧的设计，利用drop的自动调用，编程只需要关注new，这就节省了程序员极大的精力，也规避了错误的发生。borrow_mut()机制则解决了多个可修改借用。
 利用RUST的非安全个性和自动drop的机制，可以自行设计出RefCell<T>这样的标准库解决方案，而不是借助于编译器。这是RUST的一个突出特点，也是其能与C一样成为系统级语言的原因。
 ## Pin及UnPin
+代码路径：
+%USER%\.rustup\toolchains\nightly-x86_64-pc-windows-msvc\lib\rustlib\src\rust\library\core\src\pin.rs  
+
 Pin<T>主要解决需要程序员在编程时要时刻注意处理可能的变量地址改变的情况。利用Pin<T>，程序员只需要在初始的时候注意到这个场景并定义好。后继就可以不必再关心。
 Pin是一个对指针&mut T的包装结构，包装后因为&mut T的独占性。封装结构外，不可能再存在变量的引用及不可变引用。所有的引用都只能使用Pin<T>来完成，导致RUST的需要引用的一些内存操作无法进行，如实质上是指针交换的调用mem::swap，从而保证了指针指向的变量在代码中会被固定在某个内存位置。当然，编译器也不会再做优化。
 
@@ -5789,6 +5792,8 @@ impl<'a, T: ?Sized> Pin<&'a mut T> {
 ```
 利用Pin的封装及基于trait约束的方法实现，使得指针pin在内存中的需求得以实现。是RUST利用封装语义完成语言需求的又一经典案例
 ## Lazy<T>分析
+代码路径：
+%USER%\.rustup\toolchains\nightly-x86_64-pc-windows-msvc\lib\rustlib\src\rust\library\core\src\lazy.rs  
 
 OnceCell是一种内部可变的类型，其用于初始化没有初始值，仅支持赋值一次的类型。
 ```rust
@@ -5964,6 +5969,9 @@ impl<T: Default> Default for Lazy<T> {
 # 智能指针
 
 ## Box<T>代码分析
+代码路径：
+%USER%\.rustup\toolchains\nightly-x86_64-pc-windows-msvc\lib\rustlib\src\rust\library\alloc\src\boxed.rs  
+
 除了数组外的智能指针的堆内存申请，一般都先由Box<T>来完成，然后再将申请到的内存转移到智能指针自身的结构中。
 
 以下为Box<T>结构定义及创建方法相关内容：
@@ -6168,6 +6176,8 @@ impl<T,A:Allocator> Box<T, A> {
 ```
 以上即为Box<T>创建及析构的所有相关代码，其中较难理解的是leak方法。在RUST中，惯例对内存申请一般会使用Box<T>来实现，如果需要将申请的内存以另外的智能指针结构做封装，则调用Box::leak将堆指针传递出来
 ## RawVec<T>代码分析
+代码路径：
+%USER%\.rustup\toolchains\nightly-x86_64-pc-windows-msvc\lib\rustlib\src\rust\library\alloc\src\raw_vec.rs  
 
 RawVec<T>用于指向一块从堆内存申请出来的某一类型数据的数组buffer，可以未初始化或初始化为零。与数组有关的智能指针底层的内存申请基本上都采用了RawVec<T>
 RawVec<T>的结构体，创建及Drop相关方法：
@@ -6516,7 +6526,9 @@ fn capacity_overflow() -> ! {
 }
 ```
 
-## Cow写时复制结构解析
+## Cow<T>写时复制结构解析
+代码路径：
+%USER%\.rustup\toolchains\nightly-x86_64-pc-windows-msvc\lib\rustlib\src\rust\library\alloc\src\borrow.rs  
 
 与Borrow Trait互为逆的ToOwned Trait。 一般满足 T.borrow() 返回 &U，  U.to_owned()返回T
 ```rust
@@ -6667,7 +6679,7 @@ impl<'a, T: Clone> From<&'a [T]> for Cow<'a, [T]> {
 }
 ```
 从Cow<'a, T>可以看到RUST基础语法的强大能力，大家可以思考一下如何用其他语言来实现这一写时复制的类型，会发现很难实现。
-## Vec 分析
+## Vec<T> 分析
 动态数组，结构体及创建，析构方法相关：
 ```rust
 pub struct Vec<T, A: Allocator = Global> {
@@ -7040,8 +7052,10253 @@ Vec容量相关方法：
 ```
 Vec<T>的所有难点实际上都在RUST的各种指针类型转换及内存读写的所有权处理上。这也是所有的RUST的数据结构基础类型实现上相对比其他语言需要额外理解的复杂之处。    
 
+## `Rc<T>` 分析
+`Rc<T>`主要解决堆内存多份借用的情况，相比于`&Box<T>`的解决方案，`Rc<T>`可以基本上不用考虑生命周期导致的编码负担。同时利用伴生的`Weak<T>`解决了变量相互之间的循环引用问题。
+之所以申请堆内存，一个原因便是被系统中多个模块所共享，所以`Rc<T>`是更常用的堆内存智能指针类型。
+   
+`Rc<T>`解决了两个数据结构互指的情况，这在结构体组合，循环链表，树，图的数据结构中都有大量的应用。
+`Rc<T>`的结构定义如下：
+ ```rust
+//在堆内存申请的结构体
+//注意，这里使用了C语言的内存布局，在内存中的成员的顺序必须按照声明的顺序排列
+#[repr(C)]
+ struct RcBox<T: ?Sized> {
+     //拥有所有权的智能指针Rc<T>的计数
+     strong: Cell<usize>,
+     //不拥有所有权的智能指针Weak<T>的计数
+     weak: Cell<usize>,
+     value: T,
+ }
+ 
+ //和Unique<T>类似
+ pub struct Rc<T: ?Sized> {
+     //堆内存块的指针
+     ptr: NonNull<RcBox<T>>,
+     //表示拥有内存块的所有权，内存块由本结构释放
+     phantom: PhantomData<RcBox<T>>,
+ }
+//没有堆内存块的所有权
+pub struct Weak<T: ?Sized> {
+    ptr: NonNull<RcBox<T>>,
+}
+ ```
+ 在创建两个结构体变量互指的指针时，会遇到生命周期陷阱，无论先释放那个结构变量，都会导致另外那个结构变量出现悬垂指针。但如果在代码中时刻关注这种情况，那就太不RUST了。
+ 为此， `Rc<T>`提供了weak和strong两种堆内存指针的方式，`Rc<T>`申请的堆内存可以没有初始化，未初始化的堆内存可以生成`WeakT>`用于给其他结构访问堆内存。同时堆内存用strong的方式来保护`Rc<T>`在未初始化时不被读写。且weak和strong可以相互之间转换，这就以rust方式解决了生命周期陷阱问题。
+利用`Weak<T>`做指针的结构体，在需要访问堆内存时，可以从`Weak<T>`另外创建`Rc<T>`, 完成访问后即可让创建的`Rc<T>`生命周期终结。实际上，各需要访问堆内存的结构体仅保留`Weak<T>`应该是一个非常好的做法。
 
-# RUST不采用类的理
+
+ `Rc<T>`的创建方法及析构方法代码如下：
+ ```rust
+ //由结构体成员生成结构的辅助方法
+ impl<T: ?Sized> Rc<T> {
+     //获取内部的RcBox
+     fn inner(&self) -> &RcBox<T> {
+         unsafe { self.ptr.as_ref() }
+     }
+ 
+     //由成员创建结构体
+     fn from_inner(ptr: NonNull<RcBox<T>>) -> Self {
+         Self { ptr, phantom: PhantomData }
+     }
+     //由裸指针创建结构体
+     unsafe fn from_ptr(ptr: *mut RcBox<T>) -> Self {
+         Self::from_inner(unsafe { NonNull::new_unchecked(ptr) })
+     }
+ }
+ 
+ impl<T> Rc<T> {
+     //由已初始化变量创建Rc<T>
+     pub fn new(value: T
+     ) -> Rc<T> {
+         //首先创建RcBox<T>，然后生成Box<RcBox<T>>, 随后用leak得到RcBox<T>的堆内存指针，
+         //用堆内存指针创建Rc<T>，内存申请由Box<T>实际执行
+         Self::from_inner(
+             Box::leak(box RcBox { strong: Cell::new(1), weak: Cell::new(1), value }).into(),
+         )
+     }
+ 
+     //用于创建一个互相引用场景的Rc<T>
+     pub fn new_cyclic(data_fn: impl FnOnce(&Weak<T>) -> T) -> Rc<T> {
+         // 下面与new函数代码类似，只是value没有初始化。
+         // 因为value没有初始化，strong赋值为0，但可以支持Weak<T>的引用
+         let uninit_ptr: NonNull<_> = Box::leak(box RcBox {
+             strong: Cell::new(0),
+             weak: Cell::new(1),
+             value: mem::MaybeUninit::<T>::uninit(),
+         })
+         .into();
+         
+         //init_ptr后继会被初始化，但此时还没有
+         let init_ptr: NonNull<RcBox<T>> = uninit_ptr.cast();
+ 
+         //生成Weak
+         let weak = Weak { ptr: init_ptr };
+ 
+         // 利用回调闭包获得value的值，将weak传递出去是因为cyclic默认结构体初始化需要使用weak.
+         // 用回调函数的处理可以让初始化一次完成，以免初始化以后还要修改结构体的指针。
+         let data = data_fn(&weak);
+ 
+         unsafe {
+             let inner = init_ptr.as_ptr();
+             //addr_of_mut!可以万无一失，写入值后，初始化已经完成
+             ptr::write(ptr::addr_of_mut!((*inner).value), data);
+             
+             //可以更新strong的值为1了
+             let prev_value = (*inner).strong.get();
+             debug_assert_eq!(prev_value, 0, "No prior strong references should exist");
+             (*inner).strong.set(1);
+         }
+ 
+         //strong登场
+         let strong = Rc::from_inner(init_ptr);
+ 
+         // 这里是因为strong整体拥有一个weak计数，所以此处不对wek做drop处理以维持weak计数。前面的回调函数中应该使用weak.clone增加weak的计数。
+         mem::forget(weak);
+         strong
+     }
+ 
+     //生成一个未初始化的Rc<T>，此时只能本身来处理内存申请的工作
+     pub fn new_uninit() -> Rc<mem::MaybeUninit<T>> {
+         unsafe {
+             //Rc自身的内存申请函数感觉过于复杂
+             Rc::from_ptr(Rc::allocate_for_layout(
+                 Layout::new::<T>(),
+                 |layout| Global.allocate(layout),
+                 |mem| mem as *mut RcBox<mem::MaybeUninit<T>>,
+             ))
+         }
+     }
+ 
+     //防止内存不足的创建函数
+     pub fn try_new(value: T) -> Result<Rc<T>, AllocError> {
+         // 就是用Box::try_new来完成try的工作
+         Ok(Self::from_inner(
+             Box::leak(Box::try_new(RcBox { strong: Cell::new(1), weak: Cell::new(1), value })?)
+                 .into(),
+         ))
+     }
+ 
+     //对未初始化的Rc的try new
+     pub fn try_new_uninit() -> Result<Rc<mem::MaybeUninit<T>>, AllocError> {
+         unsafe {
+             //内存申请函数需要考虑申请不到的情况
+             Ok(Rc::from_ptr(Rc::try_allocate_for_layout(
+                 Layout::new::<T>(),
+                 //就用Global Allocator，没有考虑其他，可能会有些问题
+                 |layout| Global.allocate(layout),
+                 |mem| mem as *mut RcBox<mem::MaybeUninit<T>>,
+             )?))
+         }
+     }
+     ...
+ }
+
+//堆内存申请函数
+impl<T: ?Sized> Rc<T> {
+    unsafe fn allocate_for_layout(
+        value_layout: Layout,
+        allocate: impl FnOnce(Layout) -> Result<NonNull<[u8]>, AllocError>,
+        mem_to_rcbox: impl FnOnce(*mut u8) -> *mut RcBox<T>,
+    ) -> *mut RcBox<T> {
+        // 根据T计算RcBox需要的内存块布局，注意用RcBox<()>获取仅包含strong及cell两个成员的RcBox的layout这个技巧
+        let layout = Layout::new::<RcBox<()>>().extend(value_layout).unwrap().0.pad_to_align();
+        unsafe {
+            //要考虑不成功的可能性
+            Rc::try_allocate_for_layout(value_layout, allocate, mem_to_rcbox)
+                .unwrap_or_else(|_| handle_alloc_error(layout))
+        }
+    }
+
+    unsafe fn try_allocate_for_layout(
+        value_layout: Layout,
+        allocate: impl FnOnce(Layout) -> Result<NonNull<[u8]>, AllocError>,
+        mem_to_rcbox: impl FnOnce(*mut u8) -> *mut RcBox<T>,
+    ) -> Result<*mut RcBox<T>, AllocError> {
+        //计算需要的内存块布局layout
+        let layout = Layout::new::<RcBox<()>>().extend(value_layout).unwrap().0.pad_to_align();
+
+        // 申请内存，有可能不成功
+        let ptr = allocate(layout)?;
+
+        // 将裸指针类型内存类型转换成*mut RcBox<xxx>类型，xxx有可能是MaybeUninit<T>，但也可能是初始化完毕的类型。总之，调用代码会保证初始化，所以此处正常的设置strong及weak，
+        let inner = mem_to_rcbox(ptr.as_non_null_ptr().as_ptr());
+        unsafe {
+            debug_assert_eq!(Layout::for_value(&*inner), layout);
+
+            ptr::write(&mut (*inner).strong, Cell::new(1));
+            ptr::write(&mut (*inner).weak, Cell::new(1));
+        }
+
+        Ok(inner)
+    }
+    
+    //根据一个裸指针来创建RcBox<T>，返回裸指针，这个函数完成时堆内存没有初始化，后继需要写入值
+    unsafe fn allocate_for_ptr(ptr: *const T) -> *mut RcBox<T> {
+        unsafe {
+            Self::allocate_for_layout(
+                // 用*const T获取Layout
+                Layout::for_value(&*ptr),
+                |layout| Global.allocate(layout),
+                //此处应该也可以用mem as *mut RcBox<T>，
+                //目前的代码感觉比较复杂，
+                |mem| (ptr as *mut RcBox<T>).set_ptr_value(mem),
+            )
+        }
+    }
+
+    //从Box<T>转换成RcBox<T>
+    fn from_box(v: Box<T>) -> Rc<T> {
+        unsafe {
+            //解封装Box，获取堆内存指针
+            let (box_unique, alloc) = Box::into_unique(v);
+            let bptr = box_unique.as_ptr();
+
+            let value_size = size_of_val(&*bptr);
+            //获得* mut RcBox<T>
+            let ptr = Self::allocate_for_ptr(bptr);
+
+            // 将T的内容拷贝如RcBox的value
+            ptr::copy_nonoverlapping(
+                bptr as *const T as *const u8,
+                &mut (*ptr).value as *mut _ as *mut u8,
+                value_size,
+            );
+
+            // 重要，这里仅仅释放堆内存，但是如果堆内存中的T类型变量还有其他需要释放的内存，则没有处理，即没有调用drop(T)，drop(T)由新生成的RcBox<T>再释放的时候负责
+            box_free(box_unique, alloc);
+            
+            // 生成Rc<T>
+            Self::from_ptr(ptr)
+        }
+    }
+}
+
+//析构
+unsafe impl<#[may_dangle] T: ?Sized> Drop for Rc<T> {
+    //只要strong计数为零，就drop掉堆内存变量
+    //Weak可以不依赖与value是否正确。
+    fn drop(&mut self) {
+        unsafe {
+            //strong计数减1
+            self.inner().dec_strong();
+            if self.inner().strong() == 0 {
+                // 触发堆内存变量的drop()操作
+                ptr::drop_in_place(Self::get_mut_unchecked(self));
+
+                // 对于strong整体会有一个weak计数，需要减掉
+                // 这里实际上与C语言一样容易出错。
+                self.inner().dec_weak();
+
+                if self.inner().weak() == 0 {
+                    //只有weak为0的时候才能够释放堆内存
+                    Global.deallocate(self.ptr.cast(), Layout::for_value(self.ptr.as_ref()));
+                }
+            }
+        }
+    }
+}
+
+ ```
+`Weak<T>`的结构体及创建，析构方法：
+ 在RC方法内部，Weak可以由`Weak{ptr:self_ptr}`直接创建，可见前面代码的例子，但要注意weak计数和Weak变量需要匹配
+ ```rust
+
+impl<T> Weak<T> {
+    //创建一个空的Weak
+    pub fn new() -> Weak<T> {
+        Weak { ptr: NonNull::new(usize::MAX as *mut RcBox<T>).expect("MAX is not 0") }
+    }
+}
+//判断Weak是否为空的关联函数
+pub(crate) fn is_dangling<T: ?Sized>(ptr: *mut T) -> bool {
+    let address = ptr as *mut () as usize;
+    address == usize::MAX
+}
+impl <T:?Sized> Weak<T> {
+    pub fn as_ptr(&self) -> *const T {
+        let ptr: *mut RcBox<T> = NonNull::as_ptr(self.ptr);
+
+        if is_dangling(ptr) {
+            ptr as *const T
+        } else {
+            //返回T类型变量的指针
+            unsafe { ptr::addr_of_mut!((*ptr).value) }
+        }
+    }
+    //会消费掉Weak，获取T类型变量指针，此指针以后需要重新组建Weak<T>,否则
+    //堆内存中的RcBox的weak会出现计数错误
+    pub fn into_raw(self) -> *const T {
+        let result = self.as_ptr();
+        mem::forget(self);
+        result
+    }
+    
+    //ptr是从into_raw得到的返回值
+    pub unsafe fn from_raw(ptr: *const T) -> Self {
+        let ptr = if is_dangling(ptr as *mut T) {
+            ptr as *mut RcBox<T>
+        } else {
+            //需要从T类型的指针恢复RcBox的指针
+            let offset = unsafe { data_offset(ptr) };
+            unsafe { (ptr as *mut RcBox<T>).set_ptr_value((ptr as *mut u8).offset(-offset)) }
+        };
+        //RcBox的weak的计数已经有了这个计数
+        Weak { ptr: unsafe { NonNull::new_unchecked(ptr) } }
+    }
+
+    //创建WeakInner
+    fn inner(&self) -> Option<WeakInner<'_>> {
+        if is_dangling(self.ptr.as_ptr()) {
+            None
+        } else {
+            // We are careful to *not* create a reference covering the "data" field, as
+            // the field may be mutated concurrently (for example, if the last `Rc`
+            // is dropped, the data field will be dropped in-place).
+            Some(unsafe {
+                let ptr = self.ptr.as_ptr();
+                WeakInner { strong: &(*ptr).strong, weak: &(*ptr).weak }
+            })
+        }
+    }
+
+    //从Weak得到Rc, 如前所述，对Rc正确的打开方式应该是仅用Weak，然后适当的时候升级到Rc<T>，
+    //并且在使用完毕后就将Rc<T>生命周期终止掉，即这个函数返回的Rc<T>生命周期最好仅在一个函数中。
+    pub fn upgrade(&self) -> Option<Rc<T>> {
+        //获取内部的RcBox
+        let inner = self.inner()?;
+        if inner.strong() == 0 {
+            None
+        } else {
+            //对RcBox<T>的strong增加计数
+            inner.inc_strong();
+            //利用RcBox生成新的Rc<T>
+            Some(Rc::from_inner(self.ptr))
+        }
+    }
+}
+impl <T:?Sized> Rc<T> {
+    ...
+
+    //生成新的Weak<T>
+    pub fn downgrade(this: &Self) -> Weak<T> {
+        //增加weak计数
+        this.inner().inc_weak();
+        // 确保不出错
+        debug_assert!(!is_dangling(this.ptr.as_ptr()));
+        // 生成Weak<T>
+        Weak { ptr: this.ptr }
+    }
+}
+ ```
+`Rc<T>`的其他方法：
+```rust
+ impl<T: Clone> Rc<T> {
+    //Rc<T> 实际上是需要配合RefCell<T>来完成对堆内存的修改需求
+    //下面的函数用了类似写时复制的方式，仅能在某些场景下使用
+    //下面这个函数作为学习RUST的技巧是有用的，但建议最好不使用它
+    pub fn make_mut(this: &mut Self) -> &mut T {
+        if Rc::strong_count(this) != 1 {
+            // 如果Rc多于一个引用，则创建一个拷贝的变量
+            // 申请一个未初始化的Rc
+            let mut rc = Self::new_uninit();
+            unsafe {
+                //将self中的value值写入新创建的变量
+                let data = Rc::get_mut_unchecked(&mut rc);
+                (**this).write_clone_into_raw(data.as_mut_ptr());
+                //这里把this代表的Rc释放掉，并赋以新值。
+                //make_mut的本意是从this中生成一个mut，因此将this代表的Rc<T>释放掉是合乎
+                //函数的意义的
+                *this = rc.assume_init();
+            }
+        } else if Rc::weak_count(this) != 0 {
+            // 如果Rc<T>仅有一个strong引用，但有其他的weak引用
+            // 同样需要新建一个Rc<T>
+            let mut rc = Self::new_uninit();
+            unsafe {
+                //下面用了与strong !=1 的情况的不同写法，但应该完成了同样的工作
+                let data = Rc::get_mut_unchecked(&mut rc);
+                data.as_mut_ptr().copy_from_nonoverlapping(&**this, 1);
+                
+                //将strong引用减去，堆内存不再存在strong引用
+                this.inner().dec_strong();
+                // strong已经为0，所以将strong的weak计数减掉
+                this.inner().dec_weak();
+                //不能用*this = 的表达，因为会导致对堆内存变量的释放，这不符合语义。
+                ptr::write(this, rc.assume_init());
+            }
+        }
+        //已经确保了只有一个Rc<T>，且没有Weak<T>，可以任意对堆变量做修改了
+        unsafe { &mut this.ptr.as_mut().value }
+    }
+ }
+```
+ 
+ Clone trait实现：
+ ```rust
+impl<T: ?Sized> Clone for Rc<T> {
+    //clone就是增加一个strong的计数
+    fn clone(&self) -> Rc<T> {
+        self.inner().inc_strong();
+        Self::from_inner(self.ptr)
+    }
+}
+
+impl<T: ?Sized> Clone for Weak<T> {
+    fn clone(&self) -> Weak<T> {
+        if let Some(inner) = self.inner() {
+            inner.inc_weak()
+        }
+        Weak { ptr: self.ptr }
+    }
+}
+ ``` 
+对`Rc<MaybeUninit<T>>`初始化后assume_init实现方法：
+```rust
+impl<T> Rc<mem::MaybeUninit<T>> {
+    pub unsafe fn assume_init(self) -> Rc<T> {
+        //先用ManuallyDrop将self封装以便不对self做drop操作
+        //然后取出内部的堆指针形成新的Rc<T>。
+        Rc::from_inner(mem::ManuallyDrop::new(self).ptr.cast())
+    }
+}
+```
+`Rc<T>`其他方法：
+```rust
+impl<T: ?Sized> Rc<T> {
+    //相当于Rc<T>的leak函数
+    pub fn into_raw(this: Self) -> *const T {
+        let ptr = Self::as_ptr(&this);
+        //把堆内存指针取出后，由调用代码负责释放，
+        //本结构体要规避后继的释放操作
+        mem::forget(this);
+        ptr
+    }
+
+    //获得堆内存变量的指针，不会涉及安全问题,注意，这里ptr不是堆内存块的首地址，而是向后有偏移
+    //因为RcBox<T>采用C语言的内存布局，所以value在最后
+    pub fn as_ptr(this: &Self) -> *const T {
+        let ptr: *mut RcBox<T> = NonNull::as_ptr(this.ptr);
+
+        unsafe { ptr::addr_of_mut!((*ptr).value) }
+    }
+
+    //从堆内存T类型变量的指针重建Rc<T>，注意，这里的ptr一般是调用Rc<T>::into_raw()获得的裸指针
+    //ptr不是堆内存块首地址，需要减去strong和weak的内存大小
+    pub unsafe fn from_raw(ptr: *const T) -> Self {
+        let offset = unsafe { data_offset(ptr) };
+
+        // 减去偏移量，得到正确的RcBox堆内存的首地址
+        let rc_ptr =
+            unsafe { (ptr as *mut RcBox<T>).set_ptr_value((ptr as *mut u8).offset(-offset)) };
+
+        unsafe { Self::from_ptr(rc_ptr) }
+    }
+```
+into_raw, from_raw要成对使用，否则就必须对这两个方法的内存由清晰的认知。否则极易出现问题。
+`Rc<T>` 转换为`Weak<T>`
+```rust
+    //对于Weak引用，要生成一个Weak<T>，
+    pub fn downgrade(this: &Self) -> Weak<T> {
+        this.inner().inc_weak();
+        debug_assert!(!is_dangling(this.ptr.as_ptr()));
+        //直接生成Weak
+        Weak { ptr: this.ptr }
+    }
+
+    pub fn get_mut(this: &mut Self) -> Option<&mut T> {
+        if Rc::is_unique(this) { unsafe { Some(Rc::get_mut_unchecked(this)) } } else { None }
+    }
+
+    pub unsafe fn get_mut_unchecked(this: &mut Self) -> &mut T {
+        unsafe { &mut (*this.ptr.as_ptr()).value }
+    }
+
+}
+```
+
+## `Arc<T>`的代码实现
+
+`Arc<T>` 是`Rc<T>`的多线程版本，实际上，就连代码都基本类似，只是把计数值的类型换成了原子变量
+`Arc<T>`类型结构定义如下：
+```rust
+//在堆内存分配的结构体
+#[repr(C)]
+struct ArcInner<T: ?Sized> {
+    //用原子变量实现计数，使得计数修改不会因多线程竞争而出错
+    //AtomicUsize 如下：
+    // pub struct AtomicUsize { v: UnsafeCell<usize>}
+    strong: atomic::AtomicUsize,
+    weak: atomic::AtomicUsize,
+    data: T,
+}
+
+//支持Send
+unsafe impl<T: ?Sized + Sync + Send> Send for ArcInner<T> {}
+//支持Sync
+unsafe impl<T: ?Sized + Sync + Send> Sync for ArcInner<T> {}
+
+//Arc<T>的结构
+pub struct Arc<T: ?Sized> {
+    ptr: NonNull<ArcInner<T>>,
+    phantom: PhantomData<ArcInner<T>>,
+}
+//对Send支持
+unsafe impl<T: ?Sized + Sync + Send> Send for Arc<T> {}
+//对Sync支持
+unsafe impl<T: ?Sized + Sync + Send> Sync for Arc<T> {}
+
+//Weak<T>的结构
+pub struct Weak<T: ?Sized> {
+    ptr: NonNull<ArcInner<T>>,
+}
+
+unsafe impl<T: ?Sized + Sync + Send> Send for Weak<T> {}
+unsafe impl<T: ?Sized + Sync + Send> Sync for Weak<T> {}
+```
+`ArcInner<T>`对应`RcBox<T>`, `Arc<T>`对应`Rc<T>`, `sync::Weak<T>`对应`rc::Weak<T>`。逻辑与Rc<T>模块的逻辑都基本相同。的。 `Arc<T>`除了`ArcInner<T>`与`RcBox<T>`有区别，的区别就是计数器用原子变量实现。使得计数器的加减操作不会受多线程数据竞争的影响，从而使得`Arc<T>`能够在多线程环境下使用。这里需要注意`Rc<T>`及`Arc<T>`实际上仅仅是不可变引用的多线程替代(多于两个以上)，因此`Arc<T>`的实现中仅仅关注`Arc<T>`类型本身的多线程共享的保护机制。至于内部的泛型类型变量data，仍然需要泛型类型自身对多线程共享的实现。
+
+ 与 `Rc<T>`相同`Arc<T>`也提供了weak和strong两种堆内存指针的方式，`Arc<T>`申请的堆内存可以没有初始化，未初始化的堆内存可以生成`WeakT>`用于给其他结构访问堆内存。同时堆内存用strong的方式来保护`Arc<T>`在未初始化时不被读写。且weak和strong可以相互之间转换，这就以rust方式解决了生命周期陷阱问题。
+利用`Weak<T>`做指针的结构体，在需要访问堆内存时，可以从`Weak<T>`另外创建`Arc<T>`, 完成访问后即可让创建的`Arc<T>`生命周期终结。实际上，各需要访问堆内存的结构体仅保留`Weak<T>`应该是一个非常好的做法。
+
+ `Arc<T>`的创建方法及析构方法代码如下：
+ ```rust
+ //已经存在堆内存，从堆内存来创建Arc<T>
+ impl<T:?Sized> Arc<T> {
+    fn from_inner(ptr: NonNull<ArcInner<T>>) -> Self {
+        Self { ptr, phantom: PhantomData }
+    }
+
+    unsafe fn from_ptr(ptr: *mut ArcInner<T>) -> Self {
+        unsafe { Self::from_inner(NonNull::new_unchecked(ptr)) }
+    }
+ }
+ 
+ impl<T> Arc<T> {
+     //由已初始化变量创建Arc<T>
+     pub fn new(data: T) -> Arc<T> {
+         //首先创建ArcInner<T>，然后生成Box<ArcInner<T>>, 随后用leak得到ArcInner<T>的堆内存指针，
+         //用堆内存指针创建Rc<T>，内存申请由Box<T>实际执行
+        let x: Box<_> = box ArcInner {
+            strong: atomic::AtomicUsize::new(1),
+            weak: atomic::AtomicUsize::new(1),
+            data,
+        };
+        Self::from_inner(Box::leak(x).into())
+    }
+     //用于创建一个互相引用场景的Arc<T>
+    pub fn new_cyclic(data_fn: impl FnOnce(&Weak<T>) -> T) -> Arc<T> {
+         // 下面与new函数代码类似，只是value没有初始化。
+         // 因为value没有初始化，strong赋值为0，但可以支持Weak<T>的引用
+        let uninit_ptr: NonNull<_> = Box::leak(box ArcInner {
+            strong: atomic::AtomicUsize::new(0),
+            weak: atomic::AtomicUsize::new(1),
+            data: mem::MaybeUninit::<T>::uninit(),
+        })
+        .into();
+
+         //init_ptr后继会被初始化，但此时还没有
+        let init_ptr: NonNull<ArcInner<T>> = uninit_ptr.cast();
+
+         //生成Weak
+        let weak = Weak { ptr: init_ptr };
+
+         // 利用回调闭包获得value的值，将weak传递出去是因为cyclic默认结构体初始化需要使用weak.
+         // 用回调函数的处理可以让初始化一次完成，以免初始化以后还要修改结构体的指针。
+        let data = data_fn(&weak);
+
+        // Now we can properly initialize the inner value and turn our weak
+        // reference into a strong reference.
+        unsafe {
+            let inner = init_ptr.as_ptr();
+             //addr_of_mut!可以万无一失，写入值后，初始化已经完成
+            ptr::write(ptr::addr_of_mut!((*inner).data), data);
+
+             //可以更新strong的值为1了,注意这里的原子函数，这个函数不会被其他线程打断导致更新失败
+            let prev_value = (*inner).strong.fetch_add(1, Release);
+            debug_assert_eq!(prev_value, 0, "No prior strong references should exist");
+        }
+
+         //strong登场
+        let strong = Arc::from_inner(init_ptr);
+
+         // 这里是因为strong整体拥有一个weak计数，所以此处不对weak做drop处理以维持weak计数。前面的回调函数中应该使用weak.clone增加weak的计数。
+        mem::forget(weak);
+        strong
+    }
+ 
+     //生成一个未初始化的Arc<T>，此时只能本身来处理内存申请的工作
+    pub fn new_uninit() -> Arc<mem::MaybeUninit<T>> {
+        unsafe {
+             //Arc自身的内存申请函数感觉过于复杂
+            Arc::from_ptr(Arc::allocate_for_layout(
+                Layout::new::<T>(),
+                |layout| Global.allocate(layout),
+                |mem| mem as *mut ArcInner<mem::MaybeUninit<T>>,
+            ))
+        }
+    }
+     //防止内存不足的创建函数
+    pub fn try_new(data: T) -> Result<Arc<T>, AllocError> {
+         // 就是用Box::try_new来完成try的工作
+        let x: Box<_> = Box::try_new(ArcInner {
+            strong: atomic::AtomicUsize::new(1),
+            weak: atomic::AtomicUsize::new(1),
+            data,
+        })?;
+        Ok(Self::from_inner(Box::leak(x).into()))
+    }
+ 
+     //对未初始化的Rc的try new
+    pub fn try_new_uninit() -> Result<Arc<mem::MaybeUninit<T>>, AllocError> {
+        unsafe {
+             //内存申请函数需要考虑申请不到的情况
+            Ok(Arc::from_ptr(Arc::try_allocate_for_layout(
+                Layout::new::<T>(),
+                 //就用Global Allocator，没有考虑其他，可能会有些问题
+                |layout| Global.allocate(layout),
+                |mem| mem as *mut ArcInner<mem::MaybeUninit<T>>,
+            )?))
+        }
+    }
+     ...
+ }
+
+//堆内存申请函数
+impl<T: ?Sized> Arc<T> {
+    unsafe fn allocate_for_layout(
+        value_layout: Layout,
+        allocate: impl FnOnce(Layout) -> Result<NonNull<[u8]>, AllocError>,
+        mem_to_arcinner: impl FnOnce(*mut u8) -> *mut ArcInner<T>,
+    ) -> *mut ArcInner<T> {
+        // 根据T计算RcBox需要的内存块布局，注意用ArcInner<()>获取仅包含strong及cell两个成员的RcBox的layout这个技巧
+        let layout = Layout::new::<ArcInner<()>>().extend(value_layout).unwrap().0.pad_to_align();
+        unsafe {
+            //要考虑不成功的可能性
+            Arc::try_allocate_for_layout(value_layout, allocate, mem_to_arcinner)
+                .unwrap_or_else(|_| handle_alloc_error(layout))
+        }
+    }
+
+    unsafe fn try_allocate_for_layout(
+        value_layout: Layout,
+        allocate: impl FnOnce(Layout) -> Result<NonNull<[u8]>, AllocError>,
+        mem_to_arcinner: impl FnOnce(*mut u8) -> *mut ArcInner<T>,
+    ) -> Result<*mut ArcInner<T>, AllocError> {
+        //计算需要的内存块布局layout
+        let layout = Layout::new::<ArcInner<()>>().extend(value_layout).unwrap().0.pad_to_align();
+
+        // 申请内存，有可能不成功
+        let ptr = allocate(layout)?;
+
+        // 将裸指针类型内存类型转换成*mut ArcInner<xxx>类型，xxx有可能是MaybeUninit<T>，但也可能是初始化完毕的类型。总之，调用代码会保证初始化，所以此处正常的设置strong及weak，
+        let inner = mem_to_arcinner(ptr.as_non_null_ptr().as_ptr());
+        debug_assert_eq!(unsafe { Layout::for_value(&*inner) }, layout);
+
+        unsafe {
+            ptr::write(&mut (*inner).strong, atomic::AtomicUsize::new(1));
+            ptr::write(&mut (*inner).weak, atomic::AtomicUsize::new(1));
+        }
+
+        Ok(inner)
+    }
+
+    //根据一个裸指针来创建RcBox<T>，返回裸指针，这个函数完成时堆内存没有初始化，后继需要写入值
+    unsafe fn allocate_for_ptr(ptr: *const T) -> *mut ArcInner<T> {
+        // Allocate for the `ArcInner<T>` using the given value.
+        unsafe {
+            Self::allocate_for_layout(
+                // 用*const T获取Layout
+                Layout::for_value(&*ptr),
+                |layout| Global.allocate(layout),
+                //此处应该也可以用mem as *mut ArcInner<T>，
+                //目前的代码感觉比较复杂，
+                |mem| (ptr as *mut ArcInner<T>).set_ptr_value(mem) as *mut ArcInner<T>,
+            )
+        }
+    }
+
+    //从Box<T>转换成Arc<T>
+     fn from_box(v: Box<T>) -> Arc<T> {
+        unsafe {
+            //解封装Box，获取堆内存指针
+            let (box_unique, alloc) = Box::into_unique(v);
+            let bptr = box_unique.as_ptr();
+
+            let value_size = size_of_val(&*bptr);
+            //获得* mut ArcInner<T>
+            let ptr = Self::allocate_for_ptr(bptr);
+
+            // 将T的内容拷贝入ArcInner的value
+            ptr::copy_nonoverlapping(
+                bptr as *const T as *const u8,
+                &mut (*ptr).data as *mut _ as *mut u8,
+                value_size,
+            );
+
+            // 重要，这里仅仅释放堆内存，但是如果堆内存中的T类型变量还有其他需要释放的内存，则没有处理，即没有调用drop(T)，drop(T)由新生成的ArcInner<T>再释放的时候负责
+            box_free(box_unique, alloc);
+
+            // 生成Arc<T>
+            Self::from_ptr(ptr)
+        }
+    }
+}
+
+//析构
+unsafe impl<#[may_dangle] T: ?Sized> Drop for Arc<T> {
+    fn drop(&mut self) {
+        //如果当前的strong不是1,则返回，fetch_xxx函数返回之前的值
+        if self.inner().strong.fetch_sub(1, Release) != 1 {
+            return;
+        }
+
+        acquire!(self.inner().strong);
+
+        unsafe {
+            //见下面代码的分析
+            self.drop_slow();
+        }
+    }
+}
+impl <T:?Sized> Arc<T> {
+    ...
+    unsafe fn drop_slow(&mut self) {
+        // 对堆内存的变量做drop操作，注意，这里不释放堆内存，只是释放变量所有权
+        unsafe { ptr::drop_in_place(Self::get_mut_unchecked(self)) };
+
+        // 所有的strong会创建一个Weak，对这个Weak做drop操作
+        drop(Weak { ptr: self.ptr });
+    }
+    ...
+}
+ ```
+`Weak<T>`的结构体及创建，析构方法：
+ 在RC方法内部，Weak可以由`Weak{ptr:self_ptr}`直接创建，可见前面代码的例子，但要注意weak计数和Weak变量需要匹配
+ ```rust
+
+impl<T> Weak<T> {
+    //创建一个空的Weak
+    pub fn new() -> Weak<T> {
+        Weak { ptr: NonNull::new(usize::MAX as *mut ArcInner<T>).expect("MAX is not 0") }
+    }
+}
+
+struct WeakInner<'a> {
+    weak: &'a atomic::AtomicUsize,
+    strong: &'a atomic::AtomicUsize,
+}
+//判断Weak是否为空的关联函数
+pub(crate) fn is_dangling<T: ?Sized>(ptr: *mut T) -> bool {
+    let address = ptr as *mut () as usize;
+    address == usize::MAX
+}
+
+impl <T:?Sized> Weak<T> {
+    pub fn as_ptr(&self) -> *const T {
+        let ptr: *mut ArcInner<T> = NonNull::as_ptr(self.ptr);
+
+        if is_dangling(ptr) {
+            ptr as *const T
+        } else {
+            //返回T类型变量的指针
+            unsafe { ptr::addr_of_mut!((*ptr).data) }
+        }
+    }
+    //会消费掉Weak，获取T类型变量指针，此指针以后需要重新组建Weak<T>,否则
+    //堆内存中的ArcInner的weak会出现计数错误
+    pub fn into_raw(self) -> *const T {
+        let result = self.as_ptr();
+        mem::forget(self);
+        result
+    }
+    
+    //ptr是从into_raw得到的返回值
+    pub unsafe fn from_raw(ptr: *const T) -> Self {
+        let ptr = if is_dangling(ptr as *mut T) {
+            ptr as *mut ArcInner<T>
+        } else {
+            //需要从T类型的指针恢复RcBox的指针
+            let offset = unsafe { data_offset(ptr) };
+            unsafe { (ptr as *mut ArcInner<T>).set_ptr_value((ptr as *mut u8).offset(-offset)) }
+        };
+        //ArcInner的weak的计数已经有了这个计数
+        Weak { ptr: unsafe { NonNull::new_unchecked(ptr) } }
+    }
+    
+    //创建一个WeakInner
+    fn inner(&self) -> Option<WeakInner<'_>> {
+        if is_dangling(self.ptr.as_ptr()) {
+            None
+        } else {
+            //获取ArcInner<T>中strong和weak的引用
+            Some(unsafe {
+                let ptr = self.ptr.as_ptr();
+                WeakInner { strong: &(*ptr).strong, weak: &(*ptr).weak }
+            })
+        }
+    }
+    //从Weak得到Arc, 如前所述，对Arc正确的打开方式应该是仅用Weak，然后适当的时候升级到Arc<T>
+    //并且在使用完毕后就将ARc<T>生命周期终止掉，即这个函数返回Arc<T>生命周期最好仅在一个函数中。
+    pub fn upgrade(&self) -> Option<Arc<T>> {
+        //获取内部的ArcInner
+        let inner = self.inner()?;
+        //原子操作获得strong的值
+        let mut n = inner.strong.load(Relaxed);
+        
+        //因为是多线程操作，所以此时n已经可能被改写，所以用loop
+        //来确保n在已经改写的情况下正确
+        loop {
+            //如果strong是0，那堆内存已经被释放掉，不能再使用
+            if n == 0 {
+                return None;
+            }
+
+            // 不能多于最大的引用数目
+            if n > MAX_REFCOUNT {
+                abort();
+            }
+
+            //以下确保在strong当前值是n的时候做加1操作
+            match inner.strong.compare_exchange_weak(n, n + 1, Acquire, Relaxed) {
+                //当前值为1且已经加1，生成Arc<T>
+                Ok(_) => return Some(Arc::from_inner(self.ptr)), // null checked above
+                //如果当前值不为n，则将n设置为当前值，进入下一轮循环。
+                Err(old) => n = old,
+            }
+        }
+    }
+}
+
+impl <T:?Sized> Arc<T> {
+    ...
+
+    //生成新的Weak<T>
+    pub fn downgrade(this: &Self) -> Weak<T> {
+        // 获取weak count.
+        let mut cur = this.inner().weak.load(Relaxed);
+
+        //要确定当前的weak count与上面取得一致
+        loop {
+            // 如果是usize::MAX，证明在创建过程中，等创建完毕后
+            // 再获取一次
+            if cur == usize::MAX {
+                hint::spin_loop();
+                cur = this.inner().weak.load(Relaxed);
+                continue;
+            }
+            
+            //确保在weak与当前值一致的情况下做原子操作，将weak加1
+            match this.inner().weak.compare_exchange_weak(cur, cur + 1, Acquire, Relaxed) {
+                Ok(_) => {
+                    // 确保不创建对不存在的变量的Weak
+                    debug_assert!(!is_dangling(this.ptr.as_ptr()));
+                    //创建Weak
+                    return Weak { ptr: this.ptr };
+                }
+                //如果当前的值与取值不一致，将取值更换为当前值，再做一次循环
+                Err(old) => cur = old,
+            }
+        }
+    }
+}
+ ```
+ 以上代码中，对于多线程的处理需要额外注意并理解。这是原子变量处理多线程的典型用法
+
+`Arc<T>`的其他方法：
+```rust
+ impl<T: Clone> Arc<T> {
+    //Rc<T> 实际上是需要配合RefCell<T>来完成对堆内存的修改需求
+    //下面的函数用了类似写时复制的方式，仅能在某些场景下使用
+    //下面这个函数作为学习RUST的技巧是有用的，但建议最好不使用它
+    pub fn make_mut(this: &mut Self) -> &mut T {
+        //判断strong的值是否为1，如果为1，则设置为0，以防止其他线程做修改 
+        if this.inner().strong.compare_exchange(1, 0, Acquire, Relaxed).is_err() {
+            // strong不为1，需要创建一个复制的Arc<T>变量
+            let mut arc = Self::new_uninit();
+            unsafe {
+                let data = Arc::get_mut_unchecked(&mut arc);
+                (**this).write_clone_into_raw(data.as_mut_ptr());
+                *this = arc.assume_init();
+            }
+        } else if this.inner().weak.load(Relaxed) != 1 {
+            //当前为原strong为1且已经strong已经做了减1操作为0
+            //那此时weak如果为1，证明没有多余的Weak<T>被派生
+            //如果weak不为1，则证明有其他的Weak<T>存在，需要创建一个复制的Arc<T>
+
+            //这里因为strong已经被减1，所以本线程已经没有Arc<T>，所以创建一个
+            //Weak并由此变量的drop完成对weak计数的处理
+            let _weak = Weak { ptr: this.ptr };
+
+            // 创建一个新的复制的Arc<T>
+            let mut arc = Self::new_uninit();
+            unsafe {
+                let data = Arc::get_mut_unchecked(&mut arc);
+                data.as_mut_ptr().copy_from_nonoverlapping(&**this, 1);
+                ptr::write(this, arc.assume_init());
+            }
+        } else {
+            // strong及weak都是1，则恢复strong为1，直接使用当前的Arc<T>
+            this.inner().strong.store(1, Release);
+        }
+
+        //返回&mut T
+        unsafe { Self::get_mut_unchecked(this) }
+       
+    }
+ }
+```
+ 
+ Clone trait实现：
+ ```rust
+impl<T: ?Sized> Clone for Arc<T> {
+    fn clone(&self) -> Arc<T> {
+        //增加一个strong计数
+        let old_size = self.inner().strong.fetch_add(1, Relaxed);
+
+        if old_size > MAX_REFCOUNT {
+            abort();
+        }
+        //从内部创建一个新的ARC<T>
+        Self::from_inner(self.ptr)
+    }
+}
+
+impl<T: ?Sized> Clone for Weak<T> {
+    fn clone(&self) -> Weak<T> {
+        if let Some(inner) = self.inner() {
+            inner.inc_weak()
+        }
+        Weak { ptr: self.ptr }
+    }
+    fn clone(&self) -> Weak<T> {
+        let inner = if let Some(inner) = self.inner() {
+            inner
+        } else {
+            //inner不存在，直接创建一个Weak<T>
+            return Weak { ptr: self.ptr };
+        };
+        //对weak计数加1
+        let old_size = inner.weak.fetch_add(1, Relaxed);
+
+        if old_size > MAX_REFCOUNT {
+            abort();
+        }
+        //创建Weak<T>
+        Weak { ptr: self.ptr }
+    }
+}
+ ``` 
+对`Arc<MaybeUninit<T>>`初始化后assume_init实现方法：
+```rust
+impl<T> Arc<mem::MaybeUninit<T>> {
+    pub unsafe fn assume_init(self) -> Arc<T> {
+        //先用ManuallyDrop将self封装以便不对self做drop操作
+        //然后取出内部的堆指针形成新的Arc<T>。
+        Arc::from_inner(mem::ManuallyDrop::new(self).ptr.cast())
+    }
+}
+```
+`Arc<T>`其他方法：
+```rust
+impl<T: ?Sized> Arc<T> {
+    //相当于Arc<T>的leak函数
+    pub fn into_raw(this: Self) -> *const T {
+        let ptr = Self::as_ptr(&this);
+        //把堆内存指针取出后，由调用代码负责释放，
+        //本结构体要规避后继的释放操作
+        mem::forget(this);
+        ptr
+    }
+
+    //获得堆内存变量的指针，不会涉及安全问题,注意，这里ptr不是堆内存块的首地址，而是向后有偏移
+    //因为ArcInner<T>采用C语言的内存布局，所以value在最后
+    pub fn as_ptr(this: &Self) -> *const T {
+        let ptr: *mut ArcInner<T> = NonNull::as_ptr(this.ptr);
+
+        unsafe { ptr::addr_of_mut!((*ptr).value) }
+    }
+
+    //从堆内存T类型变量的指针重建Arc<T>，注意，这里的ptr一般是调用`Arc<T>::into_raw()获得的裸指针
+    //ptr不是堆内存块首地址，需要减去strong和weak的内存大小
+    pub unsafe fn from_raw(ptr: *const T) -> Self {
+        let offset = unsafe { data_offset(ptr) };
+
+        // 减去偏移量，得到正确的ArcInner堆内存的首地址
+        let rc_ptr =
+            unsafe { (ptr as *mut ArcInner<T>).set_ptr_value((ptr as *mut u8).offset(-offset)) };
+
+        unsafe { Self::from_ptr(rc_ptr) }
+    }
+```
+into_raw, from_raw要成对使用，否则就必须对这两个方法的内存由清晰的认知。否则极易出现问题。
+
+```rust
+ 
+    pub fn get_mut(this: &mut Self) -> Option<&mut T> {
+        if this.is_unique() { unsafe { Some(Arc::get_mut_unchecked(this)) } } else { None }
+    }
+
+    pub unsafe fn get_mut_unchecked(this: &mut Self) -> &mut T {
+        unsafe { &mut (*this.ptr.as_ptr()).data }
+    }
+
+}
+```
+
+## `LinkedList<T>`代码分析
+双向链表及其他数据结构的代码实现都是经典的实用性及训练性上佳的项目。本书对这些经典数据结构将只分析LinkedList<T>，重点分析RUST与其他语言的不同的部分。如果对LinkedList<T>彻底理解了，那其他数据结构也就不成为问题:
+`LinkedList<T>`类型结构定义如下：
+```rust
+//这个定义表示LinkedList只支持固定长度的T类型
+pub struct LinkedList<T> {
+    //等同于直接用裸指针，使得代码最方便及简化，但需要对安全性额外投入精力
+    //这个实际上与C语言相同，只是用Option增加了安全措施
+    head: Option<NonNull<Node<T>>>,
+    tail: Option<NonNull<Node<T>>>,
+    len: usize,
+    //marker说明本结构有一个Box<Node<T>>的所有权，并会负责调用其的drop
+    //编译器应做好drop check, 检查与本结构相关的Box<Node<T>>的生命周期及drop
+    //marker体现了RUST的独特点
+    marker: PhantomData<Box<Node<T>>>,
+}
+
+struct Node<T> {
+    next: Option<NonNull<Node<T>>>,
+    prev: Option<NonNull<Node<T>>>,
+    element: T,
+}
+```
+Node方法代码：
+```rust
+impl<T> Node<T> {
+    fn new(element: T) -> Self {
+        Node { next: None, prev: None, element }
+    }
+
+    fn into_element(self: Box<Self>) -> T {
+        //消费了Box，堆内存被释放并将element拷贝到栈
+        self.element
+    }
+}
+```
+LinkedList的创建及简单的增减方法：
+```rust
+impl<T> LinkedList<T> {
+    //创建一个空的LinkedList
+    pub const fn new() -> Self {
+        LinkedList { head: None, tail: None, len: 0, marker: PhantomData }
+    }
+```
+在头部增加一个成员及删除一个成员：
+```rust    
+    //在首部增加一个节点
+    pub fn push_front(&mut self, elt: T) {
+        //用box从堆内存申请一个节点，push_front_node见后面函数
+        self.push_front_node(box Node::new(elt));
+    }
+    fn push_front_node(&mut self, mut node: Box<Node<T>>) {
+        // 整体全是不安全代码
+        unsafe {
+            node.next = self.head;
+            node.prev = None;
+            //需要将Box的堆内存leak出来使用。此块内存后继如果还在链表，需要由LinkedList负责drop.后面可以看到LinkedList的drop函数的处理。
+            //如果pop出链表，那会重新用这里leak出来的NonNull<Node<T>>生成Box,再由Box释放
+            let node = Some(Box::leak(node).into());
+
+            match self.head {
+                None => self.tail = node,
+                // 注意下面，不能使直接用head.prev，因为那样会复制一个head，导致逻辑错误
+                // 此处是RUST语法带来的极易出错的陷阱。
+                Some(head) => (*head.as_ptr()).prev = node,
+            }
+            
+            self.head = node;
+            self.len += 1;
+        }
+    }
+
+    //从链表头部删除一个节点
+    pub fn pop_front(&mut self) -> Option<T> {
+        //Option<T>::map，此函数后，节点的堆内存已经被释放
+        //变量被拷贝到栈内存
+        self.pop_front_node().map(Node::into_element)
+    }
+    fn pop_front_node(&mut self) -> Option<Box<Node<T>>> {
+        //整体是unsafe
+        self.head.map(|node| unsafe {
+            //重新生成Box，以便后继可以释放堆内存
+            let node = Box::from_raw(node.as_ptr());
+            //更换head指针
+            self.head = node.next;
+
+            match self.head {
+                None => self.tail = None,
+                // push_front_node() 已经分析过
+                Some(head) => (*head.as_ptr()).prev = None,
+            }
+
+            self.len -= 1;
+            node
+        })
+    }
+```
+在尾部增加一个成员及删除一个成员
+```rust
+    //从尾部增加一个节点
+    pub fn push_back(&mut self, elt: T) {
+        //用box从堆内存申请一个节点
+        self.push_back_node(box Node::new(elt));
+    }
+
+    fn push_back_node(&mut self, mut node: Box<Node<T>>) {
+        // 整体不安全
+        unsafe {
+            node.next = None;
+            node.prev = self.tail;
+            //需要将Box的堆内存leak出来使用。此块内存后继如果还在链表，需要由LinkedList负责drop.
+            //如果pop出链表，那会重新用这里leak出来的NonNull<Node<T>>重新生成Box
+            let node = Some(Box::leak(node).into());
+
+            match self.tail {
+                None => self.head = node,
+                //前面代码已经有分析 
+                Some(tail) => (*tail.as_ptr()).next = node,
+            }
+
+            self.tail = node;
+            self.len += 1;
+        }
+    }
+
+    //从尾端删除节点
+    pub fn pop_back(&mut self) -> Option<T> {
+        self.pop_back_node().map(Node::into_element)
+    }
+
+    fn pop_back_node(&mut self) -> Option<Box<Node<T>>> {
+        self.tail.map(|node| unsafe {
+            //重新创建Box以便删除堆内存
+            let node = Box::from_raw(node.as_ptr());
+            self.tail = node.prev;
+
+            match self.tail {
+                None => self.head = None,
+                
+                Some(tail) => (*tail.as_ptr()).next = None,
+            }
+
+            self.len -= 1;
+            node
+        })
+    }
+    
+    ...
+}
+
+//Drop
+unsafe impl<#[may_dangle] T> Drop for LinkedList<T> {
+    fn drop(&mut self) {
+        struct DropGuard<'a, T>(&'a mut LinkedList<T>);
+
+        impl<'a, T> Drop for DropGuard<'a, T> {
+            fn drop(&mut self) {
+                //为了在下面的循环中出现panic，这里可以继续做释放
+                //感觉此处做这个有些不自信
+                while self.0.pop_front_node().is_some() {}
+            }
+        }
+
+        while let Some(node) = self.pop_front_node() {
+            let guard = DropGuard(self);
+            //显式的drop 获取的Box<Node<T>>
+            drop(node);
+            //执行到此处，guard认为已经完成，不能再调用guard的drop
+            mem::forget(guard);
+        }
+    }
+}
+```
+以上基本上说明了RUST的LinkedList的设计及代码的一些关键点。
+
+用Iterator来对List进行访问，Iterator的相关结构代码如下：
+into_iter()相关结构及方法：
+```rust
+//变量本身的Iterator的类型
+pub struct IntoIter<T> {
+    list: LinkedList<T>,
+}
+
+impl<T> IntoIterator for LinkedList<T> {
+    type Item = T;
+    type IntoIter = IntoIter<T>;
+
+    /// 对LinkedList<T> 做消费
+    fn into_iter(self) -> IntoIter<T> {
+        IntoIter { list: self }
+    }
+}
+
+impl<T> Iterator for IntoIter<T> {
+    type Item = T;
+
+    fn next(&mut self) -> Option<T> {
+        //从头部获取变量
+        self.list.pop_front()
+    }
+
+    fn size_hint(&self) -> (usize, Option<usize>) {
+        (self.list.len, Some(self.list.len))
+    }
+}
+```
+iter_mut()调用相关结构及方法
+```rust
+//可变引用的Iterator的类型
+pub struct IterMut<'a, T: 'a> {
+    head: Option<NonNull<Node<T>>>,
+    tail: Option<NonNull<Node<T>>>,
+    len: usize,
+    //这个marker也标示了IterMut对LinkedList有一个可变引用
+    //创建IterMut后，与之相关的LinkerList不能在被其他安全的代码修改
+    marker: PhantomData<&'a mut Node<T>>,
+}
+
+impl <T> LinkedList<T> {
+    ...
+    pub fn iter_mut(&mut self) -> IterMut<'_, T> {
+        IterMut { head: self.head, tail: self.tail, len: self.len, marker: PhantomData }
+    }
+    ...
+}
+impl<'a, T> Iterator for IterMut<'a, T> {
+    type Item = &'a mut T;
+
+    fn next(&mut self) -> Option<&'a mut T> {
+        if self.len == 0 {
+            None
+        } else {
+            self.head.map(|node| unsafe {
+                // 注意，下面代码执行后堆内存已经没有所有权的载体,
+                // 此函数的调用代码必须在后继对返回的引用做Box重组
+                // 或者直接drop，否则会造成内存泄漏 
+                // 但因为没有所有权载体，所以除了这里的可变引用外，
+                // 不会有其他访问情况，仍然符合所有权的独占性
+                let node = &mut *node.as_ptr();
+                self.len -= 1;
+                self.head = node.next;
+                &mut node.element
+            })
+        }
+    }
+
+    ...
+}
+
+//不可变引用的Iterator的类型
+pub struct Iter<'a, T: 'a> {
+    head: Option<NonNull<Node<T>>>,
+    tail: Option<NonNull<Node<T>>>,
+    len: usize,
+    //对生命周期做标识，也标识了一个对LinkedList的不可变引用
+    marker: PhantomData<&'a Node<T>>,
+}
+
+impl<T> Clone for Iter<'_, T> {
+    fn clone(&self) -> Self {
+        //本书中第一次出现这个表述
+        Iter { ..*self }
+    }
+}
+
+//Iterator trait for Iter略
+```
+LinkedList其他的代码略。
+
+## String 类型分析
+String结构定义如下：
+```rust
+pub struct String {
+    vec: Vec<u8>,
+}
+```
+`Vec<u8>`和String的关系可以与[u8]与&str的关系相对比。整个String实际上是一个大的
+Adapter 模式，针对Vec<u8>, [u8], &str三者做组合
+String的创建函数：
+```rust
+impl String {
+     pub const fn new() -> String {
+        String { vec: Vec::new() }
+    }
+
+    //将str内容加到String的尾部
+    pub fn push_str(&mut self, string: &str) {
+        //adapter，直接用Vec::extend_from_slice([u8])
+        //具体的细节请参考Vec那节
+        self.vec.extend_from_slice(string.as_bytes())
+    }
+    ...
+}
+
+impl ToOwned for str {
+    type Owned = String;
+    fn to_owned(&self) -> String {
+        //这里是个adapter模式，首先从用self.as_bytes()获取[u8], 然后用通用的[u8].to_owned()完成
+        //to_owned逻辑,随后从Vec[u8]生成String
+        unsafe { String::from_utf8_unchecked(self.as_bytes().to_owned()) }
+    }
+
+    
+    fn clone_into(&self, target: &mut String) {
+        //adapter模式，需要先得到Vec<u8>,因为into_bytes会消费掉String。
+        //target不支持，所以需要用take先把所有权转移出来，然后获取Vec<u8>
+        //这是RUST的一个通用的技巧
+        let mut b = mem::take(target).into_bytes();
+        //通用的[u8].clone_into
+        self.as_bytes().clone_into(&mut b);
+        //把新的String赋给原先的地址
+        *target = unsafe { String::from_utf8_unchecked(b) }
+    }
+}
+
+impl From<&str> for String {
+    fn from(s: &str) -> String {
+        s.to_owned()
+    }
+} 
+
+
+```
+解引用方法代码：
+```rust
+impl ops::Deref for String {
+    type Target = str;
+
+    fn deref(&self) -> &str {
+        //&self.vec会被强转为&[u8]
+        unsafe { str::from_utf8_unchecked(&self.vec) }
+    }
+}
+
+impl ops::DerefMut for String {
+    fn deref_mut(&mut self) -> &mut str {
+        //这里直接用&mut self.vec应该也可以，会被强转成&mut [u8]
+        unsafe { str::from_utf8_unchecked_mut(&mut *self.vec) }
+    }
+}
+```
+运算符重载方法
+```rust
+impl ops::Index<ops::RangeFull> for String {
+    type Output = str;
+
+    fn index(&self, _index: ops::RangeFull) -> &str {
+        unsafe { str::from_utf8_unchecked(&self.vec) }
+    }
+}
+impl ops::Index<ops::Range<usize>> for String {
+    type Output = str;
+
+    fn index(&self, index: ops::Range<usize>) -> &str {
+        //先用Index<RangeFull>取&str, 然后用Index<Range>取子串
+        &self[..][index]
+    }
+}
+impl Borrow<str> for String {
+    fn borrow(&self) -> &str {
+        //自动解引用, 利用Index<RangeFull>完成，代码最简
+        &self[..]
+    }
+}
+
+impl BorrowMut<str> for String {
+    fn borrow_mut(&mut self) -> &mut str {
+        //自动解引用, 利用Index<RangeFull>完成，代码最简
+        &mut self[..]
+    }
+}
+
+impl Add<&str> for String {
+    type Output = String;
+
+    fn add(mut self, other: &str) -> String {
+        self.push_str(other);
+        self
+    }
+}
+
+impl AddAssign<&str> for String {
+    fn add_assign(&mut self, other: &str) {
+        self.push_str(other);
+    }
+}
+```
+字符串数组连接方法：
+```rust
+//此函数主要简化多个字符串的连接
+impl<S: Borrow<str>> Concat<str> for [S] {
+    type Output = String;
+
+    fn concat(slice: &Self) -> String {
+        //见下个方法分析
+        Join::join(slice, "")
+    }
+}
+
+impl<S: Borrow<str>> Join<&str> for [S] {
+    type Output = String;
+
+    fn join(slice: &Self, sep: &str) -> String {
+        unsafe { String::from_utf8_unchecked(join_generic_copy(slice, sep.as_bytes())) }
+    }
+}
+
+macro_rules! specialize_for_lengths {
+    ($separator:expr, $target:expr, $iter:expr; $($num:expr),*) => {{
+        let mut target = $target;
+        let iter = $iter;
+        let sep_bytes = $separator;
+        match $separator.len() {
+            $(
+                // 如果分隔切片长度符合预设值
+                $num => {
+                    for s in iter {
+                        //拷贝分隔切片到目的切片，且更新目的切片
+                        copy_slice_and_advance!(target, sep_bytes);
+                        //拷贝内容切片
+                        let content_bytes = s.borrow().as_ref();
+                        copy_slice_and_advance!(target, content_bytes);
+                    }
+                },
+            )*
+            _ => {
+                // 如果分隔切片长度不符合预设值，实质也做与上段代码同样的操作
+                for s in iter {
+                    copy_slice_and_advance!(target, sep_bytes);
+                    let content_bytes = s.borrow().as_ref();
+                    copy_slice_and_advance!(target, content_bytes);
+                }
+            }
+        }
+        target
+    }}
+}
+
+//完成一个切片拷贝后，切片向前到未拷贝的开始处
+macro_rules! copy_slice_and_advance {
+    ($target:expr, $bytes:expr) => {
+        let len = $bytes.len();
+        //将目的切片切分成两段，首段为待拷贝空间，尾端为未拷贝空间
+        let (head, tail) = { $target }.split_at_mut(len);
+        head.copy_from_slice($bytes);
+        $target = tail;
+    };
+}
+
+//将若干个T类型的切片连接到一起形成一个基于T类型的切片
+fn join_generic_copy<B, T, S>(slice: &[S], sep: &[T]) -> Vec<T>
+where
+    T: Copy, //最基础的成员类型
+    B: AsRef<[T]> + ?Sized, //可以表示为最基础成员的切片引用
+    S: Borrow<B>, //以B类型作为操作类型，所以S应该能borrow成B类型的引用
+{
+    let sep_len = sep.len();
+    let mut iter = slice.iter();
+
+    // 第一个成员头部没有间隔
+    let first = match iter.next() {
+        Some(first) => first,
+        None => return vec![],
+    };
+
+    //计算iter中所有成员的长度，并加上间隔长度乘剩余成员的数目
+    //得到总的长度。
+    //从这个函数能够发现rust的链式编程的能力
+    
+    let reserved_len = sep_len
+        .checked_mul(iter.len())//这里去掉了slice的首个成员，
+        .and_then(|n| {
+            //这里的重新重新生成iter，计算了所有的slice的所有成员
+            slice.iter().map(|s| s.borrow().as_ref().len()).try_fold(n, usize::checked_add)
+        })
+        .expect("attempt to join into collection with len > usize::MAX");
+
+    // 创建一个有足够容量的Vec
+    let mut result = Vec::with_capacity(reserved_len);
+    debug_assert!(result.capacity() >= reserved_len);
+    //完成first的内容拷贝
+    result.extend_from_slice(first.borrow().as_ref());
+
+    unsafe {
+        let pos = result.len();
+        let target = result.get_unchecked_mut(pos..reserved_len);
+        
+        //完成对剩余成员及分隔符拷贝到result
+        let remain = specialize_for_lengths!(sep, target, iter; 0, 1, 2, 3, 4);
+
+        //完成长度拷贝。
+        let result_len = reserved_len - remain.len();
+        result.set_len(result_len);
+    }
+    result
+}
+```
+## RUST的fmt相关代码
+fmt给出RUST实现可变参数的解决方案。
+alloc库中给出了format宏，完成对可变参数的格式化输出
+format宏代码如下：
+```rust
+macro_rules! format {
+    ($($arg:tt)*) => {{
+        //format调用下面紧接所示的函数， 由format_args宏实现可变参数方案
+        let res = $crate::fmt::format($crate::__export::format_args!($($arg)*));
+        res
+    }}
+}
+```
+format_args宏将可变参数组合成Arguments变量，可以作为RUST的可变参数支持的经典案列。
+```rust
+//因为安全的愿因，下宏由编译器实现，形成Arguments的变量，
+macro_rules! format_args {
+    ($fmt:expr) => {{ /* compiler built-in */ }};
+    ($fmt:expr, $($args:tt)*) => {{ /* compiler built-in */ }};
+}
+//上面提到的Arguments结构
+pub struct Arguments<'a> {
+    // 存放需要格式化的参数之间的字符串，对应于每一个格式化参数
+    // 此字符串可以为空
+    pieces: &'a [&'static str],
+
+    // 针对每个格式化参数的格式描述
+    fmt: Option<&'a [rt::v1::Argument]>,
+
+    // 每个参数，以及参数的格式化字符串生成函数
+    args: &'a [ArgumentV1<'a>],
+}
+```
+format_args生成Arguments举例如下：
+format_args!("ab {:b} cd {:p}", 1, 2) 
+结果的Arguments结构中：  
+其中pieces有两个成员，为:`"ab ", " cd " ` 
+fmt有两个成员，为：`{postion:0, format:{align:UnKnown, flags:0, precision:Implied, width:Implied}}, {position:1, format:{align:UnKnown, flags:4, precision:Implied, width:Implied}}` 
+args有两个成员为: `{1, core::fmt::num::Binary::fmt()}, {2, core::fmt::num::Pointer::fmt()}`  
+```rust
+//rt::v1::Argument
+//对非默认格式化参数，每个参数format_args!宏会生成一个Argument变量
+pub struct Argument {
+    //表示参数的在Arguments中的序号，
+    pub position: usize,
+    //格式参数，用于格式化输出
+    pub format: FormatSpec,
+}
+pub struct FormatSpec {
+    //格式化时需要填充的字符
+    pub fill: char,
+    pub align: Alignment,
+    //FlagV1 按位赋值
+    pub flags: u32,
+    pub precision: Count,
+    pub width: Count,
+}
+
+//以下结构可认为是针对每一个参数，都有一个格式化输出的函数与其对应
+pub struct ArgumentV1<'a> {
+    //类似C语言的va_arg的返回类型，可以认为是void *
+    value: &'a Opaque,
+    //针对value的格式化输出
+    formatter: fn(&Opaque, &mut Formatter<'_>) -> Result,
+}
+
+#[derive(Copy, Clone, PartialEq, Eq)]
+pub enum Alignment {
+    /// 左端对齐
+    Left,
+    /// 右端对齐
+    Right,
+    /// 中间对齐
+    Center,
+    /// 没有对齐
+    Unknown,
+}
+
+pub enum Count {
+    /// 字面量的值
+    Is(usize),
+    /// Specified using `$` and `*` syntaxes, stores the index into `args`
+    Param(usize),
+    /// Not specified
+    Implied,
+}
+//flags 的位
+enum FlagV1 {
+    SignPlus,
+    SignMinus,
+    Alternate,
+    SignAwareZeroPad,
+    DebugLowerHex,
+    DebugUpperHex,
+}
+
+//输入到每个类型的格式化函数
+pub struct Formatter<'a> {
+    //以下到precision都是由format_arg!宏在发现参数要求非默认的格式化时
+    //生成的。
+    flags: u32,
+    fill: char,
+    align: rt::v1::Alignment,
+    width: Option<usize>,
+    precision: Option<usize>,
+
+    buf: &'a mut (dyn Write + 'a),
+}
+
+```
+以下为将Arguments 形成字符串的调用代码：
+```rust
+//Arguments包含了本输出中所有的需要格式化的参数
+pub fn format(args: Arguments<'_>) -> string::String {
+    //估计了输出字符串长度，尽量减少堆内存的重新申请
+    let capacity = args.estimated_capacity();
+    //申请足够空间的字符串
+    let mut output = string::String::with_capacity(capacity);
+    //根据输入的格式化参数，完成对参数的格式化字符串输出
+    output.write_fmt(args).expect("a formatting trait implementation returned an error");
+    output
+}
+```
+```rust
+pub trait Write {
+    fn write_str(&mut self, s: &str) -> Result;
+    fn write_char(&mut self, c: char) -> Result {
+        self.write_str(c.encode_utf8(&mut [0; 4]))
+    }
+
+    //格式化的输出
+    fn write_fmt(mut self: &mut Self, args: Arguments<'_>) -> Result {
+        //见下面紧邻的write函数分析
+        write(&mut self, args)
+    }
+}
+
+//完成格式化输出, output是一个承载格式化输出的类型，现在可以简单的认为是一个String
+//但dyn Write实际上提供了扩展性，可以根据代码的需要设计其他类型完成
+//Arguments是一个通用的参数结构
+pub fn write(output: &mut dyn Write, args: Arguments<'_>) -> Result {
+    //格式化的执行类型结构,Formmater也完成了格式化的通用方法
+    let mut formatter = Formatter::new(output);
+    let mut idx = 0;
+
+    match args.fmt {
+        //如果所有参数都是默认格式输出
+        None => {
+            // 对所有的参数进行轮询
+            for (i, arg) in args.args.iter().enumerate() {
+                //获取该参数前需要输出的字符串
+                let piece = unsafe { args.pieces.get_unchecked(i) };
+                if !piece.is_empty() {
+                    //向output输出字符串
+                    formatter.buf.write_str(*piece)?;
+                }
+                //调用每个参数的格式化输出函数，向formatter输出格式化参数字符串
+                (arg.formatter)(arg.value, &mut formatter)?;
+                idx += 1;
+            }
+        }
+        //如果有参数不是默认格式输出
+        Some(fmt) => {
+            // 对所有参数进行轮询
+            for (i, arg) in fmt.iter().enumerate() {
+                // 获取该参数前应该输出的字符串
+                let piece = unsafe { args.pieces.get_unchecked(i) };
+                if !piece.is_empty() {
+                    //向output输出字符串
+                    formatter.buf.write_str(*piece)?;
+                }
+                //向formatter 输出格式化参数字符串
+                unsafe { run(&mut formatter, arg, args.args) }?;
+                idx += 1;
+            }
+        }
+    }
+
+    // 如果还有额外的字符串
+    if let Some(piece) = args.pieces.get(idx) {
+        //输出该字符串
+        formatter.buf.write_str(*piece)?;
+    }
+
+    Ok(())
+}
+//非默认个数输出的格式化字符串输出函数
+unsafe fn run(fmt: &mut Formatter<'_>, arg: &rt::v1::Argument, args: &[ArgumentV1<'_>]) -> Result {
+    //根据格式化参数的格式完成fmt的格式设置
+    fmt.fill = arg.format.fill;
+    fmt.align = arg.format.align;
+    fmt.flags = arg.format.flags;
+    unsafe {
+        fmt.width = getcount(args, &arg.format.width);
+        fmt.precision = getcount(args, &arg.format.precision);
+    }
+
+    debug_assert!(arg.position < args.len());
+    //获取格式化参数
+    let value = unsafe { args.get_unchecked(arg.position) };
+
+    // 真正的进行格式化
+    (value.formatter)(value.value, fmt)
+}
+
+
+impl<'a> Arguments<'a> {
+    /// format_args!()完成字符串和参数解析后，如果都是默认格式，用下面的函数创建
+    /// Arguments变量
+    pub const fn new_v1(pieces: &'a [&'static str], args: &'a [ArgumentV1<'a>]) -> Arguments<'a> {
+        if pieces.len() < args.len() || pieces.len() > args.len() + 1 {
+            panic!("invalid args");
+        }
+        Arguments { pieces, fmt: None, args }
+    }
+
+    //format_args!()完成字符串和参数解析后，如果格式化格式不是默认格式，用下面的函数创建Arguments
+    pub const fn new_v1_formatted(
+        pieces: &'a [&'static str],
+        args: &'a [ArgumentV1<'a>],
+        fmt: &'a [rt::v1::Argument],
+        _unsafe_arg: UnsafeArg,
+    ) -> Arguments<'a> {
+        Arguments { pieces, fmt: Some(fmt), args }
+    }
+
+    //预估格式化后字符串长度
+    pub fn estimated_capacity(&self) -> usize {
+        //计算所有除格式化参数外的长度
+        let pieces_length: usize = self.pieces.iter().map(|x| x.len()).sum();
+
+        if self.args.is_empty() {
+            pieces_length
+        } else if !self.pieces.is_empty() && self.pieces[0].is_empty() && pieces_length < 16 {
+            //如果字符串以格式化参数作为起始且除格式化以外的字符小于16
+            0
+        } else {
+            //其他情况，为了防止额外申请堆内存，事先申请更多的内存
+            pieces_length.checked_mul(2).unwrap_or(0)
+        }
+    }
+}
+```
+对输出做格式化是非常复杂的可变参数支持的例子。从对以上的代码分析，在RUST支持可变参数的途径：
+1. 首先定义一个支持可变参数的宏，例如foramt_args宏，这个宏将可变参数转变成一个数据结构，数据结构需要根据需要进行设计。
+2. 根据数据结构设计方法或函数。
+
+Vec<T>中的vec！宏也是一个典型的可变参数实现，单其用途较单纯，因此也非常简单。可变参数是非常具有直观性及方便的语法。写一些库的时候需要经常用到。
+
+# 茶歇 
+与操作系统无关的部分至此告一段落。后继将主要分析 library/std/src目录下的代码。 
+std库的代码分为操作系统相关与操作系统无关两个大的部分：
+操作系统相关：目录 library/std/src/sys; library/src/src/os 中的代码，其中os目录中的代码只由sys目录中的代码使用。
+操作系统无关：其他部分。
+
+其中library/std/src/ffi目录下主要是C语言与RUST语言互操作需要的模块，包括类型，C语言字符串，OS的字符串，可变参数等。
+
+后继分析按照如下思路进行：
+1. 按照操作系统的内存管理，进程/线程管理，进程/线程间通信，文件系统/IO/网络/时间，异步编程，杂项的顺序做分析
+2. 每部分分析先给出RUST对操作系统定义的统一trait， 给出linux及wasi的操作系统相关部分实现的代码摘要分析，然后对操作系统无关实现部分的摘要分析。
+
+# RUST中与C语言互通
+## C语言类型定义适配
+代码路径：library/core/ffi/mod.rs  
+```rust
+macro_rules! type_alias_no_nz {
+    {
+      $Docfile:tt, $Alias:ident = $Real:ty;
+      $( $Cfg:tt )*
+    } => {
+        #[doc = include_str!($Docfile)]
+        $( $Cfg )*
+        #[unstable(feature = "core_ffi_c", issue = "94501")]
+        pub type $Alias = $Real;
+    }
+}
+
+macro_rules! type_alias {
+    {
+      $Docfile:tt, $Alias:ident = $Real:ty, $NZAlias:ident = $NZReal:ty;
+      $( $Cfg:tt )*
+    } => {
+        type_alias_no_nz! { $Docfile, $Alias = $Real; $( $Cfg )* }
+
+        #[doc = concat!("Type alias for `NonZero` version of [`", stringify!($Alias), "`]")]
+        #[unstable(feature = "raw_os_nonzero", issue = "82363")]
+        $( $Cfg )*
+        pub type $NZAlias = $NZReal;
+    }
+}
+
+//以下的定义，对所有C语言的类型以"c_xxxx"来命名，并用类型别名的形式定义为RUST的类型
+//以下做了简化，仅针对linux操作系统
+type_alias! { "c_char.md", c_char = c_char_definition::c_char, NonZero_c_char = c_char_definition::NonZero_c_char;
+type_alias! { "c_schar.md", c_schar = i8, NonZero_c_schar = NonZeroI8; }
+type_alias! { "c_uchar.md", c_uchar = u8, NonZero_c_uchar = NonZeroU8; }
+type_alias! { "c_short.md", c_short = i16, NonZero_c_short = NonZeroI16; }
+type_alias! { "c_ushort.md", c_ushort = u16, NonZero_c_ushort = NonZeroU16; }
+type_alias! { "c_int.md", c_int = i32, NonZero_c_int = NonZeroI32; }
+type_alias! { "c_uint.md", c_uint = u32, NonZero_c_uint = NonZeroU32; }
+type_alias! { "c_long.md", c_long = i32, NonZero_c_long = NonZeroI32;
+type_alias! { "c_ulong.md", c_ulong = u32, NonZero_c_ulong = NonZeroU32;
+type_alias! { "c_longlong.md", c_longlong = i64, NonZero_c_longlong = NonZeroI64; }
+type_alias! { "c_ulonglong.md", c_ulonglong = u64, NonZero_c_ulonglong = NonZeroU64; }
+type_alias_no_nz! { "c_float.md", c_float = f32; }
+type_alias_no_nz! { "c_double.md", c_double = f64; 
+
+pub type c_size_t = usize;
+pub type c_ptrdiff_t = isize;
+pub type c_ssize_t = isize;
+
+mod c_char_definition {
+    cfg_if! {
+        if #[cfg(any(
+            all(
+                target_os = "linux",
+                any(
+                    target_arch = "aarch64",
+                    target_arch = "arm",
+                    target_arch = "powerpc",
+                    target_arch = "powerpc64",
+                    target_arch = "s390x",
+                    target_arch = "riscv64",
+                    target_arch = "riscv32"
+                )
+            ),
+            all(target_os = "fuchsia", target_arch = "aarch64")
+        ))] {
+            pub type c_char = u8;
+            pub type NonZero_c_char = crate::num::NonZeroU8;
+        } 
+    }        
+}
+//以下是针对C语言的可变参数 VA_ARG给出的相关RUST匹配
+pub enum c_void {
+    __variant1,
+    __variant2,
+}
+
+pub struct VaListImpl<'f> {
+    gp_offset: i32,
+    fp_offset: i32,
+    overflow_arg_area: *mut c_void,
+    reg_save_area: *mut c_void,
+    _marker: PhantomData<&'f mut &'f c_void>,
+}
+
+pub struct VaList<'a, 'f: 'a> {
+    inner: &'a mut VaListImpl<'f>,
+
+    _marker: PhantomData<&'a mut VaListImpl<'f>>,
+}
+
+impl<'f> VaListImpl<'f> {
+    pub fn as_va_list<'a>(&'a mut self) -> VaList<'a, 'f> {
+        VaList { inner: self, _marker: PhantomData }
+    }
+}
+impl<'f> Clone for VaListImpl<'f> {
+    #[inline]
+    fn clone(&self) -> Self {
+        let mut dest = crate::mem::MaybeUninit::uninit();
+        // SAFETY: we write to the `MaybeUninit`, thus it is initialized and `assume_init` is legal
+        unsafe {
+            va_copy(dest.as_mut_ptr(), self);
+            dest.assume_init()
+        }
+    }
+}
+
+impl<'f> VaListImpl<'f> {
+    /// Advance to the next arg.
+    #[inline]
+    pub unsafe fn arg<T: sealed_trait::VaArgSafe>(&mut self) -> T {
+        // SAFETY: the caller must uphold the safety contract for `va_arg`.
+        unsafe { va_arg(self) }
+    }
+
+    /// Copies the `va_list` at the current location.
+    pub unsafe fn with_copy<F, R>(&self, f: F) -> R
+    where
+        F: for<'copy> FnOnce(VaList<'copy, 'f>) -> R,
+    {
+        let mut ap = self.clone();
+        let ret = f(ap.as_va_list());
+        // SAFETY: the caller must uphold the safety contract for `va_end`.
+        unsafe {
+            va_end(&mut ap);
+        }
+        ret
+    }
+}
+
+extern "rust-intrinsic" {
+    //以下缺少了C语言va_start的对应，RUST不需要
+    /// Destroy the arglist `ap` after initialization with `va_start` or
+    /// `va_copy`.
+    fn va_end(ap: &mut VaListImpl<'_>);
+
+    /// Copies the current location of arglist `src` to the arglist `dst`.
+    fn va_copy<'f>(dest: *mut VaListImpl<'f>, src: &VaListImpl<'f>);
+
+    /// Loads an argument of type `T` from the `va_list` `ap` and increment the
+    /// argument `ap` points to.
+    fn va_arg<T: sealed_trait::VaArgSafe>(ap: &mut VaListImpl<'_>) -> T;
+}
+
+```
+
+## 系统调用的封装
+操作系统的系统调用一般出错返回-1, 为了简化对此情况的处理，RUST实现了以下机制:    
+
+```rust
+//对系统调用出错的判断
+pub trait IsMinusOne {
+    fn is_minus_one(&self) -> bool;
+}
+
+macro_rules! impl_is_minus_one {
+    ($($t:ident)*) => ($(impl IsMinusOne for $t {
+        fn is_minus_one(&self) -> bool {
+            *self == -1
+        }
+    })*)
+}
+
+//对所有系统调用可能的返回类型实现了出错判断trait
+impl_is_minus_one! { i8 i16 i32 i64 isize }
+
+//对系统调用进行出错处理的封装，将错误转换为Result类型
+pub fn cvt<T: IsMinusOne>(t: T) -> crate::io::Result<T> {
+    //Error是对操作系统错误的封装
+    if t.is_minus_one() { Err(crate::io::Error::last_os_error()) } else { Ok(t) }
+}
+
+//对于被中断的系统调用做额外的处理封装
+pub fn cvt_r<T, F>(mut f: F) -> crate::io::Result<T>
+where
+    T: IsMinusOne,
+    F: FnMut() -> T,
+{
+    loop {
+        match cvt(f()) {
+            //如果返回是调用被中断, 则再次执行系统调用
+            Err(ref e) if e.kind() == ErrorKind::Interrupted => {}
+            other => return other,
+        }
+    }
+}
+
+//对系统调用的返回值进行判断，转换为io::Result的结果
+pub fn cvt_nz(error: libc::c_int) -> crate::io::Result<()> {
+    if error == 0 { Ok(()) } else { Err(crate::io::Error::from_raw_os_error(error)) }
+}
+
+```
+## CStr及CString代码分析
+代码路径：library/std/src/ffi/c_str.rs  
+RUST定义CStr及CString主要的目的就是与C的各种库函数交互。
+因此CStr及CString不涉及字符串的迭代器，格式化，加减，分裂，字符查找等等操作。只是负责做String及str与C语言之间的转换及与转换相关及调试相关的若干功能。
+之所以设计CString，是因为如果需要保存C语言的字符串，需要用堆内存的方式来完成。同时，传递给C语言的字符串，需要位于堆内存中代码才会比较简单。
+一般的处理C语言交互传入的字符串的过程是:首先需要用CStr将字符串进行包装，使得保证后继操作复合RUST的安全规则；如果需要对字符串做保存，那需要用CStr生成一个CString。当然，也可以直接转化为String，要根据具体的情况和需求处理，但仅使用String的方式在某些场景下显然效率不高并且也是不合适的。
+如果是需要将RUST的str转换成C语言的字符串，则先转换成CString，
+
+CString及CStr类型结构定义如下：
+```rust
+pub struct CString {
+    // C语言的字符串是一个以0位结尾的字节数组. 通常的，申请的空间大小会大于字符串长度，因此
+    // 下面的切片长度不能用于判断字符串长度
+    inner: box<[u8]>,
+}
+pub struct CStr {
+    // 此处没有太好的办法，C语言对字符串实际上会存储在一个申请后就固定的字节数组里，然后用指针表示字符串类型
+    // 但RUST显然不可能用裸指针来实现，切片类型是最接近的。但要注意C语言中的实际上是个固定的数组
+    inner: [c_char],
+}
+```
+CStr主要的需求是对C语言的char*进行封装并定义转换方法，将C语言的字符串安全化。并在需要的时候转化成str或CString类型
+
+```rust
+
+impl CStr {
+    //主要的创建方法，这个函数接收一个已经由C语言模块传递过来的char *指针，然后创建RUST
+    //需要的CStr引用 并返回
+    // 调用代码应该保证传入参数的正确性。此函数返回的引用生命周期由调用代码的上下文决定
+    // 生命周期的正确性也由调用代码保证。
+    pub unsafe fn from_ptr<'a>(ptr: *const c_char) -> &'a CStr {
+        //将* const c_char转换成 &[u8]
+        unsafe {
+            //调用C语言的库函数libc::strlen获得字符串长度，这里实际可以用RUST自行实现
+            let len = sys::strlen(ptr);
+            let ptr = ptr as *const u8;
+            //先创建&[u8], 然后创建Self类型引用
+            Self::_from_bytes_with_nul_unchecked(slice::from_raw_parts(ptr, len as usize + 1))
+        }
+    }
+
+    pub fn from_bytes_until_nul(bytes: &[u8]) -> Result<&CStr, FromBytesUntilNulError> {
+        //core库实现了memchr，查找到字符串尾部字节位置
+        let nul_pos = memchr::memchr(0, bytes);
+        match nul_pos {
+            Some(nul_pos) => {
+                // slice仅保留有效的字节.
+                let subslice = &bytes[..nul_pos + 1];
+                // 见后继的分析
+                Ok(unsafe { CStr::from_bytes_with_nul_unchecked(subslice) })
+            }
+            None => Err(FromBytesUntilNulError(())),
+        }
+    }
+    //从准备好的[u8]创建CStr的引用并返回
+    pub const unsafe fn from_bytes_with_nul_unchecked(bytes: &[u8]) -> &CStr {
+        debug_assert!(!bytes.is_empty() && bytes[bytes.len() - 1] == 0);
+        //见后继的分析
+        unsafe { Self::_from_bytes_with_nul_unchecked(bytes) }
+    }
+
+    const unsafe fn _from_bytes_with_nul_unchecked(bytes: &[u8]) -> &Self {
+        // 利用裸指针转换，注意这里CStr结构定义没有用#[repr(transparent)]或#[repr(C)]，这里直接做转换的根据感觉有些不足，
+        //返回的生命周期要小于bytes，但因为bytes基本上是从一个裸指针转换而来的，所以
+        //这里的&Self的生命周期的正确性还是要由调用代码负责
+        unsafe { &*(bytes as *const [u8] as *const Self) }
+    }
+
+    //将CStr转换成C语言的字符串，需要保证复合C语言字符串的规则
+    //此函数可能引发一个潜在问题如下例：
+    /// use std::ffi::CString;
+    ///
+    /// let ptr = CString::new("Hello").expect("CString::new failed").as_ptr();
+    /// unsafe {
+    ///     // 这里会出现悬垂指针,见后面的解释
+    ///     *ptr;
+    /// }
+    /// ```
+    ///
+    /// 以上悬垂指针是因为`as_ptr`没有生命周期，因为CString创建的变量又没有变量声明与之绑定，所以其在执行完as_ptr后立即被释放。
+    /// 可使用如下的方法
+    /// ```no_run
+    /// # #![allow(unused_must_use)]
+    /// use std::ffi::CString;
+    /// 
+    /// //声明一个变量，生命周期一般会到作用域的尾部。
+    /// let hello = CString::new("Hello").expect("CString::new failed");
+    /// let ptr = hello.as_ptr();
+    /// unsafe {
+    ///     // `ptr` is valid because `hello` is in scope
+    ///     *ptr;
+    /// }
+    /// ```
+    pub const fn as_ptr(&self) -> *const c_char {
+        self.inner.as_ptr()
+    }
+
+    //转换成去掉尾部0的[u8]切片引用
+    pub fn to_bytes(&self) -> &[u8] {
+        let bytes = self.to_bytes_with_nul();
+        // SAFETY: to_bytes_with_nul returns slice with length at least 1
+        unsafe { bytes.get_unchecked(..bytes.len() - 1) }
+    }
+
+    //转换成[u8]切片引用,尾部仍然有0
+    pub fn to_bytes_with_nul(&self) -> &[u8] {
+        unsafe { &*(&self.inner as *const [c_char] as *const [u8]) }
+    }
+
+    //转换成&str
+    pub fn to_str(&self) -> Result<&str, str::Utf8Error> {
+        str::from_utf8(self.to_bytes())
+    }
+
+    //转换成CString
+    pub fn into_c_string(self: Box<CStr>) -> CString {
+        //将堆内存从Box取出
+        let raw = Box::into_raw(self) as *mut [u8];
+        //重新形成Box结构，然后创建CString
+        CString { inner: unsafe { Box::from_raw(raw) } }
+    }
+}
+
+```
+CString的相关实现如下：
+```rust
+
+impl CString {
+    pub fn new<T: Into<Vec<u8>>>(t: T) -> Result<CString, NulError> {
+        trait SpecNewImpl {
+            fn spec_new_impl(self) -> Result<CString, NulError>;
+        }
+
+        impl<T: Into<Vec<u8>>> SpecNewImpl for T {
+            default fn spec_new_impl(self) -> Result<CString, NulError> {
+                let bytes: Vec<u8> = self.into();
+                match memchr::memchr(0, &bytes) {
+                    Some(i) => Err(NulError(i, bytes)),
+                    None => Ok(unsafe { CString::_from_vec_unchecked(bytes) }),
+                }
+            }
+        }
+
+        //此函数用来防止多次申请内存
+        fn spec_new_impl_bytes(bytes: &[u8]) -> Result<CString, NulError> {
+            // 此处checked_add的优化效率最高，bytes中没有0，所以需要加1
+            let capacity = bytes.len().checked_add(1).unwrap();
+
+            // 申请堆内存，并将bytes写入堆内存,此处申请可以防止重复申请，但无论成功与否都会申请内存
+            let mut buffer = Vec::with_capacity(capacity);
+            //此时还没有给buffer的尾部赋0
+            buffer.extend(bytes);
+
+            // 看bytes内是否有0值
+            match memchr::memchr(0, bytes) {
+                //有0，出错了，将buffer在参数返回，由外部代码处理
+                Some(i) => Err(NulError(i, buffer)),
+                //无0，生成CString，生成函数中会赋0
+                None => Ok(unsafe { CString::_from_vec_unchecked(buffer) }),
+            }
+        }
+
+        //可以从[u8]切片生成CString
+        impl SpecNewImpl for &'_ [u8] {
+            fn spec_new_impl(self) -> Result<CString, NulError> {
+                spec_new_impl_bytes(self)
+            }
+        }
+
+        //支持从str生成CString
+        impl SpecNewImpl for &'_ str {
+            fn spec_new_impl(self) -> Result<CString, NulError> {
+                spec_new_impl_bytes(self.as_bytes())
+            }
+        }
+
+        //支持从可变[u8]生成CString
+        impl SpecNewImpl for &'_ mut [u8] {
+            fn spec_new_impl(self) -> Result<CString, NulError> {
+                spec_new_impl_bytes(self)
+            }
+        }
+
+        t.spec_new_impl()
+    }
+
+    //从Vec创建CString,实际是从String创建的支持函数
+    pub unsafe fn from_vec_unchecked(v: Vec<u8>) -> Self {
+        debug_assert!(memchr::memchr(0, &v).is_none());
+        unsafe { Self::_from_vec_unchecked(v) }
+    }
+
+    //Vec<u8>已经完成安全检查，不会出错
+    unsafe fn _from_vec_unchecked(mut v: Vec<u8>) -> Self {
+        //以下就是增加尾部的0值
+        v.reserve_exact(1);
+        v.push(0);
+        //将堆内存从Vec结构转移至Box结构
+        Self { inner: v.into_boxed_slice() }
+    }
+
+    //从C语言字符串创建CString, 此时c语言的字符串应该是前期RUST代码申请的堆内存
+    //要规避不是RUST申请的堆内存的情况
+    pub unsafe fn from_raw(ptr: *mut c_char) -> CString {
+        // ptr应该从CString::into_raw得到的,此方法使用后，可以省略一次内存拷贝
+        unsafe {
+            //得到字符串长度
+            let len = sys::strlen(ptr) + 1; // Including the NUL byte
+            //形成正确的切片引用 
+            let slice = slice::from_raw_parts_mut(ptr, len as usize);
+            //形成CString
+            CString { inner: Box::from_raw(slice as *mut [c_char] as *mut [u8]) }
+        }
+    }
+
+    pub fn into_raw(self) -> *mut c_char {
+        //CString已经包含了0值
+        Box::into_raw(self.into_inner()) as *mut c_char
+    }
+
+    //转换成String类型
+    pub fn into_string(self) -> Result<String, IntoStringError> {
+        String::from_utf8(self.into_bytes()).map_err(|e| IntoStringError {
+            error: e.utf8_error(),
+            inner: unsafe { Self::_from_vec_unchecked(e.into_bytes()) },
+        })
+    }
+
+    pub fn into_bytes(self) -> Vec<u8> {
+        //消费了CString，Box中的堆内存转移到Vec
+        let mut vec = self.into_inner().into_vec();
+        //删掉尾部的0值
+        let _nul = vec.pop();
+        debug_assert_eq!(_nul, Some(0u8));
+        vec
+    }
+
+    pub fn into_bytes_with_nul(self) -> Vec<u8> {
+        //不对尾部的0值做处理
+        self.into_inner().into_vec()
+    }
+
+    //将CString转换为[u8]切片引用
+    pub fn as_bytes(&self) -> &[u8] {
+        // 删除尾部的0值
+        unsafe { self.inner.get_unchecked(..self.inner.len() - 1) }
+    }
+
+    //保留尾部的0值
+    pub fn as_bytes_with_nul(&self) -> &[u8] {
+        &self.inner
+    }
+
+    //转换为CStr的引用
+    pub fn as_c_str(&self) -> &CStr {
+        &*self
+    }
+
+    
+    pub fn into_boxed_c_str(self) -> Box<CStr> {
+        //Box取出堆内存指针，然后转换，再封装入Box，RUST这个实在是麻烦
+        unsafe { Box::from_raw(Box::into_raw(self.into_inner()) as *mut CStr) }
+    }
+
+    fn into_inner(self) -> Box<[u8]> {
+        //将Box取出，如果直接解封装的方式，因为会调用self的drop函数，会再调用内部的Box的drop。
+        //用MannuallyDrop来规避是不想再重构了，这个代码的例子不应学习
+        //如果有需要inner，那就不应该用Box<[u8]>这种方式来设计
+        //这个设计导致必须用下面这种技巧，带来理解上的复杂性
+        let this = mem::ManuallyDrop::new(self);
+        unsafe { ptr::read(&this.inner) }
+    }
+
+    //从Vec生成CString
+    pub unsafe fn from_vec_with_nul_unchecked(v: Vec<u8>) -> Self {
+        debug_assert!(memchr::memchr(0, &v).unwrap() + 1 == v.len());
+        unsafe { Self::_from_vec_with_nul_unchecked(v) }
+    }
+
+    //同上，无需再检查0值
+    unsafe fn _from_vec_with_nul_unchecked(v: Vec<u8>) -> Self {
+        Self { inner: v.into_boxed_slice() }
+    }
+
+    //此函数为从String转换为CString准备
+    pub fn from_vec_with_nul(v: Vec<u8>) -> Result<Self, FromVecWithNulError> {
+        //确定0值的位置
+        let nul_pos = memchr::memchr(0, &v);
+        match nul_pos {
+            //如果0值的位置正确
+            Some(nul_pos) if nul_pos + 1 == v.len() => {
+                // 创建CString
+                Ok(unsafe { Self::_from_vec_with_nul_unchecked(v) })
+            }
+            //出错处理
+            Some(nul_pos) => Err(FromVecWithNulError {
+                error_kind: FromBytesWithNulErrorKind::InteriorNul(nul_pos),
+                bytes: v,
+            }),
+            None => Err(FromVecWithNulError {
+                error_kind: FromBytesWithNulErrorKind::NotNulTerminated,
+                bytes: v,
+            }),
+        }
+    }
+}
+
+//drop函数
+impl Drop for CString {
+    fn drop(&mut self) {
+        unsafe {
+            //消费了Box，堆内存已经拷贝到栈，然后将C语言的字符串设置为空字符串。
+            *self.inner.get_unchecked_mut(0) = 0;
+            
+        }
+    }
+}
+
+impl ops::Deref for CString {
+    type Target = CStr;
+
+    fn deref(&self) -> &CStr {
+        unsafe { CStr::_from_bytes_with_nul_unchecked(self.as_bytes_with_nul()) }
+    }
+}
+```
+CString, CStr其他代码略。
+
+## 代码工程中的一个技巧
+在对不同的CPU架构，不同的操作系统进行适配的时候，通常在代码中采用如下的组织方式：
+1. 有接口定义文件，在C语言中一般用头文件，在RUST中用mod.rs文件，这个文件负责向其他模块提供一致的API访问界面
+2. 每种CPU架构或者每种操作系统各自建立一个目录(模块)
+3. 每种CPU架构或者每种操作系统各自实现接口的代码都在此目录下实现
+4. 利用编译参数控制特定CPU架构，操作系统仅编译特定目录下的代码
+举例如下：
+```rust
+mod common;
+
+cfg_if::cfg_if! {
+    if #[cfg(unix)] {
+        mod unix;
+        pub use self::unix::*;
+    } else if #[cfg(windows)] {
+        mod windows;
+        pub use self::windows::*;
+    } else if #[cfg(target_os = "solid_asp3")] {
+        mod solid;
+        pub use self::solid::*;
+    } else if #[cfg(target_os = "hermit")] {
+        mod hermit;
+        pub use self::hermit::*;
+    } else if #[cfg(target_os = "wasi")] {
+        mod wasi;
+        pub use self::wasi::*;
+    } else if #[cfg(target_family = "wasm")] {
+        mod wasm;
+        pub use self::wasm::*;
+    } else if #[cfg(all(target_vendor = "fortanix", target_env = "sgx"))] {
+        mod sgx;
+        pub use self::sgx::*;
+    } else {
+        mod unsupported;
+        pub use self::unsupported::*;
+    }
+}
+```
+RUST对编译的控制是直接在本身的代码中实现的，利用mod 语法控制了编译的目录。这是RUST的一个优势，对于C，需要在Makefile里面来控制编译那个目录。
+RUST用`pub use self::windows::*`的语法，将特定的操作系统的模块重导出为 `std::sys::*`，从而对其他的RUST模块实现了对不同操作系统API接口访问的统一。
+类似的设计方式可能会在多种场景下遇到，例如对不同数据库API的适配，对不同3D API的适配等等。
+## OsString 代码分析
+操作系统系统调用采用的String很可能与C语言不同，也可能与RUST不同。基于与CStr及CString类似的理由，RUST也实现了OsStr及OsString。显然，这个模块包括了操作系统相关及操作系统无关的两个部分：
+操作系统无关部分代码路径如下：  
+library/src/std/src/ffi/os_str.rs    
+操作系统相关部分代码路径如下，(仅列出linux及windows)： 
+library/src/std/src/sys/unix/os_str.rs   
+library/src/std/src/sys/windows/os_str.rs  
+
+linux操作系统相关部分的接口类型结构定义： 
+```rust
+#[repr(transparent)]
+pub struct Buf {
+    pub inner: Vec<u8>,
+}
+
+#[repr(transparent)]
+pub struct Slice {
+    pub inner: [u8],
+}
+```
+
+windows操作系统相关部分的接口结构定义：
+```rust
+pub struct Buf {
+    pub inner: Wtf8Buf,
+}
+pub struct Slice {
+    pub inner: Wtf8,
+}
+pub struct Wtf8Buf {
+    bytes: Vec<u8>,
+}
+pub struct Wtf8 {
+    bytes: [u8],
+}
+```
+
+OsString及OsStr的定义：
+```rust
+pub struct OsString {
+    inner: Buf,
+}
+
+pub struct OsStr {
+    inner: Slice,
+}
+```
+OsString及OsStr实际上是两个适配器，每个方法基本上都是做个透传，如：
+```rust
+impl OsString {
+    pub fn new() -> OsString {
+        OsString { inner: Buf::from_string(String::new()) }
+    }
+    
+    pub fn into_string(self) -> Result<String, OsString> {
+        self.inner.into_string().map_err(|buf| OsString { inner: buf })
+    }
+    ...
+}
+```
+OsString及OStr的方法与CString及CStr高度类似，分析略。
+
+# std的内存管理分析
+std库与core库在内存管理RUST提供的机制是统一的。即Allocator trait 与 GlobalAlloc trait
+std库用System 作为这两个trait的实现载体，core库中使用的是Global，但Global没有实现GlobalAlloc trait：  
+```rust
+//单元结构体，仅用来作为内存管理的实现载体
+pub struct System;
+
+impl System {
+    //具体的内存申请实现，与Global类似，可参考前文的解释
+    fn alloc_impl(&self, layout: Layout, zeroed: bool) -> Result<NonNull<[u8]>, AllocError> {
+        match layout.size() {
+            0 => Ok(NonNull::slice_from_raw_parts(layout.dangling(), 0)),
+            size => unsafe {
+                let raw_ptr = if zeroed {
+                    //System也实现了GlobalAlloc trait，这与core库中不同，core库中对GlobalAlloc trait中方法的调用是使用了编译器提供了包装。这使得core库即可以适用于用户态也可以适用于内核态。但std库就是在用户态，所以解决方法更直接。
+                    GlobalAlloc::alloc_zeroed(self, layout)
+                } else {
+                    GlobalAlloc::alloc(self, layout)
+                };
+                let ptr = NonNull::new(raw_ptr).ok_or(AllocError)?;
+                Ok(NonNull::slice_from_raw_parts(ptr, size))
+            },
+        }
+    }
+
+    //内存不足，需要增加空间的申请操作
+    unsafe fn grow_impl(
+        &self,
+        ptr: NonNull<u8>,
+        old_layout: Layout,
+        new_layout: Layout,
+        zeroed: bool,
+    ) -> Result<NonNull<[u8]>, AllocError> {
+        debug_assert!(
+            new_layout.size() >= old_layout.size(),
+            "`new_layout.size()` must be greater than or equal to `old_layout.size()`"
+        );
+
+        match old_layout.size() {
+            //旧的空间是0，那相当于申请一个新空间的操作
+            0 => self.alloc_impl(new_layout, zeroed),
+
+            //旧的内存块与新内存块的对齐是一致的
+            old_size if old_layout.align() == new_layout.align() => unsafe {
+                //直接调用realloc的逻辑即可，
+                let new_size = new_layout.size();
+
+                intrinsics::assume(new_size >= old_layout.size());
+                //realloc的逻辑保证旧的内存块的内容被保留
+                let raw_ptr = GlobalAlloc::realloc(self, ptr.as_ptr(), old_layout, new_size);
+                let ptr = NonNull::new(raw_ptr).ok_or(AllocError)?;
+                if zeroed {
+                    //旧内存块的内容不变，仅对新内存块处理
+                    raw_ptr.add(old_size).write_bytes(0, new_size - old_size);
+                }
+                //形成新的NonNull<[u8]>返回
+                Ok(NonNull::slice_from_raw_parts(ptr, new_size))
+            },
+            
+            //旧内存块与新内存块的对齐不一致
+            old_size => unsafe {
+                //需要按照新的内存布局参数重新申请一块内存
+                let new_ptr = self.alloc_impl(new_layout, zeroed)?;
+                //将旧内存块的内容拷贝到新内存
+                ptr::copy_nonoverlapping(ptr.as_ptr(), new_ptr.as_mut_ptr(), old_size);
+                //将旧内存块释放掉
+                Allocator::deallocate(&self, ptr, old_layout);
+                Ok(new_ptr)
+            },
+        }
+    }
+}
+
+// 实现Allocator trait, std库后继会使用此trait完成内存管理操作。
+unsafe impl Allocator for System {
+    //申请内存块
+    fn allocate(&self, layout: Layout) -> Result<NonNull<[u8]>, AllocError> {
+        self.alloc_impl(layout, false)
+    }
+    //申请内存块，并将内存块清零
+    fn allocate_zeroed(&self, layout: Layout) -> Result<NonNull<[u8]>, AllocError> {
+        self.alloc_impl(layout, true)
+    }
+    //释放内存块
+    unsafe fn deallocate(&self, ptr: NonNull<u8>, layout: Layout) {
+        if layout.size() != 0 {
+            unsafe { GlobalAlloc::dealloc(self, ptr.as_ptr(), layout) }
+        }
+    }
+    //增长内存空间
+    unsafe fn grow(
+        &self,
+        ptr: NonNull<u8>,
+        old_layout: Layout,
+        new_layout: Layout,
+    ) -> Result<NonNull<[u8]>, AllocError> {
+        unsafe { self.grow_impl(ptr, old_layout, new_layout, false) }
+    }
+    //增长内存空间，增长的部分进行清零
+    unsafe fn grow_zeroed(
+        &self,
+        ptr: NonNull<u8>,
+        old_layout: Layout,
+        new_layout: Layout,
+    ) -> Result<NonNull<[u8]>, AllocError> {
+        unsafe { self.grow_impl(ptr, old_layout, new_layout, true) }
+    }
+    //收缩内存空间，此时必须重新申请内存。
+    unsafe fn shrink(
+        &self,
+        ptr: NonNull<u8>,
+        old_layout: Layout,
+        new_layout: Layout,
+    ) -> Result<NonNull<[u8]>, AllocError> {
+        debug_assert!(
+            new_layout.size() <= old_layout.size(),
+            "`new_layout.size()` must be smaller than or equal to `old_layout.size()`"
+        );
+        
+        match new_layout.size() {
+            // 收缩空间至0, 实际上就是释放内存
+            0 => unsafe {
+                Allocator::deallocate(&self, ptr, old_layout);
+                //返回一个dangling的指针表示悬垂指针。此处应该用Option<NonNull<[u8]>>返回才符合
+                //rust的习惯用法吧，目前的返回代码后继有额外的判断负担
+                Ok(NonNull::slice_from_raw_parts(new_layout.dangling(), 0))
+            },
+
+            //如果内存对齐相同
+            new_size if old_layout.align() == new_layout.align() => unsafe {
+                intrinsics::assume(new_size <= old_layout.size());
+                //realloc函数会保留原内存内容
+                let raw_ptr = GlobalAlloc::realloc(self, ptr.as_ptr(), old_layout, new_size);
+                let ptr = NonNull::new(raw_ptr).ok_or(AllocError)?;
+                Ok(NonNull::slice_from_raw_parts(ptr, new_size))
+            },
+
+            //对齐不同，必须重新申请内存
+            new_size => unsafe {
+                let new_ptr = Allocator::allocate(&self, new_layout)?;
+                //将原内存内容拷贝入新内存
+                ptr::copy_nonoverlapping(ptr.as_ptr(), new_ptr.as_mut_ptr(), new_size);
+                //释放原内存
+                Allocator::deallocate(&self, ptr, old_layout);
+                Ok(new_ptr)
+            },
+        }
+    }
+}
+```
+以上是std库的通用实现,代码位置：library/std/src/alloc.rs
+
+以下是unix操作系统的适配，代码位置：library/std/src/sys/unix/alloc.rs  
+不同的操作系统，其内存申请的系统调用都不一致，因此对GlobalAlloc的实现也不一致。  
+```rust
+unsafe impl GlobalAlloc for System {
+    unsafe fn alloc(&self, layout: Layout) -> *mut u8 {
+        // 用libc来实现内存申请，这里适配的难点在于对齐的适配，libc的对齐实际上是不能指定的。
+        // 实际上，在读这个代码前我就从来没有意识到适配会出现这个问题，只有在申请的内存对齐小于MIN_ALIGN以及申请的内存大小大于对齐大小时才能调用libc的malloc做申请
+        if layout.align() <= MIN_ALIGN && layout.align() <= layout.size() {
+            libc::malloc(layout.size()) as *mut u8
+        } else {
+            #[cfg(target_os = "macos")]
+            {
+                if layout.align() > (1 << 31) {
+                    return ptr::null_mut();
+                }
+            }
+            aligned_malloc(&layout)
+        }
+    }
+
+    unsafe fn alloc_zeroed(&self, layout: Layout) -> *mut u8 {
+        // 一样需要处理对齐
+        if layout.align() <= MIN_ALIGN && layout.align() <= layout.size() {
+            libc::calloc(layout.size(), 1) as *mut u8
+        } else {
+            let ptr = self.alloc(layout);
+            //不能用calloc处理时需要清零
+            if !ptr.is_null() {
+                ptr::write_bytes(ptr, 0, layout.size());
+            }
+            ptr
+        }
+    }
+
+    unsafe fn dealloc(&self, ptr: *mut u8, _layout: Layout) {
+        libc::free(ptr as *mut libc::c_void)
+    }
+
+    unsafe fn realloc(&self, ptr: *mut u8, layout: Layout, new_size: usize) -> *mut u8 {
+        //对齐处理
+        if layout.align() <= MIN_ALIGN && layout.align() <= new_size {
+            libc::realloc(ptr as *mut libc::c_void, new_size) as *mut u8
+        } else {
+            //无法对齐时的处理，
+            realloc_fallback(self, ptr, layout, new_size)
+        }
+    }
+}
+
+pub unsafe fn realloc_fallback(
+    alloc: &System,
+    ptr: *mut u8,
+    old_layout: Layout,
+    new_size: usize,
+) -> *mut u8 {
+    // Docs for GlobalAlloc::realloc require this to be valid:
+    let new_layout = Layout::from_size_align_unchecked(new_size, old_layout.align());
+
+    let new_ptr = GlobalAlloc::alloc(alloc, new_layout);
+    if !new_ptr.is_null() {
+        let size = cmp::min(old_layout.size(), new_size);
+        ptr::copy_nonoverlapping(ptr, new_ptr, size);
+        GlobalAlloc::dealloc(alloc, ptr, old_layout);
+    }
+    new_ptr
+}
+cfg_if::cfg_if! {
+    if #[cfg(target_os = "wasi")] {
+        //wasi提供aligned_alloc的支持
+        unsafe fn aligned_malloc(layout: &Layout) -> *mut u8 {
+            libc::aligned_alloc(layout.align(), layout.size()) as *mut u8
+        }
+    } else {
+        //其他需要用posix_memalign来完成
+        unsafe fn aligned_malloc(layout: &Layout) -> *mut u8 {
+            let mut out = ptr::null_mut();
+            // posix_memalign requires that the alignment be a multiple of `sizeof(void*)`.
+            // Since these are all powers of 2, we can just use max.
+            let align = layout.align().max(crate::mem::size_of::<usize>());
+            let ret = libc::posix_memalign(&mut out, align, layout.size());
+            if ret != 0 { ptr::null_mut() } else { out as *mut u8 }
+        }
+    }
+}
+```
+# std库文件描述符代码分析
+以linux为例，文件系统实际上成为操作系统的所有资源的管理体系的基础设施。因此，将之放在内存管理之后来做分析。
+RUST将文件管理的结构分成：
+1. 操作系统文件描述符的封装结构。对于RUST来说，操作系统的文件描述符与堆内存要处理的安全性类似。需要建立类似智能指针的结构完成对其的管理，并纳入到RUST的安全体系内。
+2. 1创建的类型结构主要用于解决安全问题，如果在同一个类型加上文件功能，会乱。因此在1的基础上建立RUST自身的文件描述符类型，用于处理文件的读写等功能
+3. 在2的基础上，实现普通的文件，目录文件，Socket，Pipe，IO设备文件等逻辑文件类型。
+   
+本章将讨论1及2，3以后在涉及到各模块时再进行详细分析   
+代码目录： library/src/std/src/os/fd/raw.rs   
+          library/src/std/src/os/fd/owned.rs  
+          library/src/std/src/sys/unix/fd.rs
+        
+## 操作系统的文件描述符适配所有权封装
+RUST当然要使用操作系统调用返回的fd来操作文件，操作系统返回的文件RUST定义类型RawFd。RawFd本身和裸指针一样，是没有所有权概念的，但RUST中文件显然需要具备所有权，RUST在RawFd上定义了封装类型OwnedFd来实现针对RawFd的所有权，又定义了类型BorrowedFd作为OwnedFd的借用类型。  
+理解这两个类型，我们可以把RawFd类比与裸指针* const T， OwnedFd类比与 T, BorrowedFd类比于&T。
+
+以linux操作系统为基础进行分析：
+```rust
+//虽然是int型，但因为表示了系统的资源，所以可以类比于裸指针。后继被标识文件所有权的封装类型所封装后才能进入安全的RUST领域。
+pub type RawFd = raw::c_int;
+
+//此trait用于从封装RawFd的类型中获取RawFd, 此时返回的RawFd安全性类似于裸指针。
+pub trait AsRawFd {
+    fn as_raw_fd(&self) -> RawFd;
+}
+
+//从RawFd创建一个封装类型,返回的Self获得了RawFd代表的文件的所有权 
+pub trait FromRawFd {
+    unsafe fn from_raw_fd(fd: RawFd) -> Self;
+}
+
+//将封装类型变量消费掉，并返回RawFd，此时RUST中没有其他变量拥有RawFd代表文件的所有权，后继要由RawFd对close负责，或者将RawFd重新封装入另一个表示所有权的封装类型变量。 
+pub trait IntoRawFd {
+    fn into_raw_fd(self) -> RawFd;
+}
+
+//获取标准输入的RawFd
+impl AsRawFd for io::Stdin {
+    fn as_raw_fd(&self) -> RawFd {
+        //libc的标准输入文件标识宏
+        libc::STDIN_FILENO
+    }
+}
+
+//标准输出的RawFd
+impl AsRawFd for io::Stdout {
+    fn as_raw_fd(&self) -> RawFd {
+        //libc的标准输出宏
+        libc::STDOUT_FILENO
+    }
+}
+
+//标准错误的RawFd
+impl AsRawFd for io::Stderr {
+    fn as_raw_fd(&self) -> RawFd {
+        //libc的标准错误宏
+        libc::STDERR_FILENO
+    }
+}
+```
+拥有RawFd所有权的OwnedFd类型结构及OwnedFd的借用类型结构BorrowedFd。
+```rust
+#[repr(transparent)]
+pub struct BorrowedFd<'fd> {
+    fd: RawFd,
+    //用OwnedFd作为RawFd的所有权版本，RawFd实际上可认为是对OwnedFd的借用。
+    //但仅用fd无法表达出生命周期和借用关系，
+    //这里的PhantomData用OwnedFd的引用及生命周期泛型表示了这个关系
+    _phantom: PhantomData<&'fd OwnedFd>,
+}
+
+#[repr(transparent)]
+pub struct OwnedFd {
+    //这个封装仅是一个形式，编译器并没有认为OwnedFd已经拥有了fd所代表文件的所有权。
+    //所以，OwnedFd拥有所有权这个事情实际上是代码约定，其他代码务必不能导致用RawFd创建另一份
+    //OwnedFd, 也不能另外调用fd的close。
+    //调用操作系统的系统调用获得文件Fd后，应该第一时间用OwnedFd进行封装，后继如果要使用，则应该
+    //用borrow的方法来借出BorrowedFd，
+    fd: RawFd,
+}
+
+impl BorrowedFd<'_> {
+    //直接在RawFd上生成BorrowFd,注意，这里的RawFd应该已经被一个OwnedFd所包装,否则这里不正确
+    pub unsafe fn borrow_raw(fd: RawFd) -> Self {
+        assert_ne!(fd, u32::MAX as RawFd);
+        //这里的PhantomData的赋值令人疑惑，只能认为是编译器的魔术了 
+        unsafe { Self { fd, _phantom: PhantomData } }
+    }
+}
+
+impl OwnedFd {
+    //复制，这里是在操作系统内部复制了一个新的fd，需要调用系统调用完成
+    pub fn try_clone(&self) -> crate::io::Result<Self> {
+        // 设置复制的功能设定标志
+        let cmd = libc::F_DUPFD_CLOEXEC;
+
+        //调用libc库完成复制，返回新的fd
+        let fd = cvt(unsafe { libc::fcntl(self.as_raw_fd(), cmd, 0) })?;
+        //用新的fd创建新的Owned变量
+        Ok(unsafe { Self::from_raw_fd(fd) })
+    }
+}
+
+impl AsRawFd for BorrowedFd<'_> {
+    //此方法应该尽量仅用于调用系统调用的时候使用
+    fn as_raw_fd(&self) -> RawFd {
+        self.fd
+    }
+}
+
+impl AsRawFd for OwnedFd {
+    //此方法应该尽量仅用于调用系统调用时使用
+    fn as_raw_fd(&self) -> RawFd {
+        self.fd
+    }
+}
+
+impl IntoRawFd for OwnedFd {
+    fn into_raw_fd(self) -> RawFd {
+        let fd = self.fd;
+        //必须forget，否则会触发drop调用close(fd)
+        forget(self);
+        fd
+    }
+}
+
+impl FromRawFd for OwnedFd {
+    //应该只能用这个方法创建OwnedFd
+    unsafe fn from_raw_fd(fd: RawFd) -> Self {
+        assert_ne!(fd, u32::MAX as RawFd);
+        unsafe { Self { fd } }
+    }
+}
+
+//这个方法证明OwnedFd拥有了操作系统返回的fd的所有权
+impl Drop for OwnedFd {
+    fn drop(&mut self) {
+        unsafe {
+            let _ = libc::close(self.fd);
+        }
+    }
+}
+
+//对OwnedFd创建借用的trait
+pub trait AsFd {
+    fn as_fd(&self) -> BorrowedFd<'_>;
+}
+
+impl AsFd for OwnedFd {
+    fn as_fd(&self) -> BorrowedFd<'_> {
+        //BorrowedFd中的PhantomData从&self中获得
+        unsafe { BorrowedFd::borrow_raw(self.as_raw_fd()) }
+    }
+}
+//以下为所有的高层视角资源生成OwnedFd的借用
+impl AsFd for fs::File {
+    fn as_fd(&self) -> BorrowedFd<'_> {
+        //实质是OwnedFd.as_fd
+        self.as_inner().as_fd()
+    }
+}
+
+impl From<fs::File> for OwnedFd {
+    fn from(file: fs::File) -> OwnedFd {
+        //消费了File
+        file.into_inner().into_inner().into_inner()
+        //此处不涉及对file的forget
+    }
+}
+
+impl From<OwnedFd> for fs::File {
+    fn from(owned_fd: OwnedFd) -> Self {
+        //创建fs::File
+        Self::from_inner(FromInner::from_inner(FromInner::from_inner(owned_fd)))
+    }
+}
+
+impl AsFd for crate::net::TcpStream {
+    fn as_fd(&self) -> BorrowedFd<'_> {
+        //socket在unix与fd没有区别，也使用OwnedFd和BorrowedFd来做所有权的解决方案
+        self.as_inner().socket().as_fd()
+    }
+}
+
+impl From<crate::net::TcpStream> for OwnedFd {
+    fn from(tcp_stream: crate::net::TcpStream) -> OwnedFd {
+        //消费掉tcp_stream，具体在tcp stream分析
+        tcp_stream.into_inner().into_socket().into_inner().into_inner().into()
+    }
+}
+
+impl From<OwnedFd> for crate::net::TcpStream {
+    fn from(owned_fd: OwnedFd) -> Self {
+        //后继在TcpStream章节分析
+        Self::from_inner(FromInner::from_inner(FromInner::from_inner(FromInner::from_inner(
+            owned_fd,
+        ))))
+    }
+}
+
+impl AsFd for crate::net::TcpListener {
+    fn as_fd(&self) -> BorrowedFd<'_> {
+        //同TcpStream
+        self.as_inner().socket().as_fd()
+    }
+}
+
+impl From<crate::net::TcpListener> for OwnedFd {
+    fn from(tcp_listener: crate::net::TcpListener) -> OwnedFd {
+        tcp_listener.into_inner().into_socket().into_inner().into_inner().into()
+    }
+}
+
+impl From<OwnedFd> for crate::net::TcpListener {
+    fn from(owned_fd: OwnedFd) -> Self {
+        Self::from_inner(FromInner::from_inner(FromInner::from_inner(FromInner::from_inner(
+            owned_fd,
+        ))))
+    }
+}
+
+impl AsFd for crate::net::UdpSocket {
+    fn as_fd(&self) -> BorrowedFd<'_> {
+        //UDP与TCP类似
+        self.as_inner().socket().as_fd()
+    }
+}
+
+impl From<crate::net::UdpSocket> for OwnedFd {
+    fn from(udp_socket: crate::net::UdpSocket) -> OwnedFd {
+        udp_socket.into_inner().into_socket().into_inner().into_inner().into()
+    }
+}
+
+impl From<OwnedFd> for crate::net::UdpSocket {
+    fn from(owned_fd: OwnedFd) -> Self {
+        Self::from_inner(FromInner::from_inner(FromInner::from_inner(FromInner::from_inner(
+            owned_fd,
+        ))))
+    }
+}
+```
+对于需要调用RUST以外语言实现的第三方库时，都会面临一个从第三方库获取的资源如何在RUST设计其所有权的问题。Unix的fd的方案给出了一个经典的设计方式。即把第三方库获取的资源在逻辑上类似于裸指针，如RawFd。然后用一个封装结构封装用于所有权实现，例如OwnedFd。用另一个封装结构用作借用，例如BorrowedFd。这个设计方案在真正的生产环境中会经常被用到。    
+
+## RUST标准库文件描述符的结构与实现
+在OwnedFd的基础上创建的结构，用来完成对文件的通用操作
+```rust
+pub struct FileDesc(OwnedFd);
+
+impl FileDesc {
+    //从文件描述符读出字节流
+    pub fn read(&self, buf: &mut [u8]) -> io::Result<usize> {
+        let ret = cvt(unsafe {
+            //调用libc的read函数
+            libc::read(
+                //按C语言的调用进行转换
+                self.as_raw_fd(),
+                //转换成void *指针
+                buf.as_mut_ptr() as *mut c_void,
+                //不能超过buf，也不能超过一次读的最大长度
+                cmp::min(buf.len(), READ_LIMIT),
+            )
+        })?;
+        Ok(ret as usize)
+    }
+
+    //对应于libc的iovec读的方式,具体请参考libc的说明
+    pub fn read_vectored(&self, bufs: &mut [IoSliceMut<'_>]) -> io::Result<usize> {
+        let ret = cvt(unsafe {
+            libc::readv(
+                self.as_raw_fd(),
+                bufs.as_ptr() as *const libc::iovec,
+                cmp::min(bufs.len(), max_iov()) as c_int,
+            )
+        })?;
+        Ok(ret as usize)
+    }
+
+    //一直读到文件结束
+    pub fn read_to_end(&self, buf: &mut Vec<u8>) -> io::Result<usize> {
+        let mut me = self;
+        (&mut me).read_to_end(buf)
+    }
+
+    //从文件的某一个位置开始读，请参考libc的pread64的man
+    pub fn read_at(&self, buf: &mut [u8], offset: u64) -> io::Result<usize> {
+        use libc::pread64;
+
+        unsafe {
+            cvt(pread64(
+                self.as_raw_fd(),
+                buf.as_mut_ptr() as *mut c_void,
+                cmp::min(buf.len(), READ_LIMIT),
+                offset as i64,
+            ))
+            .map(|n| n as usize)
+        }
+    }
+
+    //读到buffer中的某一个位置
+    pub fn read_buf(&self, buf: &mut ReadBuf<'_>) -> io::Result<()> {
+        let ret = cvt(unsafe {
+            libc::read(
+                self.as_raw_fd(),
+                buf.unfilled_mut().as_mut_ptr() as *mut c_void,
+                cmp::min(buf.remaining(), READ_LIMIT),
+            )
+        })?;
+
+        //原有的空间是MaybeUninit，读到内容后需要进行初始化标注
+        unsafe {
+            buf.assume_init(ret as usize);
+        }
+        //更新内容长度
+        buf.add_filled(ret as usize);
+        Ok(())
+    }
+
+    //向文件描述符写入字节流
+    pub fn write(&self, buf: &[u8]) -> io::Result<usize> {
+        let ret = cvt(unsafe {
+            libc::write(
+                self.as_raw_fd(),
+                buf.as_ptr() as *const c_void,
+                cmp::min(buf.len(), READ_LIMIT),
+            )
+        })?;
+        Ok(ret as usize)
+    }
+
+    //iovec的方式写入
+    pub fn write_vectored(&self, bufs: &[IoSlice<'_>]) -> io::Result<usize> {
+        let ret = cvt(unsafe {
+            libc::writev(
+                self.as_raw_fd(),
+                bufs.as_ptr() as *const libc::iovec,
+                cmp::min(bufs.len(), max_iov()) as c_int,
+            )
+        })?;
+        Ok(ret as usize)
+    }
+
+    //在文件的某一位置写入字节流
+    pub fn write_at(&self, buf: &[u8], offset: u64) -> io::Result<usize> {
+        use libc::pwrite64;
+
+        unsafe {
+            cvt(pwrite64(
+                self.as_raw_fd(),
+                buf.as_ptr() as *const c_void,
+                cmp::min(buf.len(), READ_LIMIT),
+                offset as i64,
+            ))
+            .map(|n| n as usize)
+        }
+    }
+
+    //获取FD_CLOEXEC，具体请参考libc的相关手册
+    pub fn get_cloexec(&self) -> io::Result<bool> {
+        unsafe { Ok((cvt(libc::fcntl(self.as_raw_fd(), libc::F_GETFD))? & libc::FD_CLOEXEC) != 0) }
+    }
+
+    //设置FD_CLOEXEC的属性，一般会在打开文件时完成设置，否则要注意不同线程竞争问题
+    pub fn set_cloexec(&self) -> io::Result<()> {
+        unsafe {
+            let previous = cvt(libc::fcntl(self.as_raw_fd(), libc::F_GETFD))?;
+            let new = previous | libc::FD_CLOEXEC;
+            if new != previous {
+                cvt(libc::fcntl(self.as_raw_fd(), libc::F_SETFD, new))?;
+            }
+            Ok(())
+        }
+    }
+
+    //设置为非阻塞
+    pub fn set_nonblocking(&self, nonblocking: bool) -> io::Result<()> {
+        unsafe {
+            let v = nonblocking as c_int;
+            cvt(libc::ioctl(self.as_raw_fd(), libc::FIONBIO, &v))?;
+            Ok(())
+        }
+    }
+
+    //复制文件描述符
+    pub fn duplicate(&self) -> io::Result<FileDesc> {
+        Ok(Self(self.0.try_clone()?))
+    }
+
+    //后继可以加入其他需要的通用文件操作方法
+}
+
+impl AsInner<OwnedFd> for FileDesc {
+    //不消费FileDesc获取内部引用
+    fn as_inner(&self) -> &OwnedFd {
+        &self.0
+    }
+}
+
+impl IntoInner<OwnedFd> for FileDesc {
+    fn into_inner(self) -> OwnedFd {
+        //消费self，获得内部OwnedFd
+        //不必做其他资源释放操作
+        self.0
+    }
+}
+
+impl FromInner<OwnedFd> for FileDesc {
+    //从参数创建FileDesc类型变量
+    fn from_inner(owned_fd: OwnedFd) -> Self {
+        Self(owned_fd)
+    }
+}
+
+impl AsFd for FileDesc {
+    //创建一个引用
+    fn as_fd(&self) -> BorrowedFd<'_> {
+        self.0.as_fd()
+    }
+}
+
+impl AsRawFd for FileDesc {
+    //简化代码
+    fn as_raw_fd(&self) -> RawFd {
+        self.0.as_raw_fd()
+    }
+}
+
+impl IntoRawFd for FileDesc {
+    fn into_raw_fd(self) -> RawFd {
+        //见OwnedFd::into_raw_fd
+        self.0.into_raw_fd()
+    }
+}
+
+impl FromRawFd for FileDesc {
+    //见OwnedFd::from_raw_fd
+    unsafe fn from_raw_fd(raw_fd: RawFd) -> Self {
+        Self(FromRawFd::from_raw_fd(raw_fd))
+    }
+}
+
+```
+文件描述符实际上代表了操作系统的资源，是后继个模块分析的一个基础。
+# std库进程管理代码分析
+描述进程管理的需求以一个linux的shell命令比较合适：
+例如： cat 序言.md | more
+在shell程序执行这条命令时，做了以下的工作：
+1. 创建1个管道
+2. fork第一个子进程
+3. 指定第一个子进程的标准输入是管道的读出端
+4. 第一个子进程用execv执行more的可执行文件
+5. fork第二个子进程
+6. 打开"序言.md"文件
+7. 将管段的写入端作为第二个子进程的标准输出，将"序言.md"作为进程的标准输入
+8. 第二个子进程用execv执行cat可执行文件
+9. wait两个子进程结束
+上例如果用RUST来实现，代码简略如下：
+```rust
+    let child_more = Command::new("more")
+                           .stdin(Stdio::piped())
+                           .spawn()
+                           .expect("error more");
+    let child_cat = Command::new("cat")
+                          .arg("引言.md")
+                          .stdout(child_more.stdin.unwrap())
+                          .spawn().expect("cat error");              
+```
+可以看到，RUST大幅减轻了代码实现。  
+以上基本简要包含了RUST进程管理的任务。      
+在创建一个进程及真正执行进程的二进制文件之间，父进程可以对子进程完成一些进程参数控制，通常就是对标准输入/标准输出/标准错误做重定向设置。匿名管道是专门为这个场景准备的进程间通信机制，用于将两个进程的标准输出及标准输入连接。   
+其他专用于父子进程通信的手段还有:父进程可以等待子进程结束，向子进程发送信号，获取子进程退出的返回值等。  
+
+进程间通信还有很多其他手段，放在后继专门章节做分析。本章只分析匿名管道。   
+
+操作系统无关的代码路径：library/src/std/src/process.rs   
+                      library/src/std/src/syscommon/process.rs
+操作系统相关的代码路径：library/src/std/src/sys/unix/process/*  
+                      library/src/std/src/os/linux/process.rs   
+                      library/src/std/src/sys/unix/pipe.rs
+
+## 匿名管道
+匿名管道被设计用来在父子进程或者同一个父进程创建的子进程之间进行通信。一般只用于标准输入及输出的重定向。
+```rust
+//匿名管道的资源用文件描述符表示
+pub struct AnonPipe(FileDesc);
+
+pub fn anon_pipe() -> io::Result<(AnonPipe, AnonPipe)> {
+    //匿名管道会创建两个文件描述符
+    let mut fds = [0; 2];
+
+    unsafe {
+        //pipe2系统调用，fds的类型RUST做了推断，O_CLOEXEC表示后继exec调用的时候会自动close
+        cvt(libc::pipe2(fds.as_mut_ptr(), libc::O_CLOEXEC))?;
+        //返回两个匿名管道
+        Ok((AnonPipe(FileDesc::from_raw_fd(fds[0])), AnonPipe(FileDesc::from_raw_fd(fds[1]))))
+    }
+}
+//FileDesc的adapter
+impl AnonPipe {
+    pub fn read(&self, buf: &mut [u8]) -> io::Result<usize> {
+        self.0.read(buf)
+    }
+
+    pub fn read_vectored(&self, bufs: &mut [IoSliceMut<'_>]) -> io::Result<usize> {
+        self.0.read_vectored(bufs)
+    }
+
+    pub fn is_read_vectored(&self) -> bool {
+        self.0.is_read_vectored()
+    }
+
+    pub fn write(&self, buf: &[u8]) -> io::Result<usize> {
+        self.0.write(buf)
+    }
+
+    pub fn write_vectored(&self, bufs: &[IoSlice<'_>]) -> io::Result<usize> {
+        self.0.write_vectored(bufs)
+    }
+
+    pub fn is_write_vectored(&self) -> bool {
+        self.0.is_write_vectored()
+    }
+}
+
+impl IntoInner<FileDesc> for AnonPipe {
+    fn into_inner(self) -> FileDesc {
+        self.0
+    }
+}
+
+pub fn read2(p1: AnonPipe, v1: &mut Vec<u8>, p2: AnonPipe, v2: &mut Vec<u8>) -> io::Result<()> {
+    // 对两个同时读出，并将输出合并
+    let p1 = p1.into_inner();
+    let p2 = p2.into_inner();
+    //需要设置成非阻塞，用异步读的方式
+    p1.set_nonblocking(true)?;
+    p2.set_nonblocking(true)?;
+
+    //准备libc的poll调用参数，具体的细节请参考libc的手册
+    let mut fds: [libc::pollfd; 2] = unsafe { mem::zeroed() };
+    fds[0].fd = p1.as_raw_fd();
+    fds[0].events = libc::POLLIN;
+    fds[1].fd = p2.as_raw_fd();
+    fds[1].events = libc::POLLIN;
+    loop {
+        // poll调用，当任意一个fd有内容可读事件，则返回，否则阻塞
+        cvt_r(|| unsafe { libc::poll(fds.as_mut_ptr(), 2, -1) })?;
+
+        //fds[0]读到v1
+        if fds[0].revents != 0 && read(&p1, v1)? {
+            //出错，需要读出p2，此时重新设置成阻塞
+            p2.set_nonblocking(false)?;
+            //drop是因为返回为单元类型而做
+            return p2.read_to_end(v2).map(drop);
+        }
+        if fds[1].revents != 0 && read(&p2, v2)? {
+            //出错，需要读出p2,此时需要重新设置阻塞
+            p1.set_nonblocking(false)?;
+            return p1.read_to_end(v1).map(drop);
+        }
+    }
+
+    fn read(fd: &FileDesc, dst: &mut Vec<u8>) -> Result<bool, io::Error> {
+        //一直读完
+        match fd.read_to_end(dst) {
+            //读到内容
+            Ok(_) => Ok(true),
+            Err(e) => {
+                if e.raw_os_error() == Some(libc::EWOULDBLOCK)
+                    || e.raw_os_error() == Some(libc::EAGAIN)
+                {
+                    //没有读到内容，但是指示需要阻塞
+                    Ok(false)
+                } else {
+                    //读出错
+                    Err(e)
+                }
+            }
+        }
+    }
+    //必然会在前面返回。这里会对p1及p2做所有权释放，会close掉创建的管道文件
+}
+
+impl AsRawFd for AnonPipe {
+    fn as_raw_fd(&self) -> RawFd {
+        self.0.as_raw_fd()
+    }
+}
+
+impl AsFd for AnonPipe {
+    fn as_fd(&self) -> BorrowedFd<'_> {
+        self.0.as_fd()
+    }
+}
+
+impl IntoRawFd for AnonPipe {
+    fn into_raw_fd(self) -> RawFd {
+        self.0.into_raw_fd()
+    }
+}
+
+impl FromRawFd for AnonPipe {
+    unsafe fn from_raw_fd(raw_fd: RawFd) -> Self {
+        Self(FromRawFd::from_raw_fd(raw_fd))
+    }
+}
+```
+由以上的代码可以发现，涉及到操作系统的系统调用层面编程时，RUST实际需要大量C编程知识。讲述C编程超出了本书的本意，因此后面将不再更多的解释C调用相关的内容。
+
+## 标准输入输出重定向类型及实现
+```rust
+//如果进程需要做标准输入/输出/错误重定向，应该申请此类型为参数并设置
+pub struct StdioPipes {
+    //None表示不重定向，Some()表示重定向到匿名管道
+    pub stdin: Option<AnonPipe>,
+    pub stdout: Option<AnonPipe>,
+    pub stderr: Option<AnonPipe>,
+}
+
+//对子进程的标准输入输出做设置
+pub struct ChildPipes {
+    pub stdin: ChildStdio,
+    pub stdout: ChildStdio,
+    pub stderr: ChildStdio,
+}
+//对子进程标准输入/输出/错误进行指定,此时fd已经准备好已经创建
+pub enum ChildStdio {
+    //继承父进程的标准输入输出错误
+    Inherit,
+    //直接是unix的fd
+    Explicit(c_int),
+    //RUST包装后的句柄 
+    Owned(FileDesc),
+}
+//此类型用于在子进程准备阶段对子进程的标准输入/输出/错误做配置用
+//RUST的进程管理会根据Stdio的类型完成子进程的准备,仅仅是配置
+pub enum Stdio {
+    //继承父进程
+    Inherit,
+    //设置为Null
+    Null,
+    //创建匿名管道作为标准输入/输出/错误
+    MakePipe,
+    //标准输入/输出/错误使用给出的文件描述符
+    Fd(FileDesc),
+}
+
+//针对enum实现方法的例子
+impl Stdio {
+    //此方法在创建子进程时根据self的设置完成对子进程的标准输入/输出/错误的准备。
+    //并返回准备好的标准输入/输出/错误
+    pub fn to_child_stdio(&self, readable: bool) -> io::Result<(ChildStdio, Option<AnonPipe>)> {
+        match *self {
+            //指定为继承父进程，子进程为继承父进程，父进程没有与之相关的管道
+            Stdio::Inherit => Ok((ChildStdio::Inherit, None)),
+
+            //配置为使用指定的文件描述符
+            Stdio::Fd(ref fd) => {
+                if fd.as_raw_fd() >= 0 && fd.as_raw_fd() <= libc::STDERR_FILENO {
+                    //如果指定的文件描述符是标准输入/输出/错误，则复制后返回Owned,
+                    //父进程没有管道与子进程连接
+                    Ok((ChildStdio::Owned(fd.duplicate()?), None))
+                } else {
+                    //子进程使用指定的文件描述符，此时因为不能获取FileDesc的所有权，所以只能使用RawFd，父进程没有管道与之连接
+                    Ok((ChildStdio::Explicit(fd.as_raw_fd()), None))
+                }
+            }
+
+            //配置为创建管道连接父子进程
+            Stdio::MakePipe => {
+                //创建管道
+                let (reader, writer) = pipe::anon_pipe()?;
+                //根据读写标志设置自身管道的文件描述符, readable指子进程是读方
+                let (ours, theirs) = if readable { (writer, reader) } else { (reader, writer) };
+                //返回创建的管道描述符
+                Ok((ChildStdio::Owned(theirs.into_inner()), Some(ours)))
+            }
+
+            //指定为dev/null
+            Stdio::Null => {
+                let mut opts = OpenOptions::new();
+                opts.read(readable);
+                opts.write(!readable);
+                let path = unsafe { CStr::from_ptr(DEV_NULL.as_ptr() as *const _) };
+                //需要先打开/dev/null
+                let fd = File::open_c(&path, &opts)?;
+                //输出为/dev/null
+                Ok((ChildStdio::Owned(fd.into_inner()), None))
+            }
+        }
+    }
+}
+
+impl From<AnonPipe> for Stdio {
+    fn from(pipe: AnonPipe) -> Stdio {
+        Stdio::Fd(pipe.into_inner())
+    }
+}
+
+impl From<File> for Stdio {
+    fn from(file: File) -> Stdio {
+        Stdio::Fd(file.into_inner())
+    }
+}
+//直接获取RawFd用于操作系统调用
+impl ChildStdio {
+    pub fn fd(&self) -> Option<c_int> {
+        match *self {
+            ChildStdio::Inherit => None,
+            ChildStdio::Explicit(fd) => Some(fd),
+            ChildStdio::Owned(ref fd) => Some(fd.as_raw_fd()),
+        }
+    }
+}
+
+```
+
+## 进程管理
+使用RUST的创建进程的代码举例如下：
+```rust
+use std::process::Command;
+
+Command::new("ls")
+        .arg("-l")
+        .arg("-a")
+        .stdout(Stdio::piped())
+        .spawn()
+        .expect("ls command failed to start");
+```
+可以看到，RUST把C语言库中分散的进程准备及执行相关的内容整体组织进了Command结构的实现中，并利用函数式编程的链式调用使其语法易于理解，从后面的实现中也可以看出Command对程序员是一个巨大的福利。
+Command的具体使用方式请参考官方标准库文档获得指导。
+
+RUST中操作系统无关与操作系统相关的接口类型结构及实现：  
+RUST在进程管理中，没有使用trait的表达方式，而是直接使用了各操作系统统一实现相同名称的类型，再对此类型实现相同的方法。  
+   
+```rust
+//所有操作系统都有pub struct Process的类型, 类型结构定义各操作系统可以不同，但需要实现同样的方法。
+//unix的Process, unix的通常定义
+pub struct Process {
+    //unix的进程pid
+    pid: pid_t,
+    //退出的状态
+    status: Option<ExitStatus>,
+    // Linux上，每个process与一个fd相关联。
+    #[cfg(target_os = "linux")]
+    pidfd: Option<PidFd>,
+}
+//unix的Process的方法实现
+impl Process {
+    //linux的创建方法，应该在fork函数调用以后才能调用此方法
+    #[cfg(target_os = "linux")]
+    unsafe fn new(pid: pid_t, pidfd: pid_t) -> Self {
+        use crate::os::unix::io::FromRawFd;
+        use crate::sys_common::FromInner;
+        // Safety: If `pidfd` is nonnegative, we assume it's valid and otherwise unowned.
+        let pidfd = (pidfd >= 0).then(|| PidFd::from_inner(sys::fd::FileDesc::from_raw_fd(pidfd)));
+        Process { pid, status: None, pidfd }
+    }
+
+    //父进程调用此函数杀掉子进程
+    pub fn kill(&mut self) -> io::Result<()> {
+        // 假如子进程已经是退出状态，那子进程的pid可能已经分配给其他进程使用，此时需要返回错误。
+        if self.status.is_some() {
+            Err(io::const_io_error!(
+                ErrorKind::InvalidInput,
+                "invalid argument: can't kill an exited process",
+            ))
+        } else {
+            //libc库的kill调用
+            cvt(unsafe { libc::kill(self.pid, libc::SIGKILL) }).map(drop)
+        }
+    }
+
+    //等待子进程结束，会阻塞当前线程
+    pub fn wait(&mut self) -> io::Result<ExitStatus> {
+        use crate::sys::cvt_r;
+        //如果已经退出，返回
+        if let Some(status) = self.status {
+            return Ok(status);
+        }
+
+        let mut status = 0 as c_int;
+        //调用libc的waitpid等待返回
+        cvt_r(|| unsafe { libc::waitpid(self.pid, &mut status, 0) })?;
+        //子进程已经退出，设置合适的状态
+        self.status = Some(ExitStatus::new(status));
+        Ok(ExitStatus::new(status))
+    }
+
+    //非阻塞的等待子进程退出
+    pub fn try_wait(&mut self) -> io::Result<Option<ExitStatus>> {
+        if let Some(status) = self.status {
+            return Ok(Some(status));
+        }
+        let mut status = 0 as c_int;
+        //用libc::WNOHANG表示非阻塞
+        let pid = cvt(unsafe { libc::waitpid(self.pid, &mut status, libc::WNOHANG) })?;
+        if pid == 0 {
+            //没有退出
+            Ok(None)
+        } else {
+            //已经退出
+            self.status = Some(ExitStatus::new(status));
+            Ok(Some(ExitStatus::new(status)))
+        }
+    }
+}
+```
+因为wasi进程管理与unix类似，因此下面再给出windows的代码做一下对比：
+```rust
+pub struct Process {
+    //windows句柄
+    handle: Handle,
+}
+
+impl Process {
+    pub fn kill(&mut self) -> io::Result<()> {
+        //使用windows的系统调用
+        cvt(unsafe { c::TerminateProcess(self.handle.as_raw_handle(), 1) })?;
+        Ok(())
+    }
+
+    pub fn wait(&mut self) -> io::Result<ExitStatus> {
+        unsafe {
+            //windows使用如下调用来等待进程退出
+            let res = c::WaitForSingleObject(self.handle.as_raw_handle(), c::INFINITE);
+            if res != c::WAIT_OBJECT_0 {
+                return Err(Error::last_os_error());
+            }
+            let mut status = 0;
+            //额外调用来获取退出码
+            cvt(c::GetExitCodeProcess(self.handle.as_raw_handle(), &mut status))?;
+            Ok(ExitStatus(status))
+        }
+    }
+
+    pub fn try_wait(&mut self) -> io::Result<Option<ExitStatus>> {
+        unsafe {
+            //不等待
+            match c::WaitForSingleObject(self.handle.as_raw_handle(), 0) {
+                c::WAIT_OBJECT_0 => {}
+                c::WAIT_TIMEOUT => {
+                    return Ok(None);
+                }
+                _ => return Err(io::Error::last_os_error()),
+            }
+            //获取退出码
+            let mut status = 0;
+            cvt(c::GetExitCodeProcess(self.handle.as_raw_handle(), &mut status))?;
+            Ok(Some(ExitStatus(status)))
+        }
+    }
+}
+```
+由上可见，不同的操作系统实现了相同的类型名及类型方法。后继其他类型将只关注unix的实现。
+其他进程管理相关的类型结构及方法实现：  
+```rust
+//Command完成进程准备的所有参数，进程启动等
+//以下为unix的定义
+pub struct Command {
+    //进程的可执行文件名，由这个定义看，RUST对中文作为可执行文件名的支持存疑, 这个需要用代码做验证
+    program: CString,
+    //进程的命令行参数,同上，是否支持中文？  
+    args: Vec<CString>,
+    /// 传递给`execvp`的参数, 第一个参数应该是`program`, 然后是
+    /// `args`, 最后应该是`null`. 修改时需要注意这三个参数的联动性
+    argv: Argv,
+    env: CommandEnv,
+
+    //当前目录
+    cwd: Option<CString>,
+    //unix的uid
+    uid: Option<uid_t>,
+    //unix的gid
+    gid: Option<gid_t>,
+    // 对CString参数的输入是否存在0做标识
+    saw_nul: bool,
+    closures: Vec<Box<dyn FnMut() -> io::Result<()> + Send + Sync>>,
+    groups: Option<Box<[gid_t]>>,
+    //标准输入配置
+    stdin: Option<Stdio>,
+    //标准输出配置
+    stdout: Option<Stdio>,
+    //标准错误配置
+    stderr: Option<Stdio>,
+    #[cfg(target_os = "linux")]
+    create_pidfd: bool,
+    pgroup: Option<pid_t>,
+}
+
+impl Command {
+    pub fn new(program: &OsStr) -> Command {
+        let mut saw_nul = false;
+        //OsStr转换为CStr,并返回OsStr是否存在尾值0
+        let program = os2c(program, &mut saw_nul);
+        //用program创建默认的Command结构体
+        Command {
+            //argv尾部必须有一个null指针
+            argv: Argv(vec![program.as_ptr(), ptr::null()]),
+            args: vec![program.clone()],
+            //同名参数赋值
+            program,
+            env: Default::default(),
+            cwd: None,
+            uid: None,
+            gid: None,
+            saw_nul,
+            closures: Vec::new(),
+            groups: None,
+            stdin: None,
+            stdout: None,
+            stderr: None,
+            create_pidfd: false,
+            pgroup: None,
+        }
+    }
+
+    //这个方法设置program进入两个arg参数
+    pub fn set_arg_0(&mut self, arg: &OsStr) {
+        // Set a new arg0
+        let arg = os2c(arg, &mut self.saw_nul);
+        debug_assert!(self.argv.0.len() > 1);
+        self.argv.0[0] = arg.as_ptr();
+        self.args[0] = arg;
+    }
+
+    //此方法增加增加一个命令行的参数
+    pub fn arg(&mut self, arg: &OsStr) {
+        let arg = os2c(arg, &mut self.saw_nul);
+        //增加参数到argv
+        self.argv.0[self.args.len()] = arg.as_ptr();
+        self.argv.0.push(ptr::null());
+
+        //增加参数到args
+        self.args.push(arg);
+    }
+
+    //根据标准输入/输出/错误的配置完成动作
+    pub fn setup_io(
+        &self,
+        default: Stdio,
+        needs_stdin: bool,
+    ) -> io::Result<(StdioPipes, ChildPipes)> {
+        let null = Stdio::Null;
+        let default_stdin = if needs_stdin { &default } else { &null };
+        //没有配置的话就使用默认配置
+        let stdin = self.stdin.as_ref().unwrap_or(default_stdin);
+        let stdout = self.stdout.as_ref().unwrap_or(&default);
+        let stderr = self.stderr.as_ref().unwrap_or(&default);
+        //创建标准输入的子进程文件
+        let (their_stdin, our_stdin) = stdin.to_child_stdio(true)?;
+        //创建标准输出的子进程文件
+        let (their_stdout, our_stdout) = stdout.to_child_stdio(false)?;
+        //创建标准错误的子进程文件 
+        let (their_stderr, our_stderr) = stderr.to_child_stdio(false)?;
+        //完成本进程的设置
+        let ours = StdioPipes { stdin: our_stdin, stdout: our_stdout, stderr: our_stderr };
+        //完成子进程的设置
+        let theirs = ChildPipes { stdin: their_stdin, stdout: their_stdout, stderr: their_stderr };
+        Ok((ours, theirs))
+    }
+```
+以下为创建进程的方法实现，从以下代码可见，在面向操作系统时，RUST并不比C更轻松，也不比C会有少犯错误的空间
+```rust
+    //创建进程的具体执行方法
+    pub fn spawn(
+        &mut self,
+        default: Stdio,
+        needs_stdin: bool,
+    ) -> io::Result<(Process, StdioPipes)> {
+        const CLOEXEC_MSG_FOOTER: [u8; 4] = *b"NOEX";
+
+        //完成环境变量创建
+        let envp = self.capture_env();
+
+        //命令行出错处理
+        if self.saw_nul() {
+            return Err(io::const_io_error!(
+                ErrorKind::InvalidInput,
+                "nul byte found in provided data",
+            ));
+        }
+
+        //完成标准输入/输出/错误文件的创建与准备
+        let (ours, theirs) = self.setup_io(default, needs_stdin)?;
+
+        //利用posix的api来创建进程
+        if let Some(ret) = self.posix_spawn(&theirs, envp.as_ref())? {
+            return Ok((ret, ours));
+        }
+
+        //创建一个匿名管道,这个匿名管道用来捕捉exec的错误
+        let (input, output) = sys::pipe::anon_pipe()?;
+
+        //此时要对环境参数加锁
+        let env_lock = sys::os::env_read_lock();
+        //fork新的进程, 新进程复制所有的老进程的参数和栈
+        let (pid, pidfd) = unsafe { self.do_fork()? };
+
+        if pid == 0 {
+            //新创建的子进程, 总是abort退出
+            crate::panic::always_abort();
+            //不用理会env_lock，父进程会处理,这个细节RUST和C是一样容易出错的
+            mem::forget(env_lock);
+            //子进程不使用input
+            drop(input);
+            //执行二进制可执行文件,执行成功不会返回, exec执行成功后,因为output设置了FD_CLOEXEC，
+            //所以output会被关闭
+            let Err(err) = unsafe { self.do_exec(theirs, envp.as_ref()) };
+            //exec执行失败,做错误处理
+            let errno = err.raw_os_error().unwrap_or(libc::EINVAL) as u32;
+            let errno = errno.to_be_bytes();
+            let bytes = [
+                errno[0],
+                errno[1],
+                errno[2],
+                errno[3],
+                CLOEXEC_MSG_FOOTER[0],
+                CLOEXEC_MSG_FOOTER[1],
+                CLOEXEC_MSG_FOOTER[2],
+                CLOEXEC_MSG_FOOTER[3],
+            ];
+            // 将exec的错误写入管道，使得父进程能够获得
+            // 这里是一个细致的考虑
+            rtassert!(output.write(&bytes).is_ok());
+            unsafe { libc::_exit(1) }
+        }
+
+        //对env_lock进行处理
+        drop(env_lock);
+        //不需要output，要显式drop
+        drop(output);
+
+        //根据fork的返回创建RUST的子进程结构
+        let mut p = unsafe { Process::new(pid, pidfd) };
+        let mut bytes = [0; 8];
+
+        loop {
+            //如果子进程exec成功，则管道对端会关闭，此处read会返回
+            match input.read(&mut bytes) {
+                //子进程成功执行
+                Ok(0) => return Ok((p, ours)),
+                //子进程exec失败，返回错误
+                Ok(8) => {
+                    let (errno, footer) = bytes.split_at(4);
+                    assert_eq!(
+                        CLOEXEC_MSG_FOOTER, footer,
+                        "Validation on the CLOEXEC pipe failed: {:?}",
+                        bytes
+                    );
+                    let errno = i32::from_be_bytes(errno.try_into().unwrap());
+                    //子进程失败时做个等待
+                    assert!(p.wait().is_ok(), "wait() should either return Ok or panic");
+                    return Err(Error::from_raw_os_error(errno));
+                }
+                //以下为其他失败情况
+                Err(ref e) if e.kind() == ErrorKind::Interrupted => {}
+                Err(e) => {
+                    assert!(p.wait().is_ok(), "wait() should either return Ok or panic");
+                    panic!("the CLOEXEC pipe failed: {e:?}")
+                }
+                Ok(..) => {
+                    // pipe I/O up to PIPE_BUF bytes should be atomic
+                    assert!(p.wait().is_ok(), "wait() should either return Ok or panic");
+                    panic!("short read on the CLOEXEC pipe")
+                }
+            }
+        }
+    }
+
+    //fork系统调用的RUST版本,不解释，实际上基本等同于C代码的RUST翻译
+    unsafe fn do_fork(&mut self) -> Result<(pid_t, pid_t), io::Error> {
+        use crate::sync::atomic::{AtomicBool, Ordering};
+
+        static HAS_CLONE3: AtomicBool = AtomicBool::new(true);
+        const CLONE_PIDFD: u64 = 0x00001000;
+
+        #[repr(C)]
+        struct clone_args {
+            flags: u64,
+            pidfd: u64,
+            child_tid: u64,
+            parent_tid: u64,
+            exit_signal: u64,
+            stack: u64,
+            stack_size: u64,
+            tls: u64,
+            set_tid: u64,
+            set_tid_size: u64,
+            cgroup: u64,
+        }
+
+        raw_syscall! {
+            fn clone3(cl_args: *mut clone_args, len: libc::size_t) -> libc::c_long
+        }
+
+        // Bypassing libc for `clone3` can make further libc calls unsafe,
+        // so we use it sparingly for now. See #89522 for details.
+        // Some tools (e.g. sandboxing tools) may also expect `fork`
+        // rather than `clone3`.
+        let want_clone3_pidfd = self.get_create_pidfd();
+
+        // If we fail to create a pidfd for any reason, this will
+        // stay as -1, which indicates an error.
+        let mut pidfd: pid_t = -1;
+
+        // Attempt to use the `clone3` syscall, which supports more arguments
+        // (in particular, the ability to create a pidfd). If this fails,
+        // we will fall through this block to a call to `fork()`
+        if want_clone3_pidfd && HAS_CLONE3.load(Ordering::Relaxed) {
+            let mut args = clone_args {
+                flags: CLONE_PIDFD,
+                pidfd: &mut pidfd as *mut pid_t as u64,
+                child_tid: 0,
+                parent_tid: 0,
+                exit_signal: libc::SIGCHLD as u64,
+                stack: 0,
+                stack_size: 0,
+                tls: 0,
+                set_tid: 0,
+                set_tid_size: 0,
+                cgroup: 0,
+            };
+
+            let args_ptr = &mut args as *mut clone_args;
+            let args_size = crate::mem::size_of::<clone_args>();
+
+            let res = cvt(clone3(args_ptr, args_size));
+            match res {
+                Ok(n) => return Ok((n as pid_t, pidfd)),
+                Err(e) => match e.raw_os_error() {
+                    // Multiple threads can race to execute this store,
+                    // but that's fine - that just means that multiple threads
+                    // will have tried and failed to execute the same syscall,
+                    // with no other side effects.
+                    Some(libc::ENOSYS) => HAS_CLONE3.store(false, Ordering::Relaxed),
+                    // Fallback to fork if `EPERM` is returned. (e.g. blocked by seccomp)
+                    Some(libc::EPERM) => {}
+                    _ => return Err(e),
+                },
+            }
+        }
+
+        // Generally, we just call `fork`. If we get here after wanting `clone3`,
+        // then the syscall does not exist or we do not have permission to call it.
+        cvt(libc::fork()).map(|res| (res, pidfd))
+    }
+
+    // 执行二进制文件,值得注意的是，调用execvp, 函数将不再返回，从而导致父进程已经申请的内存及
+    // 文件描述符资源会错误的被处理，因此，这个函数整体的安全规则仍然与C语言调用execvp的规则一致，
+    // RUST的安全规则在此处起不到更大的帮助
+    unsafe fn do_exec(
+        &mut self,
+        stdio: ChildPipes,
+        maybe_envp: Option<&CStringArray>,
+    ) -> Result<!, io::Error> {
+        use crate::sys::{self, cvt_r};
+
+        //用dup2系统调用设置本进程的标准输入/输出/错误
+        if let Some(fd) = stdio.stdin.fd() {
+            cvt_r(|| libc::dup2(fd, libc::STDIN_FILENO))?;
+        }
+        if let Some(fd) = stdio.stdout.fd() {
+            cvt_r(|| libc::dup2(fd, libc::STDOUT_FILENO))?;
+        }
+        if let Some(fd) = stdio.stderr.fd() {
+            cvt_r(|| libc::dup2(fd, libc::STDERR_FILENO))?;
+        }
+
+        //设置进程其他参数，具体请参考操作系统的编程书籍
+        {
+            if let Some(_g) = self.get_groups() {
+                cvt(libc::setgroups(_g.len().try_into().unwrap(), _g.as_ptr()))?;
+            }
+            if let Some(u) = self.get_gid() {
+                cvt(libc::setgid(u as gid_t))?;
+            }
+            if let Some(u) = self.get_uid() {
+                if libc::getuid() == 0 && self.get_groups().is_none() {
+                    cvt(libc::setgroups(0, ptr::null()))?;
+                }
+                cvt(libc::setuid(u as uid_t))?;
+            }
+        }
+        if let Some(ref cwd) = *self.get_cwd() {
+            cvt(libc::chdir(cwd.as_ptr()))?;
+        }
+
+        if let Some(pgroup) = self.get_pgroup() {
+            cvt(libc::setpgid(0, pgroup))?;
+        }
+
+        {
+            //对进程接收的信号进行设置
+            use crate::mem::MaybeUninit;
+            //注意这里用MaybeUninit申请了一个栈变量，后继需要给C函数使用
+            let mut set = MaybeUninit::<libc::sigset_t>::uninit();
+            cvt(sigemptyset(set.as_mut_ptr()))?;
+            cvt(libc::pthread_sigmask(libc::SIG_SETMASK, set.as_ptr(), ptr::null_mut()))?;
+
+            {
+                let ret = sys::signal(libc::SIGPIPE, libc::SIG_DFL);
+                if ret == libc::SIG_ERR {
+                    return Err(io::Error::last_os_error());
+                }
+            }
+        }
+
+        //用于在执行二进制之前做些其他的操作,如统计信息和log日志之类
+        //考虑很完善
+        for callback in self.get_closures().iter_mut() {
+            callback()?;
+        }
+
+        //以下用于在exec出错的时候恢复环境变量,这个地方是体现RUST优越性的地方
+        //请细心体会以下下面利用生命周期的错误处理方式
+        let mut _reset = None;
+        if let Some(envp) = maybe_envp {
+            struct Reset(*const *const libc::c_char);
+
+            impl Drop for Reset {
+                fn drop(&mut self) {
+                    unsafe {
+                        *sys::os::environ() = self.0;
+                    }
+                }
+            }
+
+            _reset = Some(Reset(*sys::os::environ()));
+            *sys::os::environ() = envp.as_ptr();
+        }
+
+        //调用execvp执行二进制文件
+        libc::execvp(self.get_program_cstr().as_ptr(), self.get_argv().as_ptr());
+        Err(io::Error::last_os_error())
+    }
+}
+```
+
+RUST标准库中操作系统无关的进程管理结构及实现：
+```rust
+use crate::sys::process as imp;
+// Child用来保存创建的子进程的信息
+pub struct Child {
+    //系统分配的子进程的标识句柄
+    pub(crate) handle: imp::Process,
+
+    //子进程标准输入句柄,这里实际上是保存向子进程写输入的文件
+    pub stdin: Option<ChildStdin>,
+
+    //子进程标准输出句柄,这里实际上是保存从子进程读输出的文件
+    pub stdout: Option<ChildStdout>,
+
+    //子进程标准错误句柄,实际上是从子进程读错误的文件
+    pub stderr: Option<ChildStderr>,
+}
+
+pub struct ChildStdin {
+    //见操作系统相关部分代码
+    inner: AnonPipe,
+}
+pub struct ChildStdout {
+    inner: AnonPipe,
+}
+pub struct ChildStderr {
+    inner: AnonPipe,
+}
+
+//Command封装了所有进程管理的API
+pub struct Command {
+    inner: imp::Command,
+}
+impl Command {
+    //输入进程的二进制可执行文件的路径及名称，
+    pub fn new<S: AsRef<OsStr>>(program: S) -> Command {
+        Command { inner: imp::Command::new(program.as_ref()) }
+    }
+
+    //输入一个进程命令的参数
+    pub fn arg<S: AsRef<OsStr>>(&mut self, arg: S) -> &mut Command {
+        self.inner.arg(arg.as_ref());
+        self
+    }
+
+    //输入若干进程命令的参数
+    pub fn args<I, S>(&mut self, args: I) -> &mut Command
+    where
+        I: IntoIterator<Item = S>,
+        S: AsRef<OsStr>,
+    {
+        for arg in args {
+            self.arg(arg.as_ref());
+        }
+        self
+    }
+
+    //针对进程插入或设置一个环境参数
+    pub fn env<K, V>(&mut self, key: K, val: V) -> &mut Command
+    where
+        K: AsRef<OsStr>,
+        V: AsRef<OsStr>,
+    {
+        self.inner.env_mut().set(key.as_ref(), val.as_ref());
+        self
+    }
+
+    //插入或设置若干个环境参数
+    pub fn envs<I, K, V>(&mut self, vars: I) -> &mut Command
+    where
+        I: IntoIterator<Item = (K, V)>,
+        K: AsRef<OsStr>,
+        V: AsRef<OsStr>,
+    {
+        for (ref key, ref val) in vars {
+            self.inner.env_mut().set(key.as_ref(), val.as_ref());
+        }
+        self
+    }
+
+    //清除一个环境参数
+    pub fn env_remove<K: AsRef<OsStr>>(&mut self, key: K) -> &mut Command {
+        self.inner.env_mut().remove(key.as_ref());
+        self
+    }
+
+    //清除所有环境参数
+    pub fn env_clear(&mut self) -> &mut Command {
+        self.inner.env_mut().clear();
+        self
+    }
+
+    //获取当前目录
+    pub fn current_dir<P: AsRef<Path>>(&mut self, dir: P) -> &mut Command {
+        self.inner.cwd(dir.as_ref().as_ref());
+        self
+    }
+
+    //配置标准输入
+    pub fn stdin<T: Into<Stdio>>(&mut self, cfg: T) -> &mut Command {
+        self.inner.stdin(cfg.into().0);
+        self
+    }
+
+    //配置标准输出
+    pub fn stdout<T: Into<Stdio>>(&mut self, cfg: T) -> &mut Command {
+        self.inner.stdout(cfg.into().0);
+        self
+    }
+    
+    //配置标准错误
+    pub fn stderr<T: Into<Stdio>>(&mut self, cfg: T) -> &mut Command {
+        self.inner.stderr(cfg.into().0);
+        self
+    }
+
+    //正式按照Command的参数创建进程
+    pub fn spawn(&mut self) -> io::Result<Child> {
+        self.inner.spawn(imp::Stdio::Inherit, true).map(Child::from_inner)
+    }
+
+    //创建子进程，并等待子进程结束,返回Output结构变量
+    pub fn output(&mut self) -> io::Result<Output> {
+        self.inner
+            .spawn(imp::Stdio::MakePipe, false)
+            .map(Child::from_inner)
+            .and_then(|p| p.wait_with_output())
+    }
+
+    //创建子进程，等待进程结束，返回进程退出码
+    pub fn status(&mut self) -> io::Result<ExitStatus> {
+        self.inner
+            .spawn(imp::Stdio::Inherit, true)
+            .map(Child::from_inner)
+            .and_then(|mut p| p.wait())
+    }
+
+    ...    
+}
+
+//进程命令的参数集合
+pub struct CommandArgs<'a> {
+    inner: imp::CommandArgs<'a>,
+}
+
+//保存子进程结束后的输出
+pub struct Output {
+    //子进程退出的返回码
+    pub status: ExitStatus,
+    //子进程的标准输出输出的内容
+    pub stdout: Vec<u8>,
+    //子进程标准错误输出的内容
+    pub stderr: Vec<u8>,
+}
+
+//标准输入输出的类型结构
+pub struct Stdio(imp::Stdio);
+
+impl Stdio {
+    //创建一个管道的标准输入输出
+    pub fn piped() -> Stdio {
+        Stdio(imp::Stdio::MakePipe)
+    }
+    //继承父进程
+    pub fn inherit() -> Stdio {
+        Stdio(imp::Stdio::Inherit)
+    }
+
+    //使用/dev/null作为进程标准输入输出
+    pub fn null() -> Stdio {
+        Stdio(imp::Stdio::Null)
+    }
+}
+
+//对子进程的API
+impl Child {
+    //杀掉子进程
+    pub fn kill(&mut self) -> io::Result<()> {
+        self.handle.kill()
+    }
+
+    //获取子进程的id值
+    pub fn id(&self) -> u32 {
+        self.handle.id()
+    }
+
+    //等待子进程结束，需要提前释放子进程的标准输入，否则子进程
+    //可能不会退出
+    pub fn wait(&mut self) -> io::Result<ExitStatus> {
+        drop(self.stdin.take());
+        self.handle.wait().map(ExitStatus)
+    }
+
+
+    //尝试等子进程退出
+    pub fn try_wait(&mut self) -> io::Result<Option<ExitStatus>> {
+        Ok(self.handle.try_wait()?.map(ExitStatus))
+    }
+
+    //等待子进程退出并获取所有输出
+    pub fn wait_with_output(mut self) -> io::Result<Output> {
+        //需要先关闭子进程的标准输入
+        drop(self.stdin.take());
+
+        //申请缓存
+        let (mut stdout, mut stderr) = (Vec::new(), Vec::new());
+        match (self.stdout.take(), self.stderr.take()) {
+            (None, None) => {}
+
+            (Some(mut out), None) => {
+                //读子进程标准输出到缓存
+                let res = out.read_to_end(&mut stdout);
+                res.unwrap();
+            }
+            (None, Some(mut err)) => {
+                //读标准错误到缓存
+                let res = err.read_to_end(&mut stderr);
+                res.unwrap();
+            }
+            (Some(out), Some(err)) => {
+                //读两个，此函数应该专门为这个目的做的设计
+                let res = read2(out.inner, &mut stdout, err.inner, &mut stderr);
+                res.unwrap();
+            }
+        }
+
+        //等待子进程结束
+        let status = self.wait()?;
+        //创建Output返回
+        Ok(Output { status, stdout, stderr })
+    }
+}
+//从进程退出并返回一个值，父进程会获得这个值
+pub fn exit(code: i32) -> ! {
+    crate::rt::cleanup();
+    crate::sys::os::exit(code)
+}
+
+//异常退出，与exit相比较，不会处理资源释放操作
+pub fn abort() -> ! {
+    crate::sys::abort_internal();
+}
+```
+不熟悉操作系统的进程操作，基本就没有办法理解进程管理，因此，任何系统语言最关键的仍然是对操作系统系统调用的理解，而操作系统调用又离不开C语言的理解。所以, RUST的标准库最适合学习的是C程序员。
+
+# 并发编程相关类型结构代码分析
+并发编程主要包括线程及线程间通信内容。  
+因为并发编程是各种语言教材的重点部分，所以，对于基础概念，本节不多赘述。同时，为了代码理解的方便，本节将先从各种锁结构的代码分析开始。    
+本节将先将与操作系统相关的各种锁的代码分析完毕，再在这个基础上分析RUST在这些锁的基础上实现的具有语言特点的各种临界区类型。   
+
+## linux的各种锁机制的实现  
+代码路径： library/std/src/sys/unix/locks/*.rs     
+          library/std/src/sys/unix/futex.rs     
+### 锁的基础设施FUTEX代码分析
+FUTEX是一种高效率的互斥机制，其本质是将原先分配给内核的部分锁处理代码转移到用户态处理。   
+所有的临界区锁保护实际上是基于一个原子变量的检测及赋值，当这个原子变量处于一个范围时，允许代码执行，否则，就进入等待队列。当处于临界区的代码执行完毕后，会恢复原子变量唤醒等待队列等待的线程或进程。   
+传统上，对锁的原子变量的检测是放在内核态的，内核检测及修改原子变量并完成等待阻塞操作或唤醒操作。这显然是一种效率很低的做法，因为大部分时候临界区是不会发生冲突的。每次检测都执行一次内核态与用户态的切换没有必要。因此，诞生了将原子变量检测与赋值放在用户态完成的思路。      
+这个思路需要完成的需求整体如下：
+1. 用户态声明一个原子变量作为能否进入临界区的锁。如果该值被设置为某值，代表不能进入临界区，其他值代表可以进入临界区。
+2. 访问临界区的线程或进程修改原子变量表示要进入临界区，然后探测原子变量，看是否能够进入，能够进入则执行临界区访问
+3. 不能进入则调用futex的系统调用进入内核，内核会重新做原子变量判断并决定是否进入等待，这个过程是不可被其他线程打断的。
+4. 位于临界区的线程或进程执行完毕临界区代码后，在用户态修改原子变量，并唤醒一个或所有等待的进程或线程
+5. 可以满足跨进程
+   
+futex即是满足这个需求的设计。 显然，传统的锁机制如pthread_mutex可以用futex方案重新设计。所以futex实际上是作为传统锁机制的基础设施存在。但对其做了解对于系统级编程仍然是有必要的。   
+
+unix家族futex的RUST的界面如下：
+```rust
+pub fn futex_wait(futex: &AtomicI32, expected: i32, timeout: Option<Duration>) -> bool {
+    use super::time::Timespec;
+    use crate::ptr::null;
+    use crate::sync::atomic::Ordering::Relaxed;
+
+    // 计算超时
+    let timespec =
+        timeout.and_then(|d| Some(Timespec::now(libc::CLOCK_MONOTONIC).checked_add_duration(&d)?));
+
+    loop {
+        // 仅当原子变量是期待的值的时候才进入等待
+        if futex.load(Relaxed) != expected {
+            return true;
+        }
+
+        // 以下说明，RUST仅仅支持线程间的同步, 具体的系统调用请参考man手册
+        let r = unsafe {
+            libc::syscall(
+                libc::SYS_futex,
+                futex as *const AtomicI32,
+                //FUTEX_PRIVATE_FLAG说明仅支持本进程线程间的futex
+                libc::FUTEX_WAIT_BITSET | libc::FUTEX_PRIVATE_FLAG,
+                //传入的futex是这个值时就阻塞
+                expected,
+                timespec.as_ref().map_or(null(), |t| &t.t as *const libc::timespec),
+                null::<u32>(), // This argument is unused for FUTEX_WAIT_BITSET.
+                !0u32,         // A full bitmask, to make it behave like a regular FUTEX_WAIT.
+            )
+        };
+
+        //错误处理
+        match (r < 0).then(super::os::errno) {
+            Some(libc::ETIMEDOUT) => return false,
+            Some(libc::EINTR) => continue,
+            _ => return true,
+        }
+    }
+}
+
+//唤醒一个等待futex的执行者
+pub fn futex_wake(futex: &AtomicI32) -> bool {
+    unsafe {
+        libc::syscall(
+            libc::SYS_futex,
+            futex as *const AtomicI32,
+            libc::FUTEX_WAKE | libc::FUTEX_PRIVATE_FLAG,
+            1,
+        ) > 0
+    }
+}
+
+/// 唤醒所有等待futex的所有者.
+pub fn futex_wake_all(futex: &AtomicI32) {
+    unsafe {
+        libc::syscall(
+            libc::SYS_futex,
+            futex as *const AtomicI32,
+            libc::FUTEX_WAKE | libc::FUTEX_PRIVATE_FLAG,
+            i32::MAX,
+        );
+    }
+}
+```
+FUTEX是一个让人惊讶的特性，惊讶之处在于为什么如此之晚这一特性才被实现。
+### Mutex源代码分析
+Mutex作为传统的临界区保护机制，在linux上，RUST利用futex重新实现了Mutex库而没有使用pthread_mutex_t。
+
+```rust
+pub struct Mutex {
+    /// 0: unlocked
+    /// 1: locked, no other threads waiting
+    /// 2: locked, and other threads waiting (contended)
+    /// 用作锁判断的原始变量,值见上面英文注释
+    futex: AtomicI32,
+}
+
+impl Mutex {
+    pub const fn new() -> Self {
+        //初始化为不加锁
+        Self { futex: AtomicI32::new(0) }
+    }
+
+    pub unsafe fn init(&mut self) {}
+
+    pub unsafe fn destroy(&self) {}
+
+    //如果临界区操作非常快，可以用try_lock, 获取到锁后
+    //即可快速完成操作，作为整体不进入内核的方案。
+    //try_lock如果返回false，需要调用lock等待锁被打开
+    pub unsafe fn try_lock(&self) -> bool {
+        //利用原子操作试图加锁，如果futex不为0,会失败
+        //如果成功，此时还没有其他线程进入临界区
+        self.futex.compare_exchange(0, 1, Acquire, Relaxed).is_ok()
+    }
+
+    //如果临界区操作耗时长，则应该直接调用这个代码，不使用try_lock
+    pub unsafe fn lock(&self) {
+        if self.futex.compare_exchange(0, 1, Acquire, Relaxed).is_err() {
+            //如果失败，说明已经由其他线程占有了锁，本线程需要等待
+            self.lock_contended();
+        }
+    }
+
+    //执行后会等待其他线程临界区操作结束
+    fn lock_contended(&self) {
+        // 这里处理另一个线程并不操作临界区，或者临界区操作非常快的情况
+        let mut state = self.spin();
+
+        // 自旋等待后，如果锁已经打开，获取锁 
+        if state == 0 {
+            match self.futex.compare_exchange(0, 1, Acquire, Relaxed) {
+                Ok(_) => return, // Locked!
+                Err(s) => state = s,
+            }
+        }
+
+        //临界区操作时间长，需要调用系统内核进入等待状态
+        loop {
+            // 如果没有其他线程，更新futex为2，表示临界区操作很长
+            // 有线程需要被唤醒
+            if state != 2 && self.futex.swap(2, Acquire) == 0 {
+                // 获取到了锁，可以操作临界区了
+                return;
+            }
+
+            // 如果state是2，那需要等待正在处理临界区的线程释放锁.
+            // 如果futex是2，则阻塞
+            futex_wait(&self.futex, 2, None);
+
+            // 退出后仍然需要判断是否
+            state = self.spin();
+        }
+    }
+
+    // 在临界区操作非常快的情况下，不进入操作系统内核的解决方案 
+    fn spin(&self) -> i32 {
+        let mut spin = 100;
+        loop {
+            // 读取原子变量
+            let state = self.futex.load(Relaxed);
+
+            // 如果锁已开，或者明确的进入临界区的指示,立刻退出循环
+            if state != 1 || spin == 0 {
+                return state;
+            }
+
+            //做个CPU自旋
+            crate::hint::spin_loop();
+            spin -= 1;
+        }
+    }
+
+    //解锁，lock调用后及try_lock调用返回为真时，需要调用这个函数。
+    pub unsafe fn unlock(&self) {
+        if self.futex.swap(0, Release) == 2 {
+            // 如果是2，说明有线程通过操作系统内核等待，需要wake
+            self.wake();
+        }
+    }
+
+    #[cold]
+    fn wake(&self) {
+        //通知操作系统内核，唤醒一个线程
+        futex_wake(&self.futex);
+    }
+}
+```
+
+### Convar分析
+RUST标准库的条件变量Condvar解决方案：  
+条件变量本身是一种信号机制， 由A线程向B线程通知事件发生。  
+条件变量需要与一个Mutex的变量配合，来完成包含条件变量操作的临界区方案。
+```rust
+pub struct Condvar {
+    // 本身是一个原子变量，值的变化表示条件变化
+    futex: AtomicI32,
+}
+
+impl Condvar {
+    //初始化
+    pub const fn new() -> Self {
+        Self { futex: AtomicI32::new(0) }
+    }
+
+    pub unsafe fn init(&mut self) {}
+
+    pub unsafe fn destroy(&self) {}
+
+
+    //通知一个线程条件已经变化，调用此函数前，应该对关联
+    //mutex加锁，调用后，应释放锁
+    pub unsafe fn notify_one(&self) {
+        //简单的改变值，表示条件已经变化
+        self.futex.fetch_add(1, Relaxed);
+        //用futex操作系统调用完成通知,仅唤醒一个线程
+        futex_wake(&self.futex);
+    }
+
+    //调用前应对关联mutex加锁，调用后应释放锁
+    pub unsafe fn notify_all(&self) {
+        self.futex.fetch_add(1, Relaxed);
+        //唤醒所有等待线程
+        futex_wake_all(&self.futex);
+    }
+
+    pub unsafe fn wait(&self, mutex: &Mutex) {
+        self.wait_optional_timeout(mutex, None);
+    }
+
+    pub unsafe fn wait_timeout(&self, mutex: &Mutex, timeout: Duration) -> bool {
+        self.wait_optional_timeout(mutex, Some(timeout))
+    }
+
+    //等待条件变化,调用此函数前，应该将关联mutex上锁保护self.futex及其他临界区的操作,
+    //调用后，应释放锁
+    unsafe fn wait_optional_timeout(&self, mutex: &Mutex, timeout: Option<Duration>) -> bool {
+        // 外部应该先将mutex上锁，防止其他线程改变self.futex，此处获取当前值 
+        let futex_value = self.futex.load(Relaxed);
+
+        // 释放锁。 
+        mutex.unlock();
+
+        // 如果条件不变，则进入等待 
+        let r = futex_wait(&self.futex, futex_value, timeout);
+
+        // 条件已经变化，加锁保护self.futex的值及其他的临界区的操作 
+        mutex.lock();
+
+        r
+    }
+}
+```
+### RWLock源代码分析
+读写锁适用的场景如下：    
+临界区允许多个读同时存在，但读写不能同时存在。临界区读的时候要设置锁处于读锁，此时允许读不允许写。如果有线程要写，需要等待。
+临界区写的时候要设置写锁，此时和正常的锁是一致的，所有其他试图访问临界区的线程都需要等待。
+```rust
+pub struct RwLock {
+    // 从0到30位用来作为锁的计数:
+    //   0: Unlocked
+    //   1..=0x3FFF_FFFE: 作为读线程的计数，并作为读锁
+    //   0x3FFF_FFFF: 写锁
+    // Bit 30: 有其他读线程在等待，此时应该是写锁.
+    // Bit 31: 有其他写线程在等待，此时读锁及写锁都有可能.
+    state: AtomicI32,
+    // 利用这个值的变化做信号的通知，类似与CondVar的操作.
+    writer_notify: AtomicI32,
+}
+
+const READ_LOCKED: i32 = 1;
+const MASK: i32 = (1 << 30) - 1;
+const WRITE_LOCKED: i32 = MASK;
+const MAX_READERS: i32 = MASK - 1;
+const READERS_WAITING: i32 = 1 << 30;
+const WRITERS_WAITING: i32 = 1 << 31;
+
+fn is_unlocked(state: i32) -> bool {
+    state & MASK == 0
+}
+
+fn is_write_locked(state: i32) -> bool {
+    state & MASK == WRITE_LOCKED
+}
+
+fn has_readers_waiting(state: i32) -> bool {
+    state & READERS_WAITING != 0
+}
+
+fn has_writers_waiting(state: i32) -> bool {
+    state & WRITERS_WAITING != 0
+}
+
+//这个函数用来判断是否可以进入临界区读
+fn is_read_lockable(state: i32) -> bool {
+    // 只有在读线程的数量小于最大值，且没有其他线程在等着读或等着写，此时可以更新读锁
+    // 否则应该进入读等待队列，
+    // 只要有线程等着写，要后继的读线程就需要阻塞在读锁中
+    state & MASK < MAX_READERS && !has_readers_waiting(state) && !has_writers_waiting(state)
+}
+
+fn has_reached_max_readers(state: i32) -> bool {
+    state & MASK == MAX_READERS
+}
+
+impl RwLock {
+    pub const fn new() -> Self {
+        Self { state: AtomicI32::new(0), writer_notify: AtomicI32::new(0) }
+    }
+
+    pub unsafe fn destroy(&self) {}
+
+    //试图读，一般如果需要做读锁，应直接调用read，此函数用作不希望阻塞的情况
+    pub unsafe fn try_read(&self) -> bool {
+        // 如果判断可读，则对读锁加1,然后进入临界区做读操作，如果失败，可以调用read等待读
+        self.state
+            .fetch_update(Acquire, Relaxed, |s| is_read_lockable(s).then(|| s + READ_LOCKED))
+            .is_ok()
+    }
+
+    //获取读锁或阻塞等待到能获取
+    pub unsafe fn read(&self) {
+        let state = self.state.load(Relaxed);
+        if !is_read_lockable(state)
+            //此时更新读锁失败，证明锁已经被改变
+            || self
+                .state
+                .compare_exchange_weak(state, state + READ_LOCKED, Acquire, Relaxed)
+                .is_err()
+        {
+            //复杂的读锁获取或者进入等待
+            self.read_contended();
+        }
+    }
+
+    //解锁读
+    pub unsafe fn read_unlock(&self) {
+        //更新读锁
+        let state = self.state.fetch_sub(READ_LOCKED, Release) - READ_LOCKED;
+
+        // 除非有写线程在等待，否则此时不应该有线程在等待读. 写线程优先于读
+        debug_assert!(!has_readers_waiting(state) || has_writers_waiting(state));
+
+        // 如果有线程等着写，那就做唤醒操作，解锁读时，一定是有等着写的线程才能导致读线程被阻塞.
+        if is_unlocked(state) && has_writers_waiting(state) {
+            self.wake_writer_or_readers(state);
+        }
+    }
+
+    //读线程阻塞处理
+    fn read_contended(&self) {
+        //自旋读，主要处理同时读的读锁更细冲突导致的不一致情况
+        let mut state = self.spin_read();
+
+        loop {
+            // 再次尝试获取读锁
+            if is_read_lockable(state) {
+                match self.state.compare_exchange_weak(state, state + READ_LOCKED, Acquire, Relaxed)
+                {
+                    //成功
+                    Ok(_) => return, // Locked!
+                    //如果是读锁不一致，那就再次尝试
+                    Err(s) => {
+                        state = s;
+                        continue;
+                    }
+                }
+            }
+
+            // 如果达到最大的读线程数目, 可能是有线程忘记解锁 
+            if has_reached_max_readers(state) {
+                panic!("too many active read locks on RwLock");
+            }
+
+            // 确保等待读的标志已经被设置.
+            if !has_readers_waiting(state) {
+                if let Err(s) =
+                    self.state.compare_exchange(state, state | READERS_WAITING, Relaxed, Relaxed)
+                {
+                    //这里，上段的is_read_lockable(state)执行是失败的，所以不会有读锁被增加的问题
+                    //失败说明读锁又在被并发修改，所以此时可能可以读了，要再次尝试
+                    state = s;
+                    continue;
+                }
+            }
+
+            // 终于可以阻塞了，如果此时state没变，就会阻塞 
+            futex_wait(&self.state, state | READERS_WAITING, None);
+
+            // 此处或者是阻塞失败，或者被唤醒，两者都要重新看是否能够获得锁或者继续阻塞 
+            state = self.spin_read();
+        }
+    }
+
+    // 试图读，应该在不想阻塞的情况下调用, 此方法返回成功代表已经获取了写锁
+    pub unsafe fn try_write(&self) -> bool {
+        self.state
+            //读的时候必须处于Unlocked状态
+            .fetch_update(Acquire, Relaxed, |s| is_unlocked(s).then(|| s + WRITE_LOCKED))
+            .is_ok()
+    }
+
+    //此函数用于获取写锁或阻塞等待到能获取
+    pub unsafe fn write(&self) {
+        if self.state.compare_exchange_weak(0, WRITE_LOCKED, Acquire, Relaxed).is_err() {
+            //进入更复杂的锁获取或等待
+            self.write_contended();
+        }
+    }
+
+    //解锁写
+    pub unsafe fn write_unlock(&self) {
+        //更新值
+        let state = self.state.fetch_sub(WRITE_LOCKED, Release) - WRITE_LOCKED;
+
+        //还没有唤醒，应该没有其他线程冲突
+        debug_assert!(is_unlocked(state));
+
+        //有等待线程的话，就唤醒
+        if has_writers_waiting(state) || has_readers_waiting(state) {
+            self.wake_writer_or_readers(state);
+        }
+    }
+
+    //进入写等待队列的处理
+    fn write_contended(&self) {
+        let mut state = self.spin_write();
+
+        //假定当前没有线程等待写, 后继处理如果更新，
+        //则说明有两个以上的线程在竞争获取写锁，所以
+        //设置state时需要同时更新写等待标志位
+        let mut other_writers_waiting = 0;
+
+        loop {
+            //  如果unlocked，那试图获取写锁
+            if is_unlocked(state) {
+                match self.state.compare_exchange_weak(
+                    state,
+                    state | WRITE_LOCKED | other_writers_waiting,
+                    Acquire,
+                    Relaxed,
+                ) {
+                    //获取成功
+                    Ok(_) => return, // Locked!
+                    Err(s) => {
+                        //获取失败，再次循环
+                        state = s;
+                        continue;
+                    }
+                }
+            }
+
+            // 不为unlock，进入写等待队列并更新写等待标志
+            if !has_writers_waiting(state) {
+                if let Err(s) =
+                    self.state.compare_exchange(state, state | WRITERS_WAITING, Relaxed, Relaxed)
+                {
+                    //更新失败，说明有同时访问者，需要重新试图获取写锁
+                    state = s;
+                    continue;
+                }
+            }
+
+            // 不为unlock，且写等待标志位已经设置
+            // 已经有其他写线程在等待.
+            other_writers_waiting = WRITERS_WAITING;
+
+            // 获取写锁解除的通知变量
+            let seq = self.writer_notify.load(Acquire);
+
+            let s = self.state.load(Relaxed);
+            //这个地方错了，本意估计是is_unlocked(s), state此时已经确定
+            //为lock了(注:作者在github提交了issue，目前此错误已经被修改)
+            if is_unlocked(state) || !has_writers_waiting(s) {
+                //这里如果又有变化，那么再次试图获得写锁
+                state = s;
+                continue;
+            }
+
+            // 阻塞，等待解锁通知 
+            futex_wait(&self.writer_notify, seq, None);
+
+            // 失败或者唤醒，重新再次试图获取写锁 
+            state = self.spin_write();
+        }
+    }
+
+    /// 唤醒等待线程
+    fn wake_writer_or_readers(&self, mut state: i32) {
+        assert!(is_unlocked(state));
+
+        // 仅有写现程在等.
+        if state == WRITERS_WAITING {
+            //改变写等待标记，此时可能会形成一个冲突，所以write_contended会等待之前再做
+            //一次判断
+            match self.state.compare_exchange(state, 0, Relaxed, Relaxed) {
+                Ok(_) => {
+                    self.wake_writer();
+                    return;
+                }
+                Err(s) => {
+                    // 有冲突，更新state，此时只有可能是读线程在更新.
+                    state = s;
+                }
+            }
+        }
+
+        // 即有读线程在等，也有写线程在等
+        if state == READERS_WAITING + WRITERS_WAITING {
+            //清写等待标志，此时0到30位肯定是0
+            if self.state.compare_exchange(state, READERS_WAITING, Relaxed, Relaxed).is_err() {
+                // 不应该出错，如果出错，那锁状态已经不对，无能为力了，而且不知道错误在哪里.
+                // 感觉还是应该panic一下
+                return;
+            }
+            //唤醒等待的写线程
+            if self.wake_writer() {
+                return;
+            }
+            // 执行到这里，证明没有写线程在等，那接下来处理读线程。此时直接修改state就可以，因为不可能有其他
+            // 线程修改state了
+            state = READERS_WAITING;
+        }
+
+        // 唤醒等待的读线程 
+        if state == READERS_WAITING {
+            if self.state.compare_exchange(state, 0, Relaxed, Relaxed).is_ok() {
+                //唤醒所有读，这里读线程被唤醒后，仍然可能会有写线程插入，但不会出现问题
+                futex_wake_all(&self.state);
+            }
+        }
+    }
+
+    /// 唤醒写线程
+    fn wake_writer(&self) -> bool {
+        //类似CondVar的处理方式，修改唤醒标志，然后唤醒即可
+        self.writer_notify.fetch_add(1, Release);
+        futex_wake(&self.writer_notify)
+    }
+
+    /// 自旋，处理一些在很短的时间内的状态修改使得锁可以获取，规避进入内核.
+    fn spin_until(&self, f: impl Fn(i32) -> bool) -> i32 {
+        let mut spin = 100; // Chosen by fair dice roll.
+        loop {
+            let state = self.state.load(Relaxed);
+            //满足函数要求或自旋时间到，退出
+            if f(state) || spin == 0 {
+                return state;
+            }
+            crate::hint::spin_loop();
+            spin -= 1;
+        }
+    }
+
+    fn spin_write(&self) -> i32 {
+        // 如果为unlock状态或者已经明确有写线程在等待并做了写等待置位.
+        self.spin_until(|state| is_unlocked(state) || has_writers_waiting(state))
+    }
+
+    fn spin_read(&self) -> i32 {
+        // 如果没有写锁，或者写等待或者读等待已经被置位 
+        self.spin_until(|state| {
+            !is_write_locked(state) || has_readers_waiting(state) || has_writers_waiting(state)
+        })
+    }
+}
+
+```
+### 可重入的Mutex
+如果一个线程调用lock获取锁之后，允许其在临界区的代码又对该锁调用lock，这个锁是Reentrant mutex。用futex处理这种情况效率不高，因为需要多次进入内核获取线程信息。因此，使用已有的libc的pthread_mutex_t的机制.
+```rust
+pub struct ReentrantMutex {
+    //仅用来给libc使用
+    inner: UnsafeCell<libc::pthread_mutex_t>,
+}
+
+unsafe impl Send for ReentrantMutex {}
+unsafe impl Sync for ReentrantMutex {}
+
+impl ReentrantMutex {
+    //因为这个初始化没有完成可重入锁的设置，所以实际上没有初始化
+    //但因为libc的限制，必须要先创建变量才能后完成初始化，所以需要此关联函数
+    //调用此函数后，再调用init方法完成初始化
+    pub const unsafe fn uninitialized() -> ReentrantMutex {
+        ReentrantMutex { inner: UnsafeCell::new(libc::PTHREAD_MUTEX_INITIALIZER) }
+    }
+
+    //完成可重入锁的设置
+    pub unsafe fn init(&self) {
+        //栈中定义一块内存
+        let mut attr = MaybeUninit::<libc::pthread_mutexattr_t>::uninit();
+        //利用C函数做初始化，
+        cvt_nz(libc::pthread_mutexattr_init(attr.as_mut_ptr())).unwrap();
+        //创建类型变量
+        let attr = PthreadMutexAttr(&mut attr);
+        //设置attr属性
+        cvt_nz(libc::pthread_mutexattr_settype(attr.0.as_mut_ptr(), libc::PTHREAD_MUTEX_RECURSIVE))
+            .unwrap();
+        //完成初始化
+        cvt_nz(libc::pthread_mutex_init(self.inner.get(), attr.0.as_ptr())).unwrap();
+    }
+
+    //lock调用
+    pub unsafe fn lock(&self) {
+        //简单的调用libc函数
+        let result = libc::pthread_mutex_lock(self.inner.get());
+        debug_assert_eq!(result, 0);
+    }
+
+    //不想阻塞时的调用
+    pub unsafe fn try_lock(&self) -> bool {
+        //简单的调用libc
+        libc::pthread_mutex_trylock(self.inner.get()) == 0
+    }
+
+    //解锁
+    pub unsafe fn unlock(&self) {
+        let result = libc::pthread_mutex_unlock(self.inner.get());
+        debug_assert_eq!(result, 0);
+    }
+
+    //释放锁
+    pub unsafe fn destroy(&self) {
+        let result = libc::pthread_mutex_destroy(self.inner.get());
+        debug_assert_eq!(result, 0);
+    }
+}
+```
+
+## RUST的锁机制
+代码路径： library/std/src/sys_common/mutex.rs|condvar.rs|rwlock.rs
+### 适用于静态变量的锁
+因为所有权的定义，如果锁作为静态变量存在，则其初始化函数必须在编译期执行，即为const fn。静态锁主要用于保护静态变量形成的临界区。 
+
+静态Mutex结构代码如下：
+
+```rust
+//用于static变量
+pub struct StaticMutex(imp::Mutex);
+
+unsafe impl Sync for StaticMutex {}
+
+impl StaticMutex {
+    /// const 函数可以用于static变量赋值 
+    pub const fn new() -> Self {
+        Self(imp::Mutex::new())
+    }
+
+    //上锁后用锁的引用形成封装结构返回，StaticMutexGuard见下文分析
+    pub unsafe fn lock(&'static self) -> StaticMutexGuard {
+        self.0.lock();
+        StaticMutexGuard(&self.0)
+    }
+    //没有设计unlock方法
+}
+
+//此结构设计主要是充分利用RUST的编译器来简化解锁代码，
+//使用StaticMutexGuard后可以不必在考虑解锁这件事
+pub struct StaticMutexGuard(&'static imp::Mutex);
+
+impl Drop for StaticMutexGuard {
+    //生命周期终止时做unlock
+    fn drop(&mut self) {
+        unsafe {
+            self.0.unlock();
+        }
+    }
+}
+```
+对静态锁的支持仅限于StaticMutex
+#### 适用于静态变量的读写锁
+```rust
+pub struct StaticRwLock(imp::RwLock);
+
+impl StaticRwLock {
+    /// const fn以初始化静态读写锁.
+    pub const fn new() -> Self {
+        Self(imp::RwLock::new())
+    }
+
+    /// 返回
+    pub fn read(&'static self) -> StaticRwLockReadGuard {
+        unsafe { self.0.read() };
+        StaticRwLockReadGuard(&self.0)
+    }
+
+    pub fn write(&'static self) -> StaticRwLockWriteGuard {
+        unsafe { self.0.write() };
+        StaticRwLockWriteGuard(&self.0)
+    }
+}
+
+pub struct StaticRwLockReadGuard(&'static imp::RwLock);
+
+impl Drop for StaticRwLockReadGuard {
+    fn drop(&mut self) {
+        unsafe {
+            self.0.read_unlock();
+        }
+    }
+}
+
+pub struct StaticRwLockWriteGuard(&'static imp::RwLock);
+
+impl Drop for StaticRwLockWriteGuard {
+    fn drop(&mut self) {
+        unsafe {
+            self.0.write_unlock();
+        }
+    }
+}
+```
+### 适用于非静态变量的锁
+
+#### MovableMutex
+代码如下：
+```rust
+//imp::MoveableMutex在linux即imp::Mutex，其他系统基本也一样
+pub struct MovableMutex(imp::MovableMutex);
+
+unsafe impl Sync for MovableMutex {}
+
+impl MovableMutex {
+    /// 创建锁 
+    pub fn new() -> Self {
+        let mut mutex = imp::MovableMutex::from(imp::Mutex::new());
+        //需要调用init(), 这里区别与StaticMutex
+        unsafe { mutex.init() };
+        Self(mutex)
+    }
+
+    pub(super) fn raw(&self) -> &imp::Mutex {
+        &self.0
+    }
+
+    //获取锁
+    pub fn raw_lock(&self) {
+        unsafe { self.0.lock() }
+    }
+
+    //不希望阻塞获取锁
+    pub fn try_lock(&self) -> bool {
+        unsafe { self.0.try_lock() }
+    }
+
+    //释放锁
+    pub unsafe fn raw_unlock(&self) {
+        self.0.unlock()
+    }
+}
+
+impl Drop for MovableMutex {
+    fn drop(&mut self) {
+        //用pthread_mutex_t需要
+        unsafe { self.0.destroy() };
+    }
+}
+```
+
+#### 条件变量
+```rust
+//对Condvar的关联Mutex做check
+type CondvarCheck = <imp::MovableMutex as check::CondvarCheck>::Check;
+
+/// 对操作系统的Condvar做的封装.
+pub struct Condvar {
+    //就是imp::Condvar
+    inner: imp::MovableCondvar,
+    check: CondvarCheck,
+}
+
+impl Condvar {
+    /// 创建新的Condvar.
+    pub fn new() -> Self {
+        let mut c = imp::MovableCondvar::from(imp::Condvar::new());
+        unsafe { c.init() };
+        Self { inner: c, check: CondvarCheck::new() }
+    }
+
+    /// 发信号唤醒一个等待此Condvar的线程.
+    pub fn notify_one(&self) {
+        unsafe { self.inner.notify_one() };
+    }
+
+    /// 发信号唤醒所有等待此信号的线程.
+    pub fn notify_all(&self) {
+        unsafe { self.inner.notify_all() };
+    }
+
+    /// 等待信号.
+    pub unsafe fn wait(&self, mutex: &MovableMutex) {
+        //确保始终使用同一个关联Mutex
+        self.check.verify(mutex);
+        // 阻塞并等待信号
+        self.inner.wait(mutex.raw())
+    }
+
+    //超时等待
+    pub unsafe fn wait_timeout(&self, mutex: &MovableMutex, dur: Duration) -> bool {
+        self.check.verify(mutex);
+        self.inner.wait_timeout(mutex.raw(), dur)
+    }
+}
+
+impl Drop for Condvar {
+    fn drop(&mut self) {
+        unsafe { self.inner.destroy() };
+    }
+}
+
+```
+
+#### RWLock 
+```rust
+pub struct MovableRwLock(imp::MovableRwLock);
+
+impl MovableRwLock {
+    pub fn new() -> Self {
+        Self(imp::MovableRwLock::from(imp::RwLock::new()))
+    }
+
+    pub fn read(&self) {
+        unsafe { self.0.read() }
+    }
+
+    pub fn try_read(&self) -> bool {
+        unsafe { self.0.try_read() }
+    }
+
+    pub fn write(&self) {
+        unsafe { self.0.write() }
+    }
+
+    pub fn try_write(&self) -> bool {
+        unsafe { self.0.try_write() }
+    }
+
+    pub unsafe fn read_unlock(&self) {
+        self.0.read_unlock()
+    }
+
+    pub unsafe fn write_unlock(&self) {
+        self.0.write_unlock()
+    }
+}
+
+impl Drop for MovableRwLock {
+    fn drop(&mut self) {
+        unsafe { self.0.destroy() };
+    }
+}
+
+```
+## RUST中锁的杂项
+
+### 加锁返回的统一类型
+```rust
+//lock方法的返回结果
+pub type LockResult<Guard> = Result<Guard, PoisonError<Guard>>;
+//try_lock方法的返回结果
+pub type TryLockResult<Guard> = Result<Guard, TryLockError<Guard>>;
+
+//错误类型
+pub struct PoisonError<T> {
+    guard: T,
+}
+
+impl<T> PoisonError<T> {
+    //创建一个错误变量
+    pub fn new(guard: T) -> PoisonError<T> {
+        PoisonError { guard }
+    }
+
+    //从Error中获取导致错误的变量
+    pub fn into_inner(self) -> T {
+        self.guard
+    }
+
+    //获取导致错误变量的引用
+    pub fn get_ref(&self) -> &T {
+        &self.guard
+    }
+
+    //获取可变引用
+    pub fn get_mut(&mut self) -> &mut T {
+        &mut self.guard
+    }
+}
+
+//Mutex<T> try_lock错误返回
+pub enum TryLockError<T> {
+    //线程异常返回
+    Poisoned(PoisonError<T>),
+    //临界区已经被锁，需要阻塞
+    WouldBlock,
+}
+```
+
+### Poison状态
+如果一个线程在获取一个锁的期间发生了panic，则锁保护的临界区的数据已经不能认为是正确的。因为panic导致锁在一个未期望的代码位置解锁。此时，需要对锁标志一个状态，RUST名词称为锁处于Poison状态，并设计了Flag来表示这个状态。    
+代码如下：
+```rust
+// 用于标识线程在加锁的状态下panic退出
+pub struct Flag {
+    failed: AtomicBool,
+}
+
+impl Flag {
+    //初始的退出状态时候为假
+    pub const fn new() -> Flag {
+        Flag { failed: AtomicBool::new(false) }
+    }
+
+    //加锁的时候被调用，此时如果本线程已经panic，则需要返回错误
+    pub fn borrow(&self) -> LockResult<Guard> {
+        //获取本线程的panic状态, 相关部分在Thread一节会再解释
+        let ret = Guard { panicking: thread::panicking() };
+        //如果Flag已经是真，则返回Err并给出本线程状态，否则返回Ok
+        if self.get() { Err(PoisonError::new(ret)) } else { Ok(ret) }
+    }
+
+    //释放锁的时候被调用，如果本线程panic，则会更新Flag为true
+    pub fn done(&self, guard: &Guard) {
+        if !guard.panicking && thread::panicking() {
+            self.failed.store(true, Ordering::Relaxed);
+        }
+    }
+
+    //获得Flag的值
+    pub fn get(&self) -> bool {
+        self.failed.load(Ordering::Relaxed)
+    }
+}
+
+```
+## RUST的临界区变量实现
+代码路径: library/std/src/sync/*.rs
+### `Mutex<T>`的实现
+`Mutex<T>`是最典型的临界区变量。RUST的设计是使得`Mutex<T>`与其他的类型变量在使用中类似。代码中不必关注其的跨线程操作的安全性。这一设计思路实际在`RefCell<T>`, `Rc<T>`, `Arc<T>`等安全封装结构时是一脉相承的：   
+1. 设计一个基础类型结构，将要操作的真实类型变量封装在其内，并拥有其所有权，
+2. 设计一个借用类型结构，由基础类型结构的某一方法生成，在此方法中完成附加安全操作，如计数增加，加锁等。
+3. 借用类型结构实现解引用方法，返回真实类型变量的引用或可变引用，由此可以对真实变类型变量进行访问，修改操作
+4. 借用类型结构的drop方法会执行安全逆操作，如减少计数或解锁。
+
+`Mutex<T>`的设计如下：   
+1. 基本类型`Mutex<T>`，负责临界区的数据存储及Mutex锁     
+2. `MutexGuard<'a, T>`作为`Mutex<T>`的借用类型结构, lock()作为借用方法，返回`MutexGuard<T>`，可以直接对其解引用后获得内部变量的引用/可变引用，随后执行临界区数据操作及读写。生命周期结束后，`MutexGuard<T>`的drop会解锁操作，从而使得加锁解锁操作实际上代码不必关心。lock()本身完全可以等同于一个borrow()的调用。       
+3. `Mutex<T>`本身是一个内部可变型的类型, 实现多处共享且可修改     
+4. 线程panic时的Poison处理,使得其他语言极少关注的情况在RUST中自然得解。 
+
+```rust
+pub struct Mutex<T: ?Sized> {
+    //临界区的锁
+    inner: sys::MovableMutex,
+    //标识Mutex在线程panic时处于锁状态
+    poison: poison::Flag,
+    //临界区数据, Mutex本身是一个内部可变性的类型
+    data: UnsafeCell<T>,
+}
+
+unsafe impl<T: ?Sized + Send> Send for Mutex<T> {}
+unsafe impl<T: ?Sized + Send> Sync for Mutex<T> {}
+
+```
+
+用于`Mutex<T>`配合的借用封装类型结构`MutexGuard`如下：
+```rust
+//用于lock调用后的对原始变量的访问引用。并包含了poison用于在生命周期终结的时候
+//更新Mutex<T>的Flag
+pub struct MutexGuard<'a, T: ?Sized + 'a> {
+    lock: &'a Mutex<T>,
+    poison: poison::Guard,
+}
+
+//标识MutexGuard的当前线程状态
+pub struct Guard {
+    panicking: bool,
+}
+
+//支持函数
+pub fn map_result<T, U, F>(result: LockResult<T>, f: F) -> LockResult<U>
+where
+    F: FnOnce(T) -> U,
+{
+    match result {
+        Ok(t) => Ok(f(t)),
+        Err(PoisonError { guard }) => Err(PoisonError::new(f(guard))),
+    }
+}
+
+//MutexGuard创建关联函数
+impl<'mutex, T: ?Sized> MutexGuard<'mutex, T> {
+    unsafe fn new(lock: &'mutex Mutex<T>) -> LockResult<MutexGuard<'mutex, T>> {
+        //代码见上面的函数，这里，如果Mutex<T>的poison为假，即使本线程已经panic，也返回Ok类型
+        //因为不是在加锁时遇到panic，所以临界区数据还是好的。
+        poison::map_result(lock.poison.borrow(), |guard| MutexGuard { lock, poison: guard })
+    }
+}
+
+//deref，返回临界区数据的引用
+impl<T: ?Sized> Deref for MutexGuard<'_, T> {
+    type Target = T;
+
+    fn deref(&self) -> &T {
+        //利用UnsafeCell获得内部可变性
+        unsafe { &*self.lock.data.get() }
+    }
+}
+
+//返回临界区数据的可变引用
+impl<T: ?Sized> DerefMut for MutexGuard<'_, T> {
+    fn deref_mut(&mut self) -> &mut T {
+        unsafe { &mut *self.lock.data.get() }
+    }
+}
+
+//drop方法
+impl<T: ?Sized> Drop for MutexGuard<'_, T> {
+    fn drop(&mut self) {
+        unsafe {
+            //更新Mutex<T>的Flag,一般的，如果在上锁的状态下panic
+            //此方法会被调用，从而能更新poison为true
+            self.lock.poison.done(&self.poison);
+            //解锁
+            self.lock.inner.raw_unlock();
+        }
+    }
+}
+
+//获取Mutex
+pub fn guard_lock<'a, T: ?Sized>(guard: &MutexGuard<'a, T>) -> &'a sys::MovableMutex {
+    &guard.lock.inner
+}
+
+//获取线程panic状态
+pub fn guard_poison<'a, T: ?Sized>(guard: &MutexGuard<'a, T>) -> &'a poison::Flag {
+    &guard.lock.poison
+}
+
+```
+在`Mutex<T>`结构中，poison的更新一般在发生panic时，线程终结`MutexGuard<T>`时进行值的更新。因为poison的考虑，`Mutex<T>`的lock后返回的结构复杂。     
+
+`Mutex<T>`的代码分析如下：   
+```rust 
+//只能创建固定尺寸类型的临界区
+impl<T> Mutex<T> {
+    //对数据创建一个临界区
+    pub fn new(t: T) -> Mutex<T> {
+        Mutex {
+            //创建系统MovableMutex类型
+            inner: sys::MovableMutex::new(),
+            //poison为false
+            poison: poison::Flag::new(),
+            //必须用内部可变性类型
+            data: UnsafeCell::new(t),
+        }
+    }
+}
+
+impl<T: ?Sized> Mutex<T> {
+    // 获取锁，允许阻塞，返回guard结构用于访问临界区数据及处理锁的释放
+    pub fn lock(&self) -> LockResult<MutexGuard<'_, T>> {
+        unsafe {
+            //先做锁操作
+            self.inner.raw_lock();
+            //在MutexGuard的new中处理线程panic问题
+            MutexGuard::new(self)
+        }
+    }
+
+    //试图获取锁，不希望阻塞的时候调用
+    pub fn try_lock(&self) -> TryLockResult<MutexGuard<'_, T>> {
+        unsafe {
+            if self.inner.try_lock() {
+                //上锁成功，生成MutexGuard
+                Ok(MutexGuard::new(self)?)
+            } else {
+                //失败，提示应该阻塞
+                Err(TryLockError::WouldBlock)
+            }
+        }
+    }
+
+    //立即解锁，不希望等待guard生命周期终结，
+    pub fn unlock(guard: MutexGuard<'_, T>) {
+        drop(guard);
+    }
+
+    //是否有线程在panic时锁住了临界区
+    pub fn is_poisoned(&self) -> bool {
+        self.poison.get()
+    }
+
+    //消费Mutex<T>,并获取临界区数据,如果进入此方法内部
+    //证明没有锁存在。
+    pub fn into_inner(self) -> LockResult<T>
+    where
+        T: Sized,
+    {
+        //获取临界区数据
+        let data = self.data.into_inner();
+        //根据是否有线程在panic时加锁,
+        poison::map_result(self.poison.borrow(), |_| data)
+    }
+
+    //获取临界区数据的可变引用，此时应该保证没有锁存在，否则
+    //可能导致数据竞争。
+    pub fn get_mut(&mut self) -> LockResult<&mut T> {
+        let data = self.data.get_mut();
+        poison::map_result(self.poison.borrow(), |_| data)
+    }
+}
+
+```
+RUST的`Mutex<T>`几乎是极限简单化了临界区访问的代码，并使得使用`Mutex<T>`的程序员不必再熟悉锁的概念就能写出安全的代码。
+
+### `Condvar`实现分析
+Condvar在这里主要因为与其配合的成为了`MutexGuard<'a, T>`临界区变量，所以有针对性的处理。此处已经把Condvar与临界区数据做了关联。  
+
+```rust
+//仅仅是对操作系统的Condvar的一个封装
+pub struct Condvar {
+    inner: sys::Condvar,
+}
+
+impl Condvar {
+    
+    pub fn new() -> Condvar {
+        Condvar { inner: sys::Condvar::new() }
+    }
+
+    // 等待信号通知，并可能进入阻塞,因为用MutexGuard, 保证了必须有关联的Mutex，
+    // 且Mutex一定已经lock，且临界区数据包括在内，使得Condvar更易被理解及使用
+    pub fn wait<'a, T>(&self, guard: MutexGuard<'a, T>) -> LockResult<MutexGuard<'a, T>> {
+        let poisoned = unsafe {
+            //获取关联的imp::Mutex
+            let lock = mutex::guard_lock(&guard);
+            self.inner.wait(lock);
+            //获取Mutex的poison
+            mutex::guard_poison(&guard).get()
+        };
+        if poisoned { Err(PoisonError::new(guard)) } else { Ok(guard) }
+    }
+
+    //增值函数，在临界区数据满足某个条件一直等待信号
+    pub fn wait_while<'a, T, F>(
+        &self,
+        mut guard: MutexGuard<'a, T>,
+        mut condition: F,
+    ) -> LockResult<MutexGuard<'a, T>>
+    where
+        F: FnMut(&mut T) -> bool,
+    {
+        while condition(&mut *guard) {
+            guard = self.wait(guard)?;
+        }
+        Ok(guard)
+    }
+
+    // 简化以毫秒计数的超时等待
+    pub fn wait_timeout_ms<'a, T>(
+        &self,
+        guard: MutexGuard<'a, T>,
+        ms: u32,
+    ) -> LockResult<(MutexGuard<'a, T>, bool)> {
+        let res = self.wait_timeout(guard, Duration::from_millis(ms as u64));
+        poison::map_result(res, |(a, b)| (a, !b.timed_out()))
+    }
+
+    // 超时等待
+    pub fn wait_timeout<'a, T>(
+        &self,
+        guard: MutexGuard<'a, T>,
+        dur: Duration,
+    ) -> LockResult<(MutexGuard<'a, T>, WaitTimeoutResult)> {
+        let (poisoned, result) = unsafe {
+            let lock = mutex::guard_lock(&guard);
+            let success = self.inner.wait_timeout(lock, dur);
+            (mutex::guard_poison(&guard).get(), WaitTimeoutResult(!success))
+        };
+        if poisoned { Err(PoisonError::new((guard, result))) } else { Ok((guard, result)) }
+    }
+
+    //wait_while的超时版本
+    pub fn wait_timeout_while<'a, T, F>(
+        &self,
+        mut guard: MutexGuard<'a, T>,
+        dur: Duration,
+        mut condition: F,
+    ) -> LockResult<(MutexGuard<'a, T>, WaitTimeoutResult)>
+    where
+        F: FnMut(&mut T) -> bool,
+    {
+        let start = Instant::now();
+        loop {
+            if !condition(&mut *guard) {
+                return Ok((guard, WaitTimeoutResult(false)));
+            }
+            let timeout = match dur.checked_sub(start.elapsed()) {
+                Some(timeout) => timeout,
+                None => return Ok((guard, WaitTimeoutResult(true))),
+            };
+            guard = self.wait_timeout(guard, timeout)?.0;
+        }
+    }
+
+    //信号通知，唤醒一个线程
+    pub fn notify_one(&self) {
+        self.inner.notify_one()
+    }
+
+    //信号通知，唤醒所有线程
+    pub fn notify_all(&self) {
+        self.inner.notify_all()
+    }
+}
+
+```
+### `RWLock<T>`分析
+与`Mutex<T>`的设计采用了一致的方案：
+
+代码分析如下：
+```rust
+//与Mutex<T>几乎同样的成员
+pub struct RwLock<T: ?Sized> {
+    inner: sys::MovableRwLock,
+    poison: poison::Flag,
+    data: UnsafeCell<T>,
+}
+
+unsafe impl<T: ?Sized + Send> Send for RwLock<T> {}
+unsafe impl<T: ?Sized + Send + Sync> Sync for RwLock<T> {}
+
+//用read锁后的借用封装类型结构
+pub struct RwLockReadGuard<'a, T: ?Sized + 'a> {
+    lock: &'a RwLock<T>,
+}
+
+impl<T: ?Sized> !Send for RwLockReadGuard<'_, T> {}
+
+unsafe impl<T: ?Sized + Sync> Sync for RwLockReadGuard<'_, T> {}
+
+//用write锁后的借用封装类型结构
+pub struct RwLockWriteGuard<'a, T: ?Sized + 'a> {
+    lock: &'a RwLock<T>,
+    poison: poison::Guard,
+}
+
+impl<T: ?Sized> !Send for RwLockWriteGuard<'_, T> {}
+
+unsafe impl<T: ?Sized + Sync> Sync for RwLockWriteGuard<'_, T> {}
+
+impl<T> RwLock<T> {
+    pub fn new(t: T) -> RwLock<T> {
+        RwLock {
+            inner: sys::MovableRwLock::new(),
+            poison: poison::Flag::new(),
+            data: UnsafeCell::new(t),
+        }
+    }
+}
+
+impl<T: ?Sized> RwLock<T> {
+    //读上锁，返回一个读锁的临界区借用封装
+    pub fn read(&self) -> LockResult<RwLockReadGuard<'_, T>> {
+        unsafe {
+            self.inner.read();
+            RwLockReadGuard::new(self)
+        }
+    }
+
+    //不希望阻塞时做调用
+    pub fn try_read(&self) -> TryLockResult<RwLockReadGuard<'_, T>> {
+        unsafe {
+            if self.inner.try_read() {
+                Ok(RwLockReadGuard::new(self)?)
+            } else {
+                Err(TryLockError::WouldBlock)
+            }
+        }
+    }
+
+    //写锁，返回一个写锁的借用封装
+    pub fn write(&self) -> LockResult<RwLockWriteGuard<'_, T>> {
+        unsafe {
+            self.inner.write();
+            RwLockWriteGuard::new(self)
+        }
+    }
+
+    //不希望阻塞时的写锁调用
+    pub fn try_write(&self) -> TryLockResult<RwLockWriteGuard<'_, T>> {
+        unsafe {
+            if self.inner.try_write() {
+                Ok(RwLockWriteGuard::new(self)?)
+            } else {
+                Err(TryLockError::WouldBlock)
+            }
+        }
+    }
+
+    //是否中毒
+    pub fn is_poisoned(&self) -> bool {
+        self.poison.get()
+    }
+
+    //消费掉锁，此时如果有读锁或写锁，编译器会告警
+    pub fn into_inner(self) -> LockResult<T>
+    where
+        T: Sized,
+    {
+        let data = self.data.into_inner();
+        poison::map_result(self.poison.borrow(), |_| data)
+    }
+
+    //此时如果有读锁或写锁，编译器会告警,针对self
+    pub fn get_mut(&mut self) -> LockResult<&mut T> {
+        let data = self.data.get_mut();
+        poison::map_result(self.poison.borrow(), |_| data)
+    }
+}
+
+impl<T> From<T> for RwLock<T> {
+    /// Creates a new instance of an `RwLock<T>` which is unlocked.
+    /// This is equivalent to [`RwLock::new`].
+    fn from(t: T) -> Self {
+        RwLock::new(t)
+    }
+}
+
+impl<'rwlock, T: ?Sized> RwLockReadGuard<'rwlock, T> {
+    unsafe fn new(lock: &'rwlock RwLock<T>) -> LockResult<RwLockReadGuard<'rwlock, T>> {
+        poison::map_result(lock.poison.borrow(), |_| RwLockReadGuard { lock })
+    }
+}
+
+impl<'rwlock, T: ?Sized> RwLockWriteGuard<'rwlock, T> {
+    unsafe fn new(lock: &'rwlock RwLock<T>) -> LockResult<RwLockWriteGuard<'rwlock, T>> {
+        poison::map_result(lock.poison.borrow(), |guard| RwLockWriteGuard { lock, poison: guard })
+    }
+}
+
+impl<T: ?Sized> Deref for RwLockReadGuard<'_, T> {
+    type Target = T;
+
+    fn deref(&self) -> &T {
+        unsafe { &*self.lock.data.get() }
+    }
+}
+
+impl<T: ?Sized> Deref for RwLockWriteGuard<'_, T> {
+    type Target = T;
+
+    fn deref(&self) -> &T {
+        unsafe { &*self.lock.data.get() }
+    }
+}
+
+impl<T: ?Sized> DerefMut for RwLockWriteGuard<'_, T> {
+    fn deref_mut(&mut self) -> &mut T {
+        unsafe { &mut *self.lock.data.get() }
+    }
+}
+
+impl<T: ?Sized> Drop for RwLockReadGuard<'_, T> {
+    fn drop(&mut self) {
+        unsafe {
+            self.lock.inner.read_unlock();
+        }
+    }
+}
+
+impl<T: ?Sized> Drop for RwLockWriteGuard<'_, T> {
+    fn drop(&mut self) {
+        self.lock.poison.done(&self.poison);
+        unsafe {
+            self.lock.inner.write_unlock();
+        }
+    }
+}
+```
+### Barrier 类型临界变量
+```rust
+pub struct Barrier {
+    lock: Mutex<BarrierState>,
+    cvar: Condvar,
+    num_threads: usize,
+}
+
+// The inner state of a double barrier
+struct BarrierState {
+    count: usize,
+    generation_id: usize,
+}
+
+/// A `BarrierWaitResult` is returned by [`Barrier::wait()`] when all threads
+/// in the [`Barrier`] have rendezvoused.
+///
+/// # Examples
+///
+/// ```
+/// use std::sync::Barrier;
+///
+/// let barrier = Barrier::new(1);
+/// let barrier_wait_result = barrier.wait();
+/// ```
+pub struct BarrierWaitResult(bool);
+
+
+impl Barrier {
+    /// Creates a new barrier that can block a given number of threads.
+    ///
+    /// A barrier will block `n`-1 threads which call [`wait()`] and then wake
+    /// up all threads at once when the `n`th thread calls [`wait()`].
+    ///
+    /// [`wait()`]: Barrier::wait
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// use std::sync::Barrier;
+    ///
+    /// let barrier = Barrier::new(10);
+    /// ```
+    pub fn new(n: usize) -> Barrier {
+        Barrier {
+            lock: Mutex::new(BarrierState { count: 0, generation_id: 0 }),
+            cvar: Condvar::new(),
+            num_threads: n,
+        }
+    }
+
+    /// Blocks the current thread until all threads have rendezvoused here.
+    ///
+    /// Barriers are re-usable after all threads have rendezvoused once, and can
+    /// be used continuously.
+    ///
+    /// A single (arbitrary) thread will receive a [`BarrierWaitResult`] that
+    /// returns `true` from [`BarrierWaitResult::is_leader()`] when returning
+    /// from this function, and all other threads will receive a result that
+    /// will return `false` from [`BarrierWaitResult::is_leader()`].
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// use std::sync::{Arc, Barrier};
+    /// use std::thread;
+    ///
+    /// let mut handles = Vec::with_capacity(10);
+    /// let barrier = Arc::new(Barrier::new(10));
+    /// for _ in 0..10 {
+    ///     let c = Arc::clone(&barrier);
+    ///     // The same messages will be printed together.
+    ///     // You will NOT see any interleaving.
+    ///     handles.push(thread::spawn(move|| {
+    ///         println!("before wait");
+    ///         c.wait();
+    ///         println!("after wait");
+    ///     }));
+    /// }
+    /// // Wait for other threads to finish.
+    /// for handle in handles {
+    ///     handle.join().unwrap();
+    /// }
+    /// ```
+    pub fn wait(&self) -> BarrierWaitResult {
+        let mut lock = self.lock.lock().unwrap();
+        let local_gen = lock.generation_id;
+        lock.count += 1;
+        if lock.count < self.num_threads {
+            // We need a while loop to guard against spurious wakeups.
+            // https://en.wikipedia.org/wiki/Spurious_wakeup
+            while local_gen == lock.generation_id {
+                lock = self.cvar.wait(lock).unwrap();
+            }
+            BarrierWaitResult(false)
+        } else {
+            lock.count = 0;
+            lock.generation_id = lock.generation_id.wrapping_add(1);
+            self.cvar.notify_all();
+            BarrierWaitResult(true)
+        }
+    }
+}
+
+impl BarrierWaitResult {
+    /// Returns `true` if this thread is the "leader thread" for the call to
+    /// [`Barrier::wait()`].
+    ///
+    /// Only one thread will have `true` returned from their result, all other
+    /// threads will have `false` returned.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// use std::sync::Barrier;
+    ///
+    /// let barrier = Barrier::new(1);
+    /// let barrier_wait_result = barrier.wait();
+    /// println!("{:?}", barrier_wait_result.is_leader());
+    /// ```
+    #[stable(feature = "rust1", since = "1.0.0")]
+    #[must_use]
+    pub fn is_leader(&self) -> bool {
+        self.0
+    }
+}
+
+```
+### Once 类型分析
+
+```rust
+type Masked = ();
+
+/// A synchronization primitive which can be used to run a one-time global
+/// initialization. Useful for one-time initialization for FFI or related
+/// functionality. This type can only be constructed with [`Once::new()`].
+///
+/// # Examples
+///
+/// ```
+/// use std::sync::Once;
+///
+/// static START: Once = Once::new();
+///
+/// START.call_once(|| {
+///     // run initialization here
+/// });
+/// ```
+#[stable(feature = "rust1", since = "1.0.0")]
+pub struct Once {
+    // `state_and_queue` is actually a pointer to a `Waiter` with extra state
+    // bits, so we add the `PhantomData` appropriately.
+    state_and_queue: AtomicPtr<Masked>,
+    _marker: marker::PhantomData<*const Waiter>,
+}
+
+// The `PhantomData` of a raw pointer removes these two auto traits, but we
+// enforce both below in the implementation so this should be safe to add.
+unsafe impl Sync for Once {}
+unsafe impl Send for Once {}
+
+impl UnwindSafe for Once {}
+
+impl RefUnwindSafe for Once {}
+
+pub struct OnceState {
+    poisoned: bool,
+    set_state_on_drop_to: Cell<*mut Masked>,
+}
+
+pub const ONCE_INIT: Once = Once::new();
+
+// Four states that a Once can be in, encoded into the lower bits of
+// `state_and_queue` in the Once structure.
+const INCOMPLETE: usize = 0x0;
+const POISONED: usize = 0x1;
+const RUNNING: usize = 0x2;
+const COMPLETE: usize = 0x3;
+
+// Mask to learn about the state. All other bits are the queue of waiters if
+// this is in the RUNNING state.
+const STATE_MASK: usize = 0x3;
+
+// Representation of a node in the linked list of waiters, used while in the
+// RUNNING state.
+// Note: `Waiter` can't hold a mutable pointer to the next thread, because then
+// `wait` would both hand out a mutable reference to its `Waiter` node, and keep
+// a shared reference to check `signaled`. Instead we hold shared references and
+// use interior mutability.
+#[repr(align(4))] // Ensure the two lower bits are free to use as state bits.
+struct Waiter {
+    thread: Cell<Option<Thread>>,
+    signaled: AtomicBool,
+    next: *const Waiter,
+}
+
+// Head of a linked list of waiters.
+// Every node is a struct on the stack of a waiting thread.
+// Will wake up the waiters when it gets dropped, i.e. also on panic.
+struct WaiterQueue<'a> {
+    state_and_queue: &'a AtomicPtr<Masked>,
+    set_state_on_drop_to: *mut Masked,
+}
+
+impl Once {
+    /// Creates a new `Once` value.
+    #[inline]
+    #[stable(feature = "once_new", since = "1.2.0")]
+    #[rustc_const_stable(feature = "const_once_new", since = "1.32.0")]
+    #[must_use]
+    pub const fn new() -> Once {
+        Once {
+            state_and_queue: AtomicPtr::new(ptr::invalid_mut(INCOMPLETE)),
+            _marker: marker::PhantomData,
+        }
+    }
+
+    /// Performs an initialization routine once and only once. The given closure
+    /// will be executed if this is the first time `call_once` has been called,
+    /// and otherwise the routine will *not* be invoked.
+    ///
+    /// This method will block the calling thread if another initialization
+    /// routine is currently running.
+    ///
+    /// When this function returns, it is guaranteed that some initialization
+    /// has run and completed (it might not be the closure specified). It is also
+    /// guaranteed that any memory writes performed by the executed closure can
+    /// be reliably observed by other threads at this point (there is a
+    /// happens-before relation between the closure and code executing after the
+    /// return).
+    ///
+    /// If the given closure recursively invokes `call_once` on the same [`Once`]
+    /// instance the exact behavior is not specified, allowed outcomes are
+    /// a panic or a deadlock.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// use std::sync::Once;
+    ///
+    /// static mut VAL: usize = 0;
+    /// static INIT: Once = Once::new();
+    ///
+    /// // Accessing a `static mut` is unsafe much of the time, but if we do so
+    /// // in a synchronized fashion (e.g., write once or read all) then we're
+    /// // good to go!
+    /// //
+    /// // This function will only call `expensive_computation` once, and will
+    /// // otherwise always return the value returned from the first invocation.
+    /// fn get_cached_val() -> usize {
+    ///     unsafe {
+    ///         INIT.call_once(|| {
+    ///             VAL = expensive_computation();
+    ///         });
+    ///         VAL
+    ///     }
+    /// }
+    ///
+    /// fn expensive_computation() -> usize {
+    ///     // ...
+    /// # 2
+    /// }
+    /// ```
+    ///
+    /// # Panics
+    ///
+    /// The closure `f` will only be executed once if this is called
+    /// concurrently amongst many threads. If that closure panics, however, then
+    /// it will *poison* this [`Once`] instance, causing all future invocations of
+    /// `call_once` to also panic.
+    ///
+    /// This is similar to [poisoning with mutexes][poison].
+    ///
+    /// [poison]: struct.Mutex.html#poisoning
+    #[stable(feature = "rust1", since = "1.0.0")]
+    #[track_caller]
+    pub fn call_once<F>(&self, f: F)
+    where
+        F: FnOnce(),
+    {
+        // Fast path check
+        if self.is_completed() {
+            return;
+        }
+
+        let mut f = Some(f);
+        self.call_inner(false, &mut |_| f.take().unwrap()());
+    }
+
+    /// Performs the same function as [`call_once()`] except ignores poisoning.
+    ///
+    /// Unlike [`call_once()`], if this [`Once`] has been poisoned (i.e., a previous
+    /// call to [`call_once()`] or [`call_once_force()`] caused a panic), calling
+    /// [`call_once_force()`] will still invoke the closure `f` and will _not_
+    /// result in an immediate panic. If `f` panics, the [`Once`] will remain
+    /// in a poison state. If `f` does _not_ panic, the [`Once`] will no
+    /// longer be in a poison state and all future calls to [`call_once()`] or
+    /// [`call_once_force()`] will be no-ops.
+    ///
+    /// The closure `f` is yielded a [`OnceState`] structure which can be used
+    /// to query the poison status of the [`Once`].
+    ///
+    /// [`call_once()`]: Once::call_once
+    /// [`call_once_force()`]: Once::call_once_force
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// use std::sync::Once;
+    /// use std::thread;
+    ///
+    /// static INIT: Once = Once::new();
+    ///
+    /// // poison the once
+    /// let handle = thread::spawn(|| {
+    ///     INIT.call_once(|| panic!());
+    /// });
+    /// assert!(handle.join().is_err());
+    ///
+    /// // poisoning propagates
+    /// let handle = thread::spawn(|| {
+    ///     INIT.call_once(|| {});
+    /// });
+    /// assert!(handle.join().is_err());
+    ///
+    /// // call_once_force will still run and reset the poisoned state
+    /// INIT.call_once_force(|state| {
+    ///     assert!(state.is_poisoned());
+    /// });
+    ///
+    /// // once any success happens, we stop propagating the poison
+    /// INIT.call_once(|| {});
+    /// ```
+    #[stable(feature = "once_poison", since = "1.51.0")]
+    pub fn call_once_force<F>(&self, f: F)
+    where
+        F: FnOnce(&OnceState),
+    {
+        // Fast path check
+        if self.is_completed() {
+            return;
+        }
+
+        let mut f = Some(f);
+        self.call_inner(true, &mut |p| f.take().unwrap()(p));
+    }
+
+    /// Returns `true` if some [`call_once()`] call has completed
+    /// successfully. Specifically, `is_completed` will return false in
+    /// the following situations:
+    ///   * [`call_once()`] was not called at all,
+    ///   * [`call_once()`] was called, but has not yet completed,
+    ///   * the [`Once`] instance is poisoned
+    ///
+    /// This function returning `false` does not mean that [`Once`] has not been
+    /// executed. For example, it may have been executed in the time between
+    /// when `is_completed` starts executing and when it returns, in which case
+    /// the `false` return value would be stale (but still permissible).
+    ///
+    /// [`call_once()`]: Once::call_once
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// use std::sync::Once;
+    ///
+    /// static INIT: Once = Once::new();
+    ///
+    /// assert_eq!(INIT.is_completed(), false);
+    /// INIT.call_once(|| {
+    ///     assert_eq!(INIT.is_completed(), false);
+    /// });
+    /// assert_eq!(INIT.is_completed(), true);
+    /// ```
+    ///
+    /// ```
+    /// use std::sync::Once;
+    /// use std::thread;
+    ///
+    /// static INIT: Once = Once::new();
+    ///
+    /// assert_eq!(INIT.is_completed(), false);
+    /// let handle = thread::spawn(|| {
+    ///     INIT.call_once(|| panic!());
+    /// });
+    /// assert!(handle.join().is_err());
+    /// assert_eq!(INIT.is_completed(), false);
+    /// ```
+    #[stable(feature = "once_is_completed", since = "1.43.0")]
+    #[inline]
+    pub fn is_completed(&self) -> bool {
+        // An `Acquire` load is enough because that makes all the initialization
+        // operations visible to us, and, this being a fast path, weaker
+        // ordering helps with performance. This `Acquire` synchronizes with
+        // `Release` operations on the slow path.
+        self.state_and_queue.load(Ordering::Acquire).addr() == COMPLETE
+    }
+
+    // This is a non-generic function to reduce the monomorphization cost of
+    // using `call_once` (this isn't exactly a trivial or small implementation).
+    //
+    // Additionally, this is tagged with `#[cold]` as it should indeed be cold
+    // and it helps let LLVM know that calls to this function should be off the
+    // fast path. Essentially, this should help generate more straight line code
+    // in LLVM.
+    //
+    // Finally, this takes an `FnMut` instead of a `FnOnce` because there's
+    // currently no way to take an `FnOnce` and call it via virtual dispatch
+    // without some allocation overhead.
+    #[cold]
+    #[track_caller]
+    fn call_inner(&self, ignore_poisoning: bool, init: &mut dyn FnMut(&OnceState)) {
+        let mut state_and_queue = self.state_and_queue.load(Ordering::Acquire);
+        loop {
+            match state_and_queue.addr() {
+                COMPLETE => break,
+                POISONED if !ignore_poisoning => {
+                    // Panic to propagate the poison.
+                    panic!("Once instance has previously been poisoned");
+                }
+                POISONED | INCOMPLETE => {
+                    // Try to register this thread as the one RUNNING.
+                    let exchange_result = self.state_and_queue.compare_exchange(
+                        state_and_queue,
+                        ptr::invalid_mut(RUNNING),
+                        Ordering::Acquire,
+                        Ordering::Acquire,
+                    );
+                    if let Err(old) = exchange_result {
+                        state_and_queue = old;
+                        continue;
+                    }
+                    // `waiter_queue` will manage other waiting threads, and
+                    // wake them up on drop.
+                    let mut waiter_queue = WaiterQueue {
+                        state_and_queue: &self.state_and_queue,
+                        set_state_on_drop_to: ptr::invalid_mut(POISONED),
+                    };
+                    // Run the initialization function, letting it know if we're
+                    // poisoned or not.
+                    let init_state = OnceState {
+                        poisoned: state_and_queue.addr() == POISONED,
+                        set_state_on_drop_to: Cell::new(ptr::invalid_mut(COMPLETE)),
+                    };
+                    init(&init_state);
+                    waiter_queue.set_state_on_drop_to = init_state.set_state_on_drop_to.get();
+                    break;
+                }
+                _ => {
+                    // All other values must be RUNNING with possibly a
+                    // pointer to the waiter queue in the more significant bits.
+                    assert!(state_and_queue.addr() & STATE_MASK == RUNNING);
+                    wait(&self.state_and_queue, state_and_queue);
+                    state_and_queue = self.state_and_queue.load(Ordering::Acquire);
+                }
+            }
+        }
+    }
+}
+
+fn wait(state_and_queue: &AtomicPtr<Masked>, mut current_state: *mut Masked) {
+    // Note: the following code was carefully written to avoid creating a
+    // mutable reference to `node` that gets aliased.
+    loop {
+        // Don't queue this thread if the status is no longer running,
+        // otherwise we will not be woken up.
+        if current_state.addr() & STATE_MASK != RUNNING {
+            return;
+        }
+
+        // Create the node for our current thread.
+        let node = Waiter {
+            thread: Cell::new(Some(thread::current())),
+            signaled: AtomicBool::new(false),
+            next: current_state.with_addr(current_state.addr() & !STATE_MASK) as *const Waiter,
+        };
+        let me = &node as *const Waiter as *const Masked as *mut Masked;
+
+        // Try to slide in the node at the head of the linked list, making sure
+        // that another thread didn't just replace the head of the linked list.
+        let exchange_result = state_and_queue.compare_exchange(
+            current_state,
+            me.with_addr(me.addr() | RUNNING),
+            Ordering::Release,
+            Ordering::Relaxed,
+        );
+        if let Err(old) = exchange_result {
+            current_state = old;
+            continue;
+        }
+
+        // We have enqueued ourselves, now lets wait.
+        // It is important not to return before being signaled, otherwise we
+        // would drop our `Waiter` node and leave a hole in the linked list
+        // (and a dangling reference). Guard against spurious wakeups by
+        // reparking ourselves until we are signaled.
+        while !node.signaled.load(Ordering::Acquire) {
+            // If the managing thread happens to signal and unpark us before we
+            // can park ourselves, the result could be this thread never gets
+            // unparked. Luckily `park` comes with the guarantee that if it got
+            // an `unpark` just before on an unparked thread it does not park.
+            thread::park();
+        }
+        break;
+    }
+}
+
+impl Drop for WaiterQueue<'_> {
+    fn drop(&mut self) {
+        // Swap out our state with however we finished.
+        let state_and_queue =
+            self.state_and_queue.swap(self.set_state_on_drop_to, Ordering::AcqRel);
+
+        // We should only ever see an old state which was RUNNING.
+        assert_eq!(state_and_queue.addr() & STATE_MASK, RUNNING);
+
+        // Walk the entire linked list of waiters and wake them up (in lifo
+        // order, last to register is first to wake up).
+        unsafe {
+            // Right after setting `node.signaled = true` the other thread may
+            // free `node` if there happens to be has a spurious wakeup.
+            // So we have to take out the `thread` field and copy the pointer to
+            // `next` first.
+            let mut queue =
+                state_and_queue.with_addr(state_and_queue.addr() & !STATE_MASK) as *const Waiter;
+            while !queue.is_null() {
+                let next = (*queue).next;
+                let thread = (*queue).thread.take().unwrap();
+                (*queue).signaled.store(true, Ordering::Release);
+                // ^- FIXME (maybe): This is another case of issue #55005
+                // `store()` has a potentially dangling ref to `signaled`.
+                queue = next;
+                thread.unpark();
+            }
+        }
+    }
+}
+
+impl OnceState {
+    /// Returns `true` if the associated [`Once`] was poisoned prior to the
+    /// invocation of the closure passed to [`Once::call_once_force()`].
+    ///
+    /// # Examples
+    ///
+    /// A poisoned [`Once`]:
+    ///
+    /// ```
+    /// use std::sync::Once;
+    /// use std::thread;
+    ///
+    /// static INIT: Once = Once::new();
+    ///
+    /// // poison the once
+    /// let handle = thread::spawn(|| {
+    ///     INIT.call_once(|| panic!());
+    /// });
+    /// assert!(handle.join().is_err());
+    ///
+    /// INIT.call_once_force(|state| {
+    ///     assert!(state.is_poisoned());
+    /// });
+    /// ```
+    ///
+    /// An unpoisoned [`Once`]:
+    ///
+    /// ```
+    /// use std::sync::Once;
+    ///
+    /// static INIT: Once = Once::new();
+    ///
+    /// INIT.call_once_force(|state| {
+    ///     assert!(!state.is_poisoned());
+    /// });
+    #[stable(feature = "once_poison", since = "1.51.0")]
+    pub fn is_poisoned(&self) -> bool {
+        self.poisoned
+    }
+
+    /// Poison the associated [`Once`] without explicitly panicking.
+    // NOTE: This is currently only exposed for the `lazy` module
+    pub(crate) fn poison(&self) {
+        self.set_state_on_drop_to.set(ptr::invalid_mut(POISONED));
+    }
+}
+```
+
+## 线程管理分析
+RUST的线程主要由以下几部分组成：
+1. 线程属性设置，创建管理，join，是操作系统系统调用的RUST延伸
+2. 线程局部存储, 是操作系统系统调用的RUST延伸
+3. 线程panic管理, 是RUST的异常处理方案一部分
+4. RUST运行时,是RUST语言自身的特性 
+5. 为在线程中借用环境变量的Scope方案，是RUST语言自身的特性
+   
+### 操作系统相关的线程代码分析
+均以linux为例，wasi与linux基本相同
+```rust
+// Thread结构，pthread函数需要用此结构作为参数调用pthread的API
+// 这里 id没有象fd那样实现RawFd, OwnedFd, BorrowedFd，估计主要是因为所有权不象fd那样特别重要
+pub struct Thread {
+    id: libc::pthread_t,
+}
+
+// Thread当然应该支持Send 及 Sync
+unsafe impl Send for Thread {}
+unsafe impl Sync for Thread {}
+
+impl Thread {
+    // 熟悉C语言的会发现这个函数很容易理解，基本和C可以映射。大量的libc的调用直接导致用unsafe
+    // 标记这个函数 
+    pub unsafe fn new(stack: usize, p: Box<dyn FnOnce()>) -> io::Result<Thread> {
+        //申请一个堆内存存放Box<dyn FnOnce()>, 并解封，将p直接置为申请的堆内存地址
+        // 实质就是一个C的指针
+        let p = Box::into_raw(box p);
+        //等于pthread_t native = 0;
+        let mut native: libc::pthread_t = mem::zeroed();
+        let mut attr: libc::pthread_attr_t = mem::zeroed();
+        //pthread_attr_init出错是有可能的，此处标准库偷了懒
+        assert_eq!(libc::pthread_attr_init(&mut attr), 0);
+
+        //对线程栈进行设置，一般不必设置
+        {
+            //线程栈不能小于允许最小的栈，实际上最大栈也应该有限制
+            let stack_size = cmp::max(stack, min_stack_size(&attr));
+
+            //设置线程栈大小
+            match libc::pthread_attr_setstacksize(&mut attr, stack_size) {
+                0 => {}
+                n => {
+                    assert_eq!(n, libc::EINVAL);
+                    // 仅在参数不是内存页整数倍的情况会执行下面代码,重新调整栈空间,并设置，
+                    // 此时的设置不应该再出错
+                    let page_size = os::page_size();
+                    let stack_size =
+                        (stack_size + page_size - 1) & (-(page_size as isize - 1) as usize - 1);
+                    assert_eq!(libc::pthread_attr_setstacksize(&mut attr, stack_size), 0);
+                }
+            };
+        }
+
+        //创建线程，thread_start是线程主函数，见后面分析
+        //输入的闭包p作为thread_start的参数，attr当前只处理栈大小，成功后native会被赋值
+        let ret = libc::pthread_create(&mut native, &attr, thread_start, p as *mut _);
+        // attr任务完成，释放其申请的资源，C编程的时候这一步经常被忽略，这也是RUST的一个安全体现
+        // 此处RUST认为不会失败 
+        assert_eq!(libc::pthread_attr_destroy(&mut attr), 0);
+
+        return if ret != 0 {
+            // 失败
+            // 重新建立Box以便释放申请的堆内存
+            drop(Box::from_raw(p));
+            //获取操作系统的错误
+            Err(io::Error::from_raw_os_error(ret))
+        } else {
+            //成功，创建Thread返回
+            Ok(Thread { id: native })
+        };
+
+        //所有RUST线程的主函数
+        extern "C" fn thread_start(main: *mut libc::c_void) -> *mut libc::c_void {
+            unsafe {
+                // 这个是线程栈保护机制，如果线程出现栈溢出，可以用这个机制探测到， 
+                // 这个是C语言编写大的服务器应用如数据库等积累下来的经验
+                // 对C来说必要性是很大的，具体的代码分析略
+                let _handler = stack_overflow::Handler::new();
+                // 先将传入的堆内存重组为Box，然后自动解双层引用消费掉两个Box并运行真正的
+                //线程函数 
+                Box::from_raw(main as *mut Box<dyn FnOnce()>)();
+            }
+            //C函数的返回值
+            ptr::null_mut()
+        }
+    }
+
+    pub fn yield_now() {
+        //让出CPU
+        let ret = unsafe { libc::sched_yield() };
+        debug_assert_eq!(ret, 0);
+    }
+
+    pub fn set_name(name: &CStr) {
+        const PR_SET_NAME: libc::c_int = 15;
+        // 更改线程名字，具体的系统调用请参考libc库 
+        unsafe {
+            libc::prctl(
+                PR_SET_NAME,
+                name.as_ptr(),
+                0 as libc::c_ulong,
+                0 as libc::c_ulong,
+                0 as libc::c_ulong,
+            );
+        }
+    }
+
+    //线程睡眠,可以认为是glibc的sleep函数的RUST版本
+    pub fn sleep(dur: Duration) {
+        let mut secs = dur.as_secs();
+        let mut nsecs = dur.subsec_nanos() as _;
+
+        unsafe {
+            //一次睡不到位就多睡几次, 另外也可能被中途打断，那需要再接着睡，
+            // 以下这段代码值得注意，nanosleep让以前简单的调用一次usleep的我深感惭愧
+            while secs > 0 || nsecs > 0 {
+                //准备C语言时间变量
+                let mut ts = libc::timespec {
+                    tv_sec: cmp::min(libc::time_t::MAX as u64, secs) as libc::time_t,
+                    tv_nsec: nsecs,
+                };
+                secs -= ts.tv_sec as u64;
+                let ts_ptr = &mut ts as *mut _;
+                if libc::nanosleep(ts_ptr, ts_ptr) == -1 {
+                    assert_eq!(os::errno(), libc::EINTR);
+                    //中途被打断的话，ts_ptr会放置还剩余的时间
+                    //因此要把时间重新加入，下一次循环再睡
+                    //真的是容易被忽视的返回值
+                    secs += ts.tv_sec as u64;
+                    nsecs = ts.tv_nsec;
+                } else {
+                    //重新置值
+                    nsecs = 0;
+                }
+            }
+        }
+    }
+
+    //等待目标线程结束
+    pub fn join(self) {
+        unsafe {
+            let ret = libc::pthread_join(self.id, ptr::null_mut());
+            //默认是非join，此处的作用是取消drop导致的默认pthread_detach调用
+            mem::forget(self);
+            assert!(ret == 0, "failed to join thread: {}", io::Error::from_raw_os_error(ret));
+        }
+    }
+
+    pub fn id(&self) -> libc::pthread_t {
+        //此处所有权没有转移。一般用于做pthread的系统调用临时使用
+        //但不能用这个返回的id调用pthread_detach或者pthread_join及类似功能的pthread
+        //C函数
+        self.id
+    }
+
+    pub fn into_id(self) -> libc::pthread_t {
+        let id = self.id;
+        //pthread_detach应该由调用此函数的代码负责。
+        //所有权已经转移
+        mem::forget(self);
+        id
+    }
+}
+
+impl Drop for Thread {
+    //主要用于父线程不必等待子线程结束的情况，默认为不等待
+    fn drop(&mut self) {
+        let ret = unsafe { libc::pthread_detach(self.id) };
+        debug_assert_eq!(ret, 0);
+    }
+}
+```
+
+RUST在操作系统线程的基础上，实现了线程栈内存的溢出检查:
+```rust
+//线程栈守卫
+pub mod guard {
+    // 内存页大小
+    static PAGE_SIZE: AtomicUsize = AtomicUsize::new(0);
+
+    pub type Guard = Range<usize>;
+
+    //获取线程栈栈底(栈溢出)内存地址,实际上可以看做是一个C函数，
+    // 请参考具体的C语言pthread库说明
+    unsafe fn get_stack_start() -> Option<*mut libc::c_void> {
+        let mut ret = None;
+        let mut attr: libc::pthread_attr_t = crate::mem::zeroed();
+        let e = libc::pthread_getattr_np(libc::pthread_self(), &mut attr);
+        if e == 0 {
+            let mut stackaddr = crate::ptr::null_mut();
+            let mut stacksize = 0;
+            assert_eq!(libc::pthread_attr_getstack(&attr, &mut stackaddr, &mut stacksize), 0);
+            ret = Some(stackaddr);
+        }
+        if e == 0 || cfg!(target_os = "freebsd") {
+            assert_eq!(libc::pthread_attr_destroy(&mut attr), 0);
+        }
+        ret
+    }
+
+    // 获取与线程栈栈底(栈溢出)与内存页对齐的地址
+    unsafe fn get_stack_start_aligned() -> Option<*mut libc::c_void> {
+        let page_size = PAGE_SIZE.load(Ordering::Relaxed);
+        assert!(page_size != 0);
+        let stackptr = get_stack_start()?;
+        let stackaddr = stackptr.addr();
+
+        // 以下计算从栈底向栈顶方向找到第一个对齐地址
+        let remainder = stackaddr % page_size;
+        Some(if remainder == 0 {
+            stackptr
+        } else {
+            stackptr.with_addr(stackaddr + page_size - remainder)
+        })
+    }
+
+    pub unsafe fn init() -> Option<Guard> {
+        //获得内存页大小
+        let page_size = os::page_size();
+        PAGE_SIZE.store(page_size, Ordering::Relaxed);
+
+        {
+            // Linux 内核已经做了栈守护，所以使用内核的机制
+            let stackptr = get_stack_start_aligned()?;
+            let stackaddr = stackptr.addr();
+            Some(stackaddr - page_size..stackaddr)
+        } 
+    }
+    //获取当前栈守护地址
+    pub unsafe fn current() -> Option<Guard> {
+        let mut ret = None;
+        let mut attr: libc::pthread_attr_t = crate::mem::zeroed();
+        let e = libc::pthread_getattr_np(libc::pthread_self(), &mut attr);
+        if e == 0 {
+            let mut guardsize = 0;
+            assert_eq!(libc::pthread_attr_getguardsize(&attr, &mut guardsize), 0);
+            if guardsize == 0 {
+                    panic!("there is no guard page");
+            }
+            let mut stackptr = crate::ptr::null_mut::<libc::c_void>();
+            let mut size = 0;
+            assert_eq!(libc::pthread_attr_getstack(&attr, &mut stackptr, &mut size), 0);
+
+            let stackaddr = stackptr.addr();
+            let ret = {
+                Some(stackaddr - guardsize..stackaddr + guardsize)
+            }
+        }
+        ret
+    }
+}
+
+fn min_stack_size(attr: *const libc::pthread_attr_t) -> usize {
+    //用动态链接获取库函数
+    dlsym!(fn __pthread_get_minstack(*const libc::pthread_attr_t) -> libc::size_t);
+
+    match __pthread_get_minstack.get() {
+        None => libc::PTHREAD_STACK_MIN,
+        Some(f) => unsafe { f(attr) },
+    }
+}
+
+// 专用于处理栈溢出的结构及实现
+pub struct Handler {
+    data: *mut libc::c_void,
+}
+
+impl Handler {
+    pub unsafe fn new() -> Handler {
+        //主要用于完成溢出处理函数的栈处置
+        make_handler()
+    }
+
+    fn null() -> Handler {
+        Handler { data: crate::ptr::null_mut() }
+    }
+}
+
+impl Drop for Handler {
+    fn drop(&mut self) {
+        unsafe {
+            drop_handler(self.data);
+        }
+    }
+}
+
+//stack_overflow模块
+mod imp {
+    // 对SIGSEGV及SIGBUS的信号处理函数。这两个函数会在线程出现栈溢出时被触发
+    unsafe extern "C" fn signal_handler(
+        signum: libc::c_int,
+        info: *mut libc::siginfo_t,
+        _data: *mut libc::c_void,
+    ) {
+        let guard = thread_info::stack_guard().unwrap_or(0..0);
+        let addr = (*info).si_addr() as usize;
+
+        // 判断是否访问了栈保护端的地址，如果是，则输出告警信息
+        if guard.start <= addr && addr < guard.end {
+            rtprintpanic!(
+                "\nthread '{}' has overflowed its stack\n",
+                thread::current().name().unwrap_or("<unknown>")
+            );
+            rtabort!("stack overflow");
+        } else {
+            // 否则执行默认操作.
+            let mut action: sigaction = mem::zeroed();
+            action.sa_sigaction = SIG_DFL;
+            sigaction(signum, &action, ptr::null_mut());
+        }
+    }
+
+    static MAIN_ALTSTACK: AtomicPtr<libc::c_void> = AtomicPtr::new(ptr::null_mut());
+    static NEED_ALTSTACK: AtomicBool = AtomicBool::new(false);
+
+    //初始化信号函数注册，此函数似乎,在sys::init中被调用
+    pub unsafe fn init() {
+        let mut action: sigaction = mem::zeroed();
+        for &signal in &[SIGSEGV, SIGBUS] {
+            sigaction(signal, ptr::null_mut(), &mut action);
+            // 配置保护内存访问的信号处理函数.
+            if action.sa_sigaction == SIG_DFL {
+                action.sa_flags = SA_SIGINFO | SA_ONSTACK;
+                action.sa_sigaction = signal_handler as sighandler_t;
+                sigaction(signal, &action, ptr::null_mut());
+                NEED_ALTSTACK.store(true, Ordering::Relaxed);
+            }
+        }
+
+        let handler = make_handler();
+        MAIN_ALTSTACK.store(handler.data, Ordering::Relaxed);
+        mem::forget(handler);
+    }
+
+    pub unsafe fn cleanup() {
+        drop_handler(MAIN_ALTSTACK.load(Ordering::Relaxed));
+    }
+
+    //下面这段函数是将段保护的内存设置成用户态写入会触发缺页中断，从而触发信号
+    unsafe fn get_stackp() -> *mut libc::c_void {
+        let flags = MAP_PRIVATE | MAP_ANON | libc::MAP_STACK;
+        //mmap一段内存作为信号处理函数的栈，额外一个page用作保护
+        let stackp =
+            mmap(ptr::null_mut(), SIGSTKSZ + page_size(), PROT_READ | PROT_WRITE, flags, -1, 0);
+        if stackp == MAP_FAILED {
+            panic!("failed to allocate an alternative stack: {}", io::Error::last_os_error());
+        }
+        // 最低的一个page用来作为保护
+        let guard_result = libc::mprotect(stackp, page_size(), PROT_NONE);
+        if guard_result != 0 {
+            panic!("failed to set up alternative stack guard page: {}", io::Error::last_os_error());
+        }
+        // 真正的栈从底部向上一个page开始
+        stackp.add(page_size())
+    }
+
+    unsafe fn get_stack() -> libc::stack_t {
+        libc::stack_t { ss_sp: get_stackp(), ss_flags: 0, ss_size: SIGSTKSZ }
+    }
+
+    //用于对每个线程设置线程信号处理的栈
+    pub unsafe fn make_handler() -> Handler {
+        if !NEED_ALTSTACK.load(Ordering::Relaxed) {
+            return Handler::null();
+        }
+        let mut stack = mem::zeroed();
+        sigaltstack(ptr::null(), &mut stack);
+        // 设置信号处理函数的栈 
+        if stack.ss_flags & SS_DISABLE != 0 {
+            //设置用于信号处理的栈
+            stack = get_stack();
+            // 设置栈，长度为SIGSTKSZ
+            sigaltstack(&stack, ptr::null_mut());
+            Handler { data: stack.ss_sp as *mut libc::c_void }
+        } else {
+            Handler::null()
+        }
+    }
+
+    pub unsafe fn drop_handler(data: *mut libc::c_void) {
+        if !data.is_null() {
+            let stack = libc::stack_t {
+                ss_sp: ptr::null_mut(),
+                ss_flags: SS_DISABLE,
+                ss_size: SIGSTKSZ,
+            };
+            //删除信号处理函数专用栈
+            sigaltstack(&stack, ptr::null_mut());
+            // unmap用于信号处理的内存.
+            munmap(data.sub(page_size()), SIGSTKSZ + page_size());
+        }
+    }
+}
+
+```
+
+线程的本地全局变量Thread Local Key的实现。线程的本地存储解决一类问题如下：
+在线程代码中，有时希望多个线程共享同一个变量名的全局变量，以简化编码。但希望这个变量在不同的线程有各自的拷贝，彼此不影响。典型的例子就是前文的线程栈guard空间。如果每个线程都共享同一个变量名，那代码会少很多啰嗦。
+具体的代码分析如下:    
+```rust
+//pthread_key_t请参考libc的pthread编程手册
+pub type Key = libc::pthread_key_t;
+
+//dtor用于对创建的key做释放操作, 返回的Key可以被进程中的线程共享使用
+pub unsafe fn create(dtor: Option<unsafe extern "C" fn(*mut u8)>) -> Key {
+    let mut key = 0;
+    assert_eq!(libc::pthread_key_create(&mut key, mem::transmute(dtor)), 0);
+    key
+}
+
+// 各线程可以将key设置成自己需要的内存块，这个内存块的所有权属于Key，
+// 这是个代码规定，编译器不知道，所以安全上需要程序员负责
+pub unsafe fn set(key: Key, value: *mut u8) {
+    let r = libc::pthread_setspecific(key, value as *mut _);
+    debug_assert_eq!(r, 0);
+}
+
+// 用key将内存块获得，实际上是获得一个引用
+pub unsafe fn get(key: Key) -> *mut u8 {
+    libc::pthread_getspecific(key) as *mut u8
+}
+
+// 删除掉key，需要所有线程都删除，调用此函数会导致调用内存块的dtor函数，也即drop
+pub unsafe fn destroy(key: Key) {
+    let r = libc::pthread_key_delete(key);
+    debug_assert_eq!(r, 0);
+}
+
+```
+### 标准库线程支持层代码分析
+代码路径：library/std/src/sys_common/thread.rs    
+         library/std/src/sys_common/thread_local.rs
+         library/std/src/sys_common/thread_info.rs
+    
+在操作系统的线程概念与RUST作为API提供的线程之间的一层代码。主要处理一些RUST的语法导致的一些需要额外在操作系统的线程结构做一些包装的基础层。   
+
+对Thread Local Key做类型封装，以屏蔽不同操作系统除API外的差异。    
+代码如下：
+```rust
+//适用与作为静态变量的Thread Local Key结构
+pub struct StaticKey {
+    /// 仅仅是一个数值，为0的时候代表此时无意义
+    key: AtomicUsize,
+    ///对key的析构函数 
+    dtor: Option<unsafe extern "C" fn(*mut u8)>,
+}
+
+//一般作为StaticKey的初始化赋值
+pub const INIT: StaticKey = StaticKey::new(None);
+
+impl StaticKey {
+    pub const fn new(dtor: Option<unsafe extern "C" fn(*mut u8)>) -> StaticKey {
+        //key为0，代表此时没有创建thread local key
+        StaticKey { key: atomic::AtomicUsize::new(0), dtor }
+    }
+
+    //如果没有创建thread local key, 此方法会创建一个
+    pub unsafe fn get(&self) -> *mut u8 {
+        //获取key的指针
+        //调用self.key会在无thread local key时创建一个
+        imp::get(self.key())
+    }
+
+    //如果没有创建thread local key, 此方法会创建一个
+    pub unsafe fn set(&self, val: *mut u8) {
+        imp::set(self.key(), val)
+    }
+
+    //获得thread local key的key值
+    unsafe fn key(&self) -> imp::Key {
+        match self.key.load(Ordering::Relaxed) {
+            //如果为0，表示thread local key没有创建，需要创建一个
+            0 => self.lazy_init() as imp::Key,
+            //不为0，则返回key
+            n => n as imp::Key,
+        }
+    }
+
+    //创建一个thread local key
+    unsafe fn lazy_init(&self) -> usize {
+        // 为特殊的操作系统准备
+        if imp::requires_synchronized_create() {
+            // 需要加锁保护，因为保护静态变量，所以要使用StaticMutex
+            // INIT_LOCK所有线程共享
+            static INIT_LOCK: StaticMutex = StaticMutex::new();
+            let _guard = INIT_LOCK.lock();
+            let mut key = self.key.load(Ordering::SeqCst);
+            if key == 0 {
+                //创建Key
+                key = imp::create(self.dtor) as usize;
+                self.key.store(key, Ordering::SeqCst);
+            }
+            rtassert!(key != 0);
+            return key;
+            //_guard生命周期结束会释放INIT_LOCK
+        }
+
+        //unix系统有可能分配为0的thread local key
+        let key1 = imp::create(self.dtor);
+        let key = if key1 != 0 {
+            key1
+        } else {
+            //如果是0，需要重新再申请一个新的key
+            let key2 = imp::create(self.dtor);
+            imp::destroy(key1);
+            key2
+        };
+        rtassert!(key != 0);
+        match self.key.compare_exchange(0, key as usize, Ordering::SeqCst, Ordering::SeqCst) {
+            //这里也作为方法的返回
+            Ok(_) => key as usize,
+            // 如果有其他的值，那就用那个值， 
+            Err(n) => {
+                imp::destroy(key);
+                n
+            }
+        }
+    }
+}
+
+//非静态变量的Thread Local Key
+pub struct Key {
+    key: imp::Key,
+}
+
+impl Key {
+    // 创建一个thread local key
+    pub fn new(dtor: Option<unsafe extern "C" fn(*mut u8)>) -> Key {
+        Key { key: unsafe { imp::create(dtor) } }
+    }
+
+    // 获取key相关的内存，可能为空，
+    pub fn get(&self) -> *mut u8 {
+        unsafe { imp::get(self.key) }
+    }
+
+    //设置key相关的内存
+    pub fn set(&self, val: *mut u8) {
+        unsafe { imp::set(self.key, val) }
+    }
+}
+
+impl Drop for Key {
+    fn drop(&mut self) {
+        // Right now Windows doesn't support TLS key destruction, but this also
+        // isn't used anywhere other than tests, so just leak the TLS key.
+        // unsafe { imp::destroy(self.key) }
+    }
+}
+
+```
+### 标准库线程局部变量外部接口(Thread Local)
+操作系统的Thread Local Key使用起来明显非常繁琐，且很容易出错。RUST标准库对其进行了符合`rust`的类型封装。这一类型需要完成的工作如下：   
+1. 对所有的Thread Local Key存放的真正的数据类型需要声明key时做定义。
+2. 向使用者屏蔽key的创建及销毁过程，key与真实数据的捆绑与获取过程，使得key的使用类似于通用类型结构的使用。   
+
+RUST采用了宏及数据类型相结合的方案，下面的代码说明了RUST的local key的使用。
+```rust
+ use std::cell::RefCell;
+ thread_local! {
+     pub static FOO: RefCell<u32> = RefCell::new(1);
+
+     static BAR: RefCell<f32> = RefCell::new(1.0);
+ }
+ fn main() {FOO.with(|f|{*f.borrow_mut() = 2})}
+```
+以上的`thread_local`将一个普通的变量定义转换为Thread Local Key的变量. 并且可以在随后的with方法内可以正常的的使用该普通变量。用这种方法，RUST使得Thread Local Key的变量使用与普通变量基本上做到了相一致。 (其他语言多用set(),get()方法完成Thread local的操作，RUST采用了更近一步的设计)      
+具体的代码实现如下：   
+```rust
+//LocalKey只能用于静态变量
+pub struct LocalKey<T: 'static> {
+    //只能用于静态变量
+    //inner是一个支持泛型的函数类型
+    inner: unsafe fn(Option<&mut Option<T>>) -> Option<&'static T>,
+}
+
+pub struct AccessError;
+
+impl Error for AccessError {}
+
+impl<T: 'static> LocalKey<T> {
+    // 这里仅仅做一个内存占位
+    pub const unsafe fn new(
+        inner: unsafe fn(Option<&mut Option<T>>) -> Option<&'static T>,
+    ) -> LocalKey<T> {
+        LocalKey { inner }
+    }
+
+    //所有的Thread Local的操作都在witch参数的闭包中，
+    // with会将Thread Local的可变引用输入闭包的参数
+    pub fn with<F, R>(&'static self, f: F) -> R
+    where
+        F: FnOnce(&T) -> R,
+    {
+        self.try_with(f).expect(
+            "cannot access a Thread Local Storage value \
+             during or after destruction",
+        )
+    }
+
+    pub fn try_with<F, R>(&'static self, f: F) -> Result<R, AccessError>
+    where
+        F: FnOnce(&T) -> R,
+    {
+        unsafe {
+            //获取Thread Local内存指针后，调用闭包
+            let thread_local = (self.inner)(None).ok_or(AccessError)?;
+            Ok(f(thread_local))
+        }
+    }
+
+    //对Thread Local做初始化，然后再执行操作
+    fn initialize_with<F, R>(&'static self, init: T, f: F) -> R
+    where
+        F: FnOnce(Option<T>, &T) -> R,
+    {
+        unsafe {
+            let mut init = Some(init);
+            let reference = (self.inner)(Some(&mut init)).expect(
+                "cannot access a Thread Local Storage value \
+                 during or after destruction",
+            );
+            f(init, reference)
+        }
+    }
+}
+
+//LocalKey通常会与内部可变性变量配合,设计方法来简化使用者的代码
+impl<T: 'static> LocalKey<Cell<T>> {
+    //对内部可变性变量赋值
+    pub fn set(&'static self, value: T) {
+        self.initialize_with(Cell::new(value), |value, cell| {
+            if let Some(value) = value {
+                // value输入的Cell变量参数，cell是Thread Local的引用
+                // 对cell做出更新,并消费掉value.
+                cell.set(value.into_inner());
+            }
+        });
+    }
+
+    //只能在T实现Copy trait的情况下支持，否则会出现
+    //双份所有权
+    pub fn get(&'static self) -> T
+    where
+        T: Copy,
+    {
+        self.with(|cell| cell.get())
+    }
+
+    //获取Thread Local的变量所有权，并将Thread Local置为默认
+    pub fn take(&'static self) -> T
+    where
+        T: Default,
+    {
+        self.with(|cell| cell.take())
+    }
+
+    //替换
+    pub fn replace(&'static self, value: T) -> T {
+        self.with(|cell| cell.replace(value))
+    }
+}
+
+//提供Thread Local是内部可变性的基础
+impl<T: 'static> LocalKey<RefCell<T>> {
+    //borrow的对应简化
+    pub fn with_borrow<F, R>(&'static self, f: F) -> R
+    where
+        F: FnOnce(&T) -> R,
+    {
+        self.with(|cell| f(&cell.borrow()))
+    }
+
+    //borrow_mut的对应简化
+    pub fn with_borrow_mut<F, R>(&'static self, f: F) -> R
+    where
+        F: FnOnce(&mut T) -> R,
+    {
+        self.with(|cell| f(&mut cell.borrow_mut()))
+    }
+
+    //修改值
+    pub fn set(&'static self, value: T) {
+        self.initialize_with(RefCell::new(value), |value, cell| {
+            if let Some(value) = value {
+                *cell.borrow_mut() = value.into_inner();
+            }
+        });
+    }
+
+    //获取所有权
+    pub fn take(&'static self) -> T
+    where
+        T: Default,
+    {
+        self.with(|cell| cell.take())
+    }
+
+    //替换
+    pub fn replace(&'static self, value: T) -> T {
+        self.with(|cell| cell.replace(value))
+    }
+}
+
+/// 惰性初始化.
+mod lazy {
+    use crate::cell::UnsafeCell;
+    use crate::hint;
+    use crate::mem;
+
+    pub struct LazyKeyInner<T> {
+        //None作为未初始化的标志
+        inner: UnsafeCell<Option<T>>,
+    }
+
+    impl<T> LazyKeyInner<T> {
+        //new一个未初始化变量
+        pub const fn new() -> LazyKeyInner<T> {
+            LazyKeyInner { inner: UnsafeCell::new(None) }
+        }
+
+        pub unsafe fn get(&self) -> Option<&'static T> {
+            // 返回内部变量的引用
+            unsafe { (*self.inner.get()).as_ref() }
+        }
+
+        // 真正的初始化
+        pub unsafe fn initialize<F: FnOnce() -> T>(&self, init: F) -> &'static T {
+            let value = init();
+            let ptr = self.inner.get();
+
+            // 如果用*ptr = Some(value)，会导致编译器对上一个变量做drop处理,对Thread Local
+            // 的drop实际上有些复杂，所以此处用一个replace
+            unsafe {
+                let _ = mem::replace(&mut *ptr, Some(value));
+            }
+
+            unsafe {
+                // 返回Some内变量的引用.
+                match *ptr {
+                    Some(ref x) => x,
+                    None => hint::unreachable_unchecked(),
+                }
+            }
+        }
+
+        //take语义
+        pub unsafe fn take(&mut self) -> Option<T> {
+            unsafe { (*self.inner.get()).take() }
+        }
+    }
+}
+
+//利用llvm的Thread Local方案，不直接使用操作系统系统调用的thread local key
+pub mod fast {
+    use super::lazy::LazyKeyInner;
+    use crate::cell::Cell;
+    use crate::fmt;
+    use crate::mem;
+    use crate::sys::thread_local_dtor::register_dtor;
+
+    #[derive(Copy, Clone)]
+    enum DtorState {
+        //没有初始化
+        Unregistered,
+        //已经初始化完成
+        Registered,
+        //Local Key已经被destroy
+        RunningOrHasRun,
+    }
+
+    pub struct Key<T> {
+        //  放置key存储的变量, None表示变量没有初始化。与dtor_state配合完成对
+        //  Key的状态判断
+        inner: LazyKeyInner<T>,
+
+        // Local Key的destroy函数状态 
+        dtor_state: Cell<DtorState>,
+    }
+
+
+    impl<T> Key<T> {
+        pub const fn new() -> Key<T> {
+            //实际做内存占位
+            Key { inner: LazyKeyInner::new(), dtor_state: Cell::new(DtorState::Unregistered) }
+        }
+
+        // 证明仍然使用操作系统的thread local key的destory机制 
+        pub unsafe fn register_dtor(a: *mut u8, dtor: unsafe extern "C" fn(*mut u8)) {
+            unsafe {
+                register_dtor(a, dtor);
+            }
+        }
+
+        pub unsafe fn get<F: FnOnce() -> T>(&self, init: F) -> Option<&'static T> {
+            // 如果已经初始化，则取用值
+            // 如果没有初始化，则进行初始化
+            unsafe {
+                match self.inner.get() {
+                    Some(val) => Some(val),
+                    None => self.try_initialize(init),
+                }
+            }
+        }
+
+        #[inline(never)]
+        unsafe fn try_initialize<F: FnOnce() -> T>(&self, init: F) -> Option<&'static T> {
+            if !mem::needs_drop::<T>() || unsafe { self.try_register_dtor() } {
+                // 只用变量不需要drop，或者注册destroy函数成功的情况下才做初始化.
+                Some(unsafe { self.inner.initialize(init) })
+            } else {
+                None
+            }
+        }
+
+        unsafe fn try_register_dtor(&self) -> bool {
+            match self.dtor_state.get() {
+                DtorState::Unregistered => {
+                    // 注册destroy函数
+                    unsafe { register_dtor(self as *const _ as *mut u8, destroy_value::<T>) };
+                    self.dtor_state.set(DtorState::Registered);
+                    true
+                }
+                DtorState::Registered => {
+                    // 被递归初始化
+                    true
+                }
+                DtorState::RunningOrHasRun => false,
+            }
+        }
+    }
+
+    unsafe extern "C" fn destroy_value<T>(ptr: *mut u8) {
+        let ptr = ptr as *mut Key<T>;
+
+        unsafe {
+            //将变量所有权获得
+            let value = (*ptr).inner.take();
+            //设置destroy状态
+            (*ptr).dtor_state.set(DtorState::RunningOrHasRun);
+            //对变量做drop
+            drop(value);
+        }
+    }
+}
+
+//利用操作系统的StaticKey
+pub mod os {
+    use super::lazy::LazyKeyInner;
+    use crate::cell::Cell;
+    use crate::fmt;
+    use crate::marker;
+    use crate::ptr;
+    use crate::sys_common::thread_local_key::StaticKey as OsStaticKey;
+
+    pub struct Key<T> {
+        // 操作系统的静态Key.
+        os: OsStaticKey,
+        //指示本结构有一个Cell<T>的所有权
+        marker: marker::PhantomData<Cell<T>>,
+    }
+
+    unsafe impl<T> Sync for Key<T> {}
+
+    struct Value<T: 'static> {
+        inner: LazyKeyInner<T>,
+        key: &'static Key<T>,
+    }
+
+    impl<T: 'static> Key<T> {
+        pub const fn new() -> Key<T> {
+            //创建一个StaticKey
+            Key { os: OsStaticKey::new(Some(destroy_value::<T>)), marker: marker::PhantomData }
+        }
+
+        pub unsafe fn get(&'static self, init: impl FnOnce() -> T) -> Option<&'static T> {
+            // thread local key的get操作.
+            let ptr = unsafe { self.os.get() as *mut Value<T> };
+            if ptr.addr() > 1 {
+                //有值
+                if let Some(ref value) = unsafe { (*ptr).inner.get() } {
+                    return Some(value);
+                }
+            }
+            // 进行初始化.
+            unsafe { self.try_initialize(init) }
+        }
+
+        unsafe fn try_initialize(&'static self, init: impl FnOnce() -> T) -> Option<&'static T> {
+            let ptr = unsafe { self.os.get() as *mut Value<T> };
+            if ptr.addr() == 1 {
+                // 被destroy了
+                return None;
+            }
+
+            let ptr = if ptr.is_null() {
+                // 从堆上申请内存.
+                let ptr: Box<Value<T>> = box Value { inner: LazyKeyInner::new(), key: self };
+                //获取申请的堆内存地址
+                let ptr = Box::into_raw(ptr);
+                // 将地址与操作系统的key相关联
+                unsafe {
+                    self.os.set(ptr as *mut u8);
+                }
+                ptr
+            } else {
+                // 递归初始化，返回已有的ptr 
+                ptr
+            };
+
+            // 初始化变量.
+            unsafe { Some((*ptr).inner.initialize(init)) }
+        }
+    }
+
+    unsafe extern "C" fn destroy_value<T: 'static>(ptr: *mut u8) {
+        unsafe {
+            //恢复Box以便释放堆内存
+            let ptr = Box::from_raw(ptr as *mut Value<T>);
+            let key = ptr.key;
+            //将thread local key设置为1
+            key.os.set(ptr::invalid_mut(1));
+            //释放Box
+            drop(ptr);
+            // key可以重新用于与新的内存相关
+            key.os.set(ptr::null_mut());
+        }
+    }
+}
+pub use self::local::fast::Key as __FastLocalKeyInner;
+pub use self::local::os::Key as __OsLocalKeyInner;
+
+// Thread Local声明宏
+macro_rules! thread_local {
+    // empty (base case for the recursion)
+    () => {};
+
+    // init 是一个const 修饰的block
+    ($(#[$attr:meta])* $vis:vis static $name:ident: $t:ty = const { $init:expr }; $($rest:tt)*) => (
+        $crate::__thread_local_inner!($(#[$attr])* $vis $name, $t, const $init);
+        $crate::thread_local!($($rest)*);
+    );
+
+    ($(#[$attr:meta])* $vis:vis static $name:ident: $t:ty = const { $init:expr }) => (
+        $crate::__thread_local_inner!($(#[$attr])* $vis $name, $t, const $init);
+    );
+
+    //  init不是block
+    ($(#[$attr:meta])* $vis:vis static $name:ident: $t:ty = $init:expr; $($rest:tt)*) => (
+        $crate::__thread_local_inner!($(#[$attr])* $vis $name, $t, $init);
+        $crate::thread_local!($($rest)*);
+    );
+
+    ($(#[$attr:meta])* $vis:vis static $name:ident: $t:ty = $init:expr) => (
+        $crate::__thread_local_inner!($(#[$attr])* $vis $name, $t, $init);
+    );
+}
+
+macro_rules! __thread_local_inner {
+    ($(#[$attr:meta])* $vis:vis $name:ident, $t:ty, $($init:tt)*) => {
+        //定义了一个LocalKey的变量
+        $(#[$attr])* $vis const $name: $crate::thread::LocalKey<$t> =
+            $crate::__thread_local_inner!(@key $t, $($init)*);
+    }
+    //对const init的处理
+    (@key $t:ty, const $init:expr) => {{
+        //LocalKey的创建函数
+        unsafe fn __getit(
+            _init: $crate::option::Option<&mut $crate::option::Option<$t>>,
+        ) -> $crate::option::Option<&'static $t> {
+            //不可变变量定义
+            const INIT_EXPR: $t = $init;
+
+            {
+                #[thread_local]
+                //静态全局变量, 应用llvm的Thread Local Storage, 需要操作系统支持
+                static mut VAL: $t = INIT_EXPR;
+
+                // 判断是否需要有drop函数
+                if !$crate::mem::needs_drop::<$t>() {
+                    //如果不需要drop，返回VAL的引用即可
+                    unsafe {
+                        return $crate::option::Option::Some(&VAL)
+                    }
+                }
+
+                // 0 == dtor not registered
+                // 1 == dtor registered, dtor not run
+                // 2 == dtor registered and is running or has run
+                #[thread_local]
+                //释放函数注册状态
+                static mut STATE: $crate::primitive::u8 = 0;
+
+                //释放函数
+                unsafe extern "C" fn destroy(ptr: *mut $crate::primitive::u8) {
+                    let ptr = ptr as *mut $t;
+
+                    unsafe {
+                        $crate::debug_assert_eq!(STATE, 1);
+                        STATE = 2;
+                        $crate::ptr::drop_in_place(ptr);
+                    }
+                }
+
+                unsafe {
+                    match STATE {
+                        // 0 == 需要注册释放函数.
+                        0 => {
+                            //fast::Key::register_dtor，见下文分析
+                            $crate::thread::__FastLocalKeyInner::<$t>::register_dtor(
+                                $crate::ptr::addr_of_mut!(VAL) as *mut $crate::primitive::u8,
+                                destroy,
+                            );
+                            STATE = 1;
+                            $crate::option::Option::Some(&VAL)
+                        }
+                        // 1 == 释放函数已经注册，直接返回Key
+                        1 => $crate::option::Option::Some(&VAL),
+                        // 释放函数已经运行，返回.
+                        _ => $crate::option::Option::None,
+                    }
+                }
+            }
+        }
+
+        unsafe {
+            //生成LocalKey
+            $crate::thread::LocalKey::new(__getit)
+        }
+    }};
+
+    // 非const的init的处理
+    (@key $t:ty, $init:expr) => {
+        {
+            fn __init() -> $t { $init }
+
+            //LocalKey的创建函数
+            unsafe fn __getit(
+                init: $crate::option::Option<&mut $crate::option::Option<$t>>,
+            ) -> $crate::option::Option<&'static $t> {
+                //利用llvm编译器属性定义变量为thread local变量
+                #[thread_local]
+                static __KEY: $crate::thread::__FastLocalKeyInner<$t> =
+                    $crate::thread::__FastLocalKeyInner::new();
+
+
+                //初始化 
+                unsafe {
+                    __KEY.get(move || {
+                        if let $crate::option::Option::Some(init) = init {
+                            if let $crate::option::Option::Some(value) = init.take() {
+                                return value;
+                            } else if $crate::cfg!(debug_assertions) {
+                                $crate::unreachable!("missing default value");
+                            }
+                        }
+                        __init()
+                    })
+                }
+            }
+
+            unsafe {
+                $crate::thread::LocalKey::new(__getit)
+            }
+        }
+    };
+}
+```
+Thread Local的RUST标准库内容颇为复杂，但提供了非常方便的对外使用。
+
+### Thread Info 分析
+Thead Info利用Thread Local存储一些Thread的信息。
+```rust
+struct ThreadInfo {
+    stack_guard: Option<Guard>,
+    thread: Thread,
+}
+
+thread_local! { static THREAD_INFO: RefCell<Option<ThreadInfo>> = const { RefCell::new(None) } }
+
+impl ThreadInfo {
+    fn with<R, F>(f: F) -> Option<R>
+    where
+        F: FnOnce(&mut ThreadInfo) -> R,
+    {
+        THREAD_INFO
+            .try_with(move |thread_info| {
+                let mut thread_info = thread_info.borrow_mut();
+                let thread_info = thread_info.get_or_insert_with(|| ThreadInfo {
+                    stack_guard: None,
+                    thread: Thread::new(None),
+                });
+                f(thread_info)
+            })
+            .ok()
+    }
+}
+
+pub fn current_thread() -> Option<Thread> {
+    ThreadInfo::with(|info| info.thread.clone())
+}
+
+pub fn stack_guard() -> Option<Guard> {
+    ThreadInfo::with(|info| info.stack_guard.clone()).and_then(|o| o)
+}
+
+pub fn set(stack_guard: Option<Guard>, thread: Thread) {
+    THREAD_INFO.with(move |thread_info| {
+        let mut thread_info = thread_info.borrow_mut();
+        rtassert!(thread_info.is_none());
+        *thread_info = Some(ThreadInfo { stack_guard, thread });
+    });
+}
+
+```
+### 标准库线程外部接口分析
+RUST在操作系统的线程支持之上，实现了语言自身的线程概念，首要的，就是为每一个线程分配一个ID做标识。
+即ThreadId, 代码如下：   
+```rust
+//用一个非零的64位整数
+pub struct ThreadId(NonZeroU64);
+
+impl ThreadId {
+    // 分配一个新的线程ID 
+    fn new() -> ThreadId {
+        // 线程ID是一个全局静态变量，且是一个临界区访问，此处只能用StaticMutex锁
+        static GUARD: mutex::StaticMutex = mutex::StaticMutex::new();
+        //声明静态变量,是全局的静态变量，但声明在这里限制对其的访问, 初始值为1
+        static mut COUNTER: u64 = 1;
+
+        unsafe {
+            //防止竞争
+            let guard = GUARD.lock();
+
+            // 加入到达最大值，panic处理。这里默认一个进程不可能创建超过u64::MAX的线程.
+            // 这个稍微有些不严谨，因为即使线程终止，ID也不能重用。可以认为，一个进程不可能运行到这个时间
+            if COUNTER == u64::MAX {
+                drop(guard); //panic之前显式drop，以避免影响其他线程 
+                //错误处理
+                panic!("failed to generate unique thread ID: bitspace exhausted");
+            }
+
+            //分配新线程ID
+            let id = COUNTER;
+            COUNTER += 1;
+
+            ThreadId(NonZeroU64::new(id).unwrap())
+            //guard生命周期结束，会调用drop()
+        }
+    }
+    ...
+}
+```
+Thread park的实现，Thread park是一种将线程自身陷入阻塞，等待别的线程做唤醒的机制。是一种比较简单的多个线程间的同步机制，通常用于线程指令执行过程中有顺序要求但不必临界区的情况
+```rust
+const PARKED: i32 = -1;
+const EMPTY: i32 = 0;
+const NOTIFIED: i32 = 1;
+
+pub struct Parker {
+    state: AtomicI32,
+}
+
+// Parker 利用原子变量操作中的内存顺序规则完成.
+impl Parker {
+    #[inline]
+    pub const fn new() -> Self {
+        Parker { state: AtomicI32::new(EMPTY) }
+    }
+
+    pub unsafe fn park(&self) {
+        // 利用Acquire顺序获取当前状态 
+        if self.state.fetch_sub(1, Acquire) == NOTIFIED {
+            return;
+        }
+        loop {
+            // 如果state是PARKED，阻塞等待 
+            futex_wait(&self.state, PARKED, None);
+            // 被唤醒，将状态重新置为EMPTY,并检测是否为NOTIFIED.
+            if self.state.compare_exchange(NOTIFIED, EMPTY, Acquire, Acquire).is_ok() {
+                return;
+            } else {
+                // 不是NOTIFIED，其他park的线程已经执行，再次循环.
+            }
+        }
+    }
+
+    // 超时.
+    pub unsafe fn park_timeout(&self, timeout: Duration) {
+        if self.state.fetch_sub(1, Acquire) == NOTIFIED {
+            return;
+        }
+        // 直接等待，设置超时，此时不再循环，因为循环会导致超时不准.
+        futex_wait(&self.state, PARKED, Some(timeout));
+        if self.state.swap(EMPTY, Acquire) == NOTIFIED {
+            // 被unpark()唤醒
+        } else {
+            // 超时或者其他唤醒.
+        }
+    }
+
+    pub fn unpark(&self) {
+        // 将state更换到NOTIFIED
+        if self.state.swap(NOTIFIED, Release) == PARKED {
+            //唤醒阻塞的线程
+            futex_wake(&self.state);
+        }
+    }
+}
+```
+RUST标准库的Thread的对外结构:
+```rust
+/// 事实上的Thread结构
+struct Inner {
+    name: Option<CString>, //需要与外部语言库交互 
+    id: ThreadId,
+    // 用于park
+    parker: Parker,
+}
+
+//Thread的管理类型
+#[derive(Clone)]
+pub struct Thread {
+    //需要被多个线程共享
+    inner: Arc<Inner>,
+}
+
+impl Thread {
+    // 仅创建一个结构用于管理，此时尚没有与线程相关联.
+    pub(crate) fn new(name: Option<CString>) -> Thread {
+        Thread { inner: Arc::new(Inner { name, id: ThreadId::new(), parker: Parker::new() }) }
+    }
+
+    //对thread做unpark操作，使得park的thread结束阻塞。
+    pub fn unpark(&self) {
+        self.inner.parker.unpark();
+    }
+
+    pub fn id(&self) -> ThreadId {
+        self.inner.id
+    }
+
+    pub fn name(&self) -> Option<&str> {
+        self.cname().map(|s| unsafe { str::from_utf8_unchecked(s.to_bytes()) })
+    }
+
+    fn cname(&self) -> Option<&CStr> {
+        self.inner.name.as_deref()
+    }
+}
+```
+RUST的进程创建返回类型 JoinHandle：
+```rust
+struct JoinInner<'scope, T> {
+    native: imp::Thread,
+    thread: Thread,
+    packet: Arc<Packet<'scope, T>>,
+}
+
+impl<'scope, T> JoinInner<'scope, T> {
+    fn join(mut self) -> Result<T> {
+        //等待线程退出
+        self.native.join();
+        //获取线程退出的结果或者异常信息
+        Arc::get_mut(&mut self.packet).unwrap().result.get_mut().take().unwrap()
+    }
+}
+
+//调用spawn后返回JoinHandle，JoinHandle作为线程外部对该线程操作的标识类型结构,如park，join等
+pub struct JoinHandle<T>(JoinInner<'static, T>);
+
+unsafe impl<T> Send for JoinHandle<T> {}
+unsafe impl<T> Sync for JoinHandle<T> {}
+
+
+impl<T> JoinHandle<T> {
+    //获取线程的Thread结构引用
+    pub fn thread(&self) -> &Thread {
+        &self.0.thread
+    }
+
+    //等待线程结束
+    pub fn join(self) -> Result<T> {
+        self.0.join()
+    }
+
+    //判断线程是否已经终止
+    pub fn is_finished(&self) -> bool {
+        Arc::strong_count(&self.0.packet) == 1
+    }
+}
+
+```
+RUST线程创建工厂类型：
+```rust
+//用于非默认属性的线程创建
+pub struct Builder {
+    // 名字，线程默认没有名字
+    name: Option<String>,
+    // 线程堆栈大小，默认堆栈为2M bytes
+    stack_size: Option<usize>,
+}
+
+// 线程创建方法实现
+impl Builder {
+    //创建一个默认的builder，一般的，用于需要对name及stack_size做修改
+    pub fn new() -> Builder {
+        Builder { name: None, stack_size: None }
+    }
+
+    //给线程设置名称，目前仅用于线程panic时的信息输出
+    pub fn name(mut self, name: String) -> Builder {
+        self.name = Some(name);
+        self
+    }
+
+    //设置线程的堆栈空间
+    pub fn stack_size(mut self, size: usize) -> Builder {
+        self.stack_size = Some(size);
+        self
+    }
+
+    // 利用Builder属性参数创建一个新线程。如果不是在主线程执行这个函数，
+    // 新线程的生命周期可能长于创建它的线程，此时创建线程可以用JoinHandle来等待
+    // 新线程结束。
+    pub fn spawn<F, T>(self, f: F) -> io::Result<JoinHandle<T>>
+    where
+        F: FnOnce() -> T,
+        F: Send + 'static,
+        T: Send + 'static,
+    {
+        unsafe { self.spawn_unchecked(f) }
+    }
+
+    //不安全的spawn
+    pub unsafe fn spawn_unchecked<'a, F, T>(self, f: F) -> io::Result<JoinHandle<T>>
+    where
+        F: FnOnce() -> T,
+        F: Send + 'a,
+        T: Send + 'a,
+    {
+        Ok(JoinHandle(unsafe { self.spawn_unchecked_(f, None) }?))
+    }
+
+    //真正的spawn执行函数，此处与进程的spawn函数有些类似
+    unsafe fn spawn_unchecked_<'a, 'scope, F, T>(
+        self,
+        f: F,
+        scope_data: Option<&'scope scoped::ScopeData>,
+    ) -> io::Result<JoinInner<'scope, T>>
+    where
+        F: FnOnce() -> T,
+        F: Send + 'a,
+        T: Send + 'a,
+        'scope: 'a,
+    {
+        let Builder { name, stack_size } = self;
+
+        //不能小于规定的最小堆栈
+        let stack_size = stack_size.unwrap_or_else(thread::min_stack);
+
+        //创建一个Thread的变量
+        let my_thread = Thread::new(name.map(|name| {
+            CString::new(name).expect("thread name may not contain interior null bytes")
+        }));
+        //增加Arc计数，用于转移到创建的线程代码
+        let their_thread = my_thread.clone();
+
+        let my_packet: Arc<Packet<'scope, T>> =
+            Arc::new(Packet { scope: scope_data, result: UnsafeCell::new(None) });
+        //Arc计数增加，子线程写，父线程读
+        let their_packet = my_packet.clone();
+
+        //捕获panic输出的缓存空间设置,是Thread Local变量
+        let output_capture = crate::io::set_output_capture(None);
+        crate::io::set_output_capture(output_capture.clone());
+
+        //所有线程的主函数, 可以认为是线程的runtime
+        let main = move || {
+            //their_thread已经转移到创建线程
+            if let Some(name) = their_thread.cname() {
+                //设置线程名字
+                imp::Thread::set_name(name);
+            }
+
+            //设置本线程的panic捕获空间
+            crate::io::set_output_capture(output_capture);
+
+            // 完成thread_info的线程本地初始化.
+            thread_info::set(unsafe { imp::guard::current() }, their_thread);
+            // 执行f，如果f内部发生panic，调用栈会输出
+            let try_result = panic::catch_unwind(panic::AssertUnwindSafe(|| {
+                crate::sys_common::backtrace::__rust_begin_short_backtrace(f)
+            }));
+            //  将线程退出信息设置到their_packet中
+            unsafe { *their_packet.result.get() = Some(try_result) };
+        };
+
+        if let Some(scope_data) = scope_data {
+            scope_data.increment_num_running_threads();
+        }
+
+        //真正的创建线程
+        Ok(JoinInner {
+            //创建线程
+            native: unsafe {
+                imp::Thread::new(
+                    stack_size,
+                    mem::transmute::<Box<dyn FnOnce() + 'a>, Box<dyn FnOnce() + 'static>>(
+                        Box::new(main),
+                    ),
+                )?
+            },
+            thread: my_thread,
+            packet: my_packet,
+        })
+    }
+}
+
+//无须指定参数的简易线程启动函数
+pub fn spawn<F, T>(f: F) -> JoinHandle<T>
+where
+    F: FnOnce() -> T,
+    F: Send + 'static,
+    T: Send + 'static,
+{
+    Builder::new().spawn(f).expect("failed to spawn thread")
+}
+
+//线程自身的结构变量获取
+pub fn current() -> Thread {
+    thread_info::current_thread().expect(
+        "use of std::thread::current() is not possible \
+         after the thread's local data has been destroyed",
+    )
+}
+
+//出让CPU
+pub fn yield_now() {
+    imp::Thread::yield_now()
+}
+
+//本线程是否已经panic
+pub fn panicking() -> bool {
+    panicking::panicking()
+}
+
+//阻塞，等待其他线程唤醒
+pub fn park() {
+    unsafe {
+        current().inner.parker.park();
+    }
+}
+
+pub fn park_timeout(dur: Duration) {
+    unsafe {
+        current().inner.parker.park_timeout(dur);
+    }
+}
+
+pub type Result<T> = crate::result::Result<T, Box<dyn Any + Send + 'static>>;
+
+// 用来获取线程的退出值
+// 需要在线程间共享
+struct Packet<'scope, T> {
+    scope: Option<&'scope scoped::ScopeData>,
+    result: UnsafeCell<Option<Result<T>>>,
+}
+
+// 使用了UnsafeCell， 需要声明实现Sync
+unsafe impl<'scope, T: Sync> Sync for Packet<'scope, T> {}
+
+impl<'scope, T> Drop for Packet<'scope, T> {
+    fn drop(&mut self) {
+        // If this packet was for a thread that ran in a scope, the thread
+        // panicked, and nobody consumed the panic payload, we make sure
+        // the scope function will panic.
+        let unhandled_panic = matches!(self.result.get_mut(), Some(Err(_)));
+        // Drop the result without causing unwinding.
+        // This is only relevant for threads that aren't join()ed, as
+        // join() will take the `result` and set it to None, such that
+        // there is nothing left to drop here.
+        // If this panics, we should handle that, because we're outside the
+        // outermost `catch_unwind` of our thread.
+        // We just abort in that case, since there's nothing else we can do.
+        // (And even if we tried to handle it somehow, we'd also need to handle
+        // the case where the panic payload we get out of it also panics on
+        // drop, and so on. See issue #86027.)
+        if let Err(_) = panic::catch_unwind(panic::AssertUnwindSafe(|| {
+            *self.result.get_mut() = None;
+        })) {
+            rtabort!("thread result panicked on drop");
+        }
+        // Book-keeping so the scope knows when it's done.
+        if let Some(scope) = self.scope {
+            // 在scope spawn线程时，在此处保证唤醒park的主线程
+            scope.decrement_num_running_threads(unhandled_panic);
+        }
+    }
+}
+```
+
+RUST线程 scope 结构,因为线程的主函数是闭包函数，对所有环境变量都是以借用引入，这会导致
+因为线程不知道何时结束而出现环境变量的生命周期问题，利用scope使得线程闭包可以正常借用环境变量
+```rust
+pub struct Scope<'scope, 'env: 'scope> {
+    //主要用来做生命周期的保证
+    data: ScopeData,
+    //指示线程的生命周期
+    scope: PhantomData<&'scope mut &'scope ()>,
+    //指示环境变量的生命周期
+    env: PhantomData<&'env mut &'env ()>,
+}
+
+/// JoinHandle的scoped 版本
+pub struct ScopedJoinHandle<'scope, T>(JoinInner<'scope, T>);
+
+pub(super) struct ScopeData {
+    num_running_threads: AtomicUsize,
+    a_thread_panicked: AtomicBool,
+    main_thread: Thread,
+}
+
+impl ScopeData {
+    pub(super) fn increment_num_running_threads(&self) {
+        //spawn线程时增加计数
+        if self.num_running_threads.fetch_add(1, Ordering::Relaxed) > usize::MAX / 2 {
+            self.decrement_num_running_threads(false);
+            panic!("too many running threads in thread scope");
+        }
+    }
+    pub(super) fn decrement_num_running_threads(&self, panic: bool) {
+        if panic {
+            self.a_thread_panicked.store(true, Ordering::Relaxed);
+        }
+        //减少线程计数
+        if self.num_running_threads.fetch_sub(1, Ordering::Release) == 1 {
+            //唤醒主线程
+            self.main_thread.unpark();
+        }
+    }
+}
+
+// socpe内部创建的线程可以借用非静态变量
+// 其中，'env是环境变量的生命周期，'scope是线程的生命周期
+pub fn scope<'env, F, T>(f: F) -> T
+where
+    F: for<'scope> FnOnce(&'scope Scope<'scope, 'env>) -> T,
+{
+    let scope = Scope {
+        data: ScopeData {
+            num_running_threads: AtomicUsize::new(0),
+            main_thread: current(),
+            a_thread_panicked: AtomicBool::new(false),
+        },
+        env: PhantomData,
+        scope: PhantomData,
+    };
+
+    // Run `f`, but catch panics so we can make sure to wait for all the threads to join.
+    let result = catch_unwind(AssertUnwindSafe(|| f(&scope)));
+
+    // 等待所有的线程都退出，保证线程的生命周期小于本函数的生命周期.
+    while scope.data.num_running_threads.load(Ordering::Acquire) != 0 {
+        park();
+    }
+
+    // Throw any panic from `f`, or the return value of `f` if no thread panicked.
+    match result {
+        Err(e) => resume_unwind(e),
+        Ok(_) if scope.data.a_thread_panicked.load(Ordering::Relaxed) => {
+            panic!("a scoped thread panicked")
+        }
+        Ok(result) => result,
+    }
+}
+
+impl<'scope, 'env> Scope<'scope, 'env> {
+    //用于在scope中创建新线程
+    pub fn spawn<F, T>(&'scope self, f: F) -> ScopedJoinHandle<'scope, T>
+    where
+        F: FnOnce() -> T + Send + 'scope,
+        T: Send + 'scope,
+    {
+        Builder::new()
+            .spawn_scoped(self, f)
+            .expect("failed to spawn thread")
+    }
+}
+
+impl Builder {
+    // 在scope情况下创建线程
+    pub fn spawn_scoped<'scope, 'env, F, T>(
+        self,
+        scope: &'scope Scope<'scope, 'env>,
+        f: F,
+    ) -> io::Result<ScopedJoinHandle<'scope, T>>
+    where
+        //设置了生命周期，使得f可以使用环境变量引用
+        F: FnOnce() -> T + Send + 'scope,
+        T: Send + 'scope,
+    {
+        Ok(ScopedJoinHandle(unsafe {
+            self.spawn_unchecked_(f, Some(&scope.data))
+        }?))
+    }
+}
+
+//利用生命周期的标注来使用环境变量引用
+impl<'scope, T> ScopedJoinHandle<'scope, T> {
+    
+    pub fn thread(&self) -> &Thread {
+        &self.0.thread
+    }
+
+    pub fn join(self) -> Result<T> {
+        self.0.join()
+    }
+
+    pub fn is_finished(&self) -> bool {
+        Arc::strong_count(&self.0.packet) == 1
+    }
+}
+```
+## RUST线程间消息通信
+在网络操作系统中，线程间使用消息通信被广泛采用，甚至线程间通信仅使用消息机制。主要因为如果线程之间仅使用消息机制的话，即基本可以保证没有临界区，从而减少内存安全问题的情况。一般的，针对每个线程创建一个多个生产者，单个消费者的消息队列，消费者绑定在这个线程上，其他需要与此线程通信的线程是生产者。这种系统一般会确定一个通用的消息协议格式。
+消息通信的方式需要尽量规避过长的消息内容。  
+
+代码路径：library/std/src/sync/mpsc/*.*     
+
+本书将只讨论mpsc这一机制，spsc的分析留给读者。   
+RUST将通信分成了三种情况：  
+1. 最初建立连接时，默认为仅做一次发送，接收，即oneshot通道形式
+2. 如果发送多于一个包，但收线程及发线程都固定为同一个，则升级为stream通道形式
+3. 如果发送线程多于一个，则升级为shared通道形式
+
+采用如此复杂的情况，虽然有合理的成分，但感觉标准库的作者实际上是在炫技，并且不想被人轻易的理解其思路及想法。实际上，统一使用shared的形式即可靠，又简单。因为升级这个过程实际上极易引发问题。
+mpsc模块中复杂的主要结构类型如下：
+1. Queue结构，用于消费者及接受者之间存储消息的队列，是满足Sync的类型结构   
+2. SignalToken/WaitToken结构，用于解除接收线程的阻塞信号     
+3. `oneshot::Packet<T>` oneshot类型的channel机制     
+4. `shared::Packet<T>` shared类型的channel机制      
+5. `Sender<Flavor<T>>`, `Receiver<Flavor<T>>`是接收及发送的端口   
+
+我们将分节对其进行介绍
+### 消息队列数据结构实现
+多于一个消息包的时候，需要消息队列，RUST用于消息包的队列结构是一个无锁的，无阻塞的临界区队列，非常巧妙的设计，是需要牢记在心的, 充分体现了RUST标准库开发人员高超的编程技巧。
+```rust
+//以下是简单的FIFO的队列实现
+pub enum PopResult<T> {
+    //返回队列成员
+    Data(T),
+    //队列为空
+    Empty,
+    //在有些时刻会出现瞬间的不一致情况
+    Inconsistent,
+}
+
+//节点结构
+struct Node<T> {
+    //next指针,利用原子指针实现多线程的Sync，值得牢记
+    next: AtomicPtr<Node<T>>,
+    value: Option<T>,
+}
+
+///  能够被多个线程操作的队列
+pub struct Queue<T> {
+    //利用原子指针操作实现多线程的Sync，极大简化了代码
+    head: AtomicPtr<Node<T>>,
+    //从后面的代码看，这里实际上是队列的头部，这个Queue的代码搞得奇怪
+    tail: UnsafeCell<*mut Node<T>>,
+}
+
+unsafe impl<T: Send> Send for Queue<T> {}
+unsafe impl<T: Send> Sync for Queue<T> {}
+
+impl<T> Node<T> {
+    unsafe fn new(v: Option<T>) -> *mut Node<T> {
+        //申请堆内存后，将堆内存的指针提取出来
+        Box::into_raw(box Node { next: AtomicPtr::new(ptr::null_mut()), value: v })
+    }
+}
+
+impl<T> Queue<T> {
+    pub fn new() -> Queue<T> {
+        let stub = unsafe { Node::new(None) };
+        //生成一个空元素的节点列表
+        Queue { head: AtomicPtr::new(stub), tail: UnsafeCell::new(stub) }
+    }
+
+    //在头部
+    pub fn push(&self, t: T) {
+        unsafe {
+            let n = Node::new(Some(t));
+            //换成C的话，就是head->next = n; head = n
+            //对于空队列来说，是tail = head; head->next = n; head = n; 
+            //现在tail实际上是队列头部，head是尾部。tail的next是第一个有意义的成员 
+            let prev = self.head.swap(n, Ordering::AcqRel);
+            //要考虑在两个赋值中间加入了其他线程的操作是否会出问题,
+            //这里面有一个复杂的分析，
+            //假设原队列为head, 有两个线程分别插入新节点n,m
+            //当n先执行，而m在这个代码位置插入，则m插入前prev_n = pre_head, head = n
+            //m插入后，prev_m = n, head = m。如果n先执行下面的语句，执行完后 
+            // pre_head->next = n, n->next = null，然后m执行完下面语句
+            // pre_head->next = n, n->next = m, head = m，队列是正确的。
+            // 如果m先执行，执行完后 pre_head->next = null, n->next = m, head = m;
+            // 然后n执行，执行完成后 pre_head->next = n, n->next = m, head =m， 队列是正确的。
+            // 换成多个线程实际上也一样是正确的。这个地方处理十分巧妙，这是系统级编程语言的魅
+            //力, 当然，实际上是裸指针编程的魅力  
+            //当然，在这个过程中会出现Inconsistent          
+            (*prev).next.store(n, Ordering::Release);
+            
+        }
+    }
+
+    //仅有一个线程在pop
+    pub fn pop(&self) -> PopResult<T> {
+        unsafe {
+            //tail实际上是队列头，value是None
+            let tail = *self.tail.get();
+            //tail的next是第一个有意义的成员
+            let next = (*tail).next.load(Ordering::Acquire);
+
+            //next如果为空，说明队列是空队列
+            if !next.is_null() {
+                //此处原tail会被drop，tail被赋成next
+                //因为push只可能改变next，所以这里不会有线程冲突问题
+                //这个语句完成后，队列是完整及一致的 
+                *self.tail.get() = next;
+                assert!((*tail).value.is_none());
+                assert!((*next).value.is_some());
+                //将value的所有权转移出来，*next的value又重新置为None
+                //当tail == head的时候 就又都是stub了
+                let ret = (*next).value.take().unwrap();
+                //恢复Box，以便以后释放堆内存
+                let _: Box<Node<T>> = Box::from_raw(tail);
+                return Data(ret);
+            }
+
+            // 此时如果head不是tail，一般说明有线程正在push，出现了不一致的情况,但这个不一致
+            // 随着另一线程插入的结束会终结
+            if self.head.load(Ordering::Acquire) == tail { Empty } else { Inconsistent }
+        }
+    }
+}
+
+impl<T> Drop for Queue<T> {
+    fn drop(&mut self) {
+        unsafe {
+            //空队列的stub也要释放
+            let mut cur = *self.tail.get();
+            while !cur.is_null() {
+                let next = (*cur).next.load(Ordering::Relaxed);
+                //恢复Box并消费掉，释放堆内存
+                let _: Box<Node<T>> = Box::from_raw(cur);
+                cur = next;
+            }
+        }
+    }
+}
+```
+### 线程间简单的阻塞及唤醒信号机制
+消息通信时，消息发送端需要有一个机制通知消息接收端消息已经发出。Condvar可以完成这一工作，但RUST的消息机制决定用无锁设计，所以做了新的实现。   
+下面的设计具有通用性，正如上节的Queue。基本思路是：
+1. 设计多个线程间的信号结构, 只允许一个线程等待在信号上，可以有多个线程触发信号解锁 
+2. 利用原子变量的变化来做等待及信号等待
+
+代码如下：
+```rust
+//线程间共享的信号结构
+struct Inner {
+    //指明执行信号等待的线程
+    thread: Thread,
+    //标志解除等待信号发送
+    woken: AtomicBool,
+}
+
+unsafe impl Send for Inner {}
+unsafe impl Sync for Inner {}
+
+//信号发送端结构
+pub struct SignalToken {
+    inner: Arc<Inner>,
+}
+
+//信号接收端结构
+pub struct WaitToken {
+    inner: Arc<Inner>,
+}
+
+impl !Send for WaitToken {}
+
+impl !Sync for WaitToken {}
+
+//信号对创建函数,由信号等待端线程创建
+pub fn tokens() -> (WaitToken, SignalToken) {
+    //初始为无信号
+    let inner = Arc::new(Inner { thread: thread::current(), woken: AtomicBool::new(false) });
+    // wait由线程本身使用
+    let wait_token = WaitToken { inner: inner.clone() };
+    // signal由其他线程使用
+    let signal_token = SignalToken { inner };
+    (wait_token, signal_token)
+}
+
+impl SignalToken {
+    //发送信号以便唤醒等待线程
+    pub fn signal(&self) -> bool {
+        //更改原子变量，看是否处于等待信号状态
+        let wake = self
+            .inner
+            .woken
+            .compare_exchange(false, true, Ordering::SeqCst, Ordering::SeqCst)
+            .is_ok();
+        if wake {
+            //更改成功，接收线程会调用park阻塞，unpark解除接收线程阻塞
+            self.inner.thread.unpark();
+        }
+        wake
+    }
+   
+    //传递给其他线程以便用来生成SignalToken，此处只能用
+    //裸指针，这里是传递没有被智能指针封装的堆内存指针
+    pub unsafe fn to_raw(self) -> *mut u8 {
+        Arc::into_raw(self.inner) as *mut u8
+    }
+    
+    //从to_raw生成的堆内存指针恢复为SignalToken,由发送线程完成
+    pub unsafe fn from_raw(signal_ptr: *mut u8) -> SignalToken {
+        SignalToken { inner: Arc::from_raw(signal_ptr as *mut Inner) }
+    }
+}
+
+impl WaitToken {
+    //接收线程等待发送端信号
+    pub fn wait(self) {
+        //必须先对woken做过设置
+        while !self.inner.woken.load(Ordering::SeqCst) {
+            thread::park()
+        }
+    }
+
+    //设置超时的等待, 请参考线程锁那一节的park内容
+    pub fn wait_max_until(self, end: Instant) -> bool {
+        while !self.inner.woken.load(Ordering::SeqCst) {
+            let now = Instant::now();
+            if now >= end {
+                return false;
+            }
+            thread::park_timeout(end - now)
+        }
+        true
+    }
+}
+```
+### oneshot通道机制实现
+oneshot专门为收发一次消息包而优化的结构。
+```rust
+//以下用于标识通道的状态
+//没有数据包
+const EMPTY: *mut u8 = ptr::invalid_mut::<u8>(0); 
+//有数据包等待被接收
+const DATA: *mut u8 = ptr::invalid_mut::<u8>(1); 
+//中断
+const DISCONNECTED: *mut u8 = ptr::invalid_mut::<u8>(2); 
+// 其他值(ptr)代表接收者信号结构变量的指针, 说明有接收者在等待接收
+
+//消息包结构, 因为只有一次收及一次发，所以结构中除state外
+//其他不涉及数据竞争
+pub struct Packet<T> {
+    // 通道状态，取值为EMPTY/DATA/DISCONNECTED/ptr
+    state: AtomicPtr<u8>,
+    // 通道内的数据, 此数据需要从发送者拷贝到此处，再拷贝到接受者，但因为仅有一个包
+    // 所以性能不是关注要点
+    data: UnsafeCell<Option<T>>,
+    // 当发送第二个包，或者对Sender做clone时，需要进行升级,此处放置新的通道接收Receiver结构
+    // 拥有所有权
+    upgrade: UnsafeCell<MyUpgrade<T>>,
+}
+
+//接收时发生的错误类型结构
+pub enum Failure<T> {
+    //空错误
+    Empty,
+    //连接中断
+    Disconnected,
+    //升级中,发送线程会把ReceiverT发送过来
+    Upgraded(Receiver<T>),
+}
+
+pub enum UpgradeResult {
+    //已经成功升级为其他类型的通道
+    UpSuccess,
+    // 升级遇到Disconnected
+    UpDisconnected,
+    //接收线程阻塞及期望接收的信号
+    UpWoke(SignalToken),
+}
+
+enum MyUpgrade<T> {
+    //通道内没有包，可以不升级
+    NothingSent,
+    //通道内已经发送过包，需要考虑升级
+    SendUsed,
+    //通道已经被通知需要升级，升级后的端口在参数中
+    GoUp(Receiver<T>),
+}
+
+impl<T> Packet<T> {
+    //创建一个通道,所有的内容都是初始化值
+    pub fn new() -> Packet<T> {
+        Packet {
+            data: UnsafeCell::new(None),
+            upgrade: UnsafeCell::new(NothingSent),
+            state: AtomicPtr::new(EMPTY),
+        }
+    }
+
+    //发送线程通过Sender端口发送包,发送线程应保证只调用一次 
+    pub fn send(&self, t: T) -> Result<(), T> {
+        unsafe {
+            //检查是否已经有包发过了 
+            match *self.upgrade.get() {
+                //没有包发送过，则继续执行
+                NothingSent => {}
+                //不应该执行到此处，应该先升级再发送
+                _ => panic!("sending on a oneshot that's already sent on "),
+            }
+            assert!((*self.data.get()).is_none());
+            //拷贝消息包内容
+            ptr::write(self.data.get(), Some(t));
+            //设置upgrade为已经发送过包，
+            ptr::write(self.upgrade.get(), SendUsed);
+
+            //更新state
+            match self.state.swap(DATA, Ordering::SeqCst) {
+                // 此时可以正常发送, state设置为有数据状态
+                EMPTY => Ok(()),
+
+                // 表明接收端已经destroy通道，
+                DISCONNECTED => {
+                    //需要state恢复成中断
+                    self.state.swap(DISCONNECTED, Ordering::SeqCst);
+                    //需要恢复upgrade，
+                    ptr::write(self.upgrade.get(), NothingSent);
+                    //需要将消息包数据回收,并返回发送出错
+                    Err((&mut *self.data.get()).take().unwrap())
+                }
+
+                // 不应该到达这一步 
+                DATA => unreachable!(),
+
+                // 有线程等待接收.
+                ptr => {
+                    //通知接收线程解除阻塞
+                    SignalToken::from_raw(ptr).signal();
+                    Ok(())
+                }
+            }
+        }
+    }
+
+    // 测试是否已经发过消息包
+    pub fn sent(&self) -> bool {
+        unsafe { !matches!(*self.upgrade.get(), NothingSent) }
+    }
+
+    //接收线程通过Receiver接收
+    pub fn recv(&self, deadline: Option<Instant>) -> Result<T, Failure<T>> {
+        // 尽量不阻塞线程
+        if self.state.load(Ordering::SeqCst) == EMPTY {
+            //消息为空, 需要阻塞，生成信号通知对
+            let (wait_token, signal_token) = blocking::tokens();
+            //获取信号发送端的堆内存
+            let ptr = unsafe { signal_token.to_raw() };
+
+            // 设置状态为有线程在等待接收
+            if self.state.compare_exchange(EMPTY, ptr, Ordering::SeqCst, Ordering::SeqCst).is_ok() {
+                //设置成功，判断是否有超时
+                if let Some(deadline) = deadline {
+                    //设置超时，阻塞
+                    let timed_out = !wait_token.wait_max_until(deadline);
+                    // 判断是否超时
+                    if timed_out {
+                        //如果超时，做清理，如果发送端通知升级，则形成Upgraded(Receiver<T>)
+                        // 这里的map_err(Upgraded)构建了Upgraded(Receiver<T>)，需要记住
+                        self.abort_selection().map_err(Upgraded)?;
+                    }
+                    //被接收线程唤醒
+                } else {
+                    //没有设置超时，一直阻塞等待
+                    wait_token.wait();
+                    debug_assert!(self.state.load(Ordering::SeqCst) != EMPTY);
+                }
+            } else {
+                //失败，清理信号
+                drop(unsafe { SignalToken::from_raw(ptr) });
+            }
+            //wait_token及signal_token都生命周期终止
+        }
+
+        //此时已经有数据了
+        self.try_recv()
+    }
+
+    pub fn try_recv(&self) -> Result<T, Failure<T>> {
+        unsafe {
+            match self.state.load(Ordering::SeqCst) {
+                //数据为空，返回错误
+                EMPTY => Err(Empty),
+
+                //发现数据
+                DATA => {
+                    //修改state为EMPTY
+                    let _ = self.state.compare_exchange(
+                        DATA,
+                        EMPTY,
+                        Ordering::SeqCst,
+                        Ordering::SeqCst,
+                    );
+                    //将数据读出
+                    match (&mut *self.data.get()).take() {
+                        Some(data) => Ok(data),
+                        None => unreachable!(),
+                    }
+                }
+
+                //中断状态时，可能此通道已经被升级，要检查是否还有数据
+                DISCONNECTED => match (&mut *self.data.get()).take() {
+                    //有数据,读出数据即可
+                    Some(data) => Ok(data),
+                    //没有数据，更新upgrade状态
+                    None => match ptr::replace(self.upgrade.get(), SendUsed) {
+                        //不是通知升级，则发送端已经关闭，返回Disconnected信息 
+                        SendUsed | NothingSent => Err(Disconnected),
+                        //通知升级,将Receiver<T>包装到返回变量返回 
+                        GoUp(upgrade) => Err(Upgraded(upgrade)),
+                    },
+                },
+
+                // 不可能的分支
+                _ => unreachable!(),
+            }
+        }
+    }
+
+    // 升级管道到其他类型，由发送线程调用 
+    pub fn upgrade(&self, up: Receiver<T>) -> UpgradeResult {
+        unsafe {
+            let prev = match *self.upgrade.get() {
+                //可正常升级
+                NothingSent => NothingSent,
+                SendUsed => SendUsed,
+                //其他状态表示已经升级完成
+                _ => panic!("upgrading again"),
+            };
+            // 将升级到的Receiver写入self.upgrade 
+            ptr::write(self.upgrade.get(), GoUp(up));
+
+            //后继不会再使用self传递消息，更新状态为DISCONNECTED
+            match self.state.swap(DISCONNECTED, Ordering::SeqCst) {
+                // 原状态为DATA及EMPTY，返回升级成功
+                // 此时有可能消息还没有被接收
+                // 返回后，发送端端口Sender会生命周期终结
+                DATA | EMPTY => UpSuccess,
+
+                //  如果已经DISCONNECT，则需要撤回本次请求
+                DISCONNECTED => {
+                    ptr::replace(self.upgrade.get(), prev);
+                    // 升级时通道已经中断
+                    UpDisconnected
+                }
+
+                // 如果有线程在等待接收， 需要将唤醒信号返回
+                ptr => UpWoke(SignalToken::from_raw(ptr)),
+            }
+        }
+    }
+
+    //删除通道, 由发送线程在Sender被drop时调用
+    pub fn drop_chan(&self) {
+        //更新状态
+        match self.state.swap(DISCONNECTED, Ordering::SeqCst) {
+            //原状态为下面的值可以不做操作
+            DATA | DISCONNECTED | EMPTY => {}
+
+            // 如果有等待线程，则发送信号唤醒
+            ptr => unsafe {
+                SignalToken::from_raw(ptr).signal();
+            },
+        }
+    }
+
+    //删除端口,由接收线程在Receiver被drop时调用
+    pub fn drop_port(&self) {
+        //更新状态
+        match self.state.swap(DISCONNECTED, Ordering::SeqCst) {
+            DISCONNECTED | EMPTY => {}
+
+            // 如果有数据，需要删除它
+            DATA => unsafe {
+                (&mut *self.data.get()).take().unwrap();
+                //数据包生命周期终止
+            },
+
+            // 接收线程才能调用这个函数
+            _ => unreachable!(),
+        }
+    }
+
+    // 阻塞超时处理.
+    pub fn abort_selection(&self) -> Result<bool, Receiver<T>> {
+        //获取state
+        let state = match self.state.load(Ordering::SeqCst) {
+            // 这些状态不用处理 
+            s @ (EMPTY | DATA | DISCONNECTED) => s,
+
+            // ptr是本线程设置的，切换回EMPTY状态, 并把信号指针带回
+            ptr => self
+                .state
+                .compare_exchange(ptr, EMPTY, Ordering::SeqCst, Ordering::SeqCst)
+                .unwrap_or_else(|x| x),
+        };
+
+        match state {
+            //不应该出现这个情况
+            EMPTY => unreachable!(),
+            //有数据 
+            DATA => Ok(true),
+
+            // 发送端中断
+            DISCONNECTED => unsafe {
+                //收到数据
+                if (*self.data.get()).is_some() {
+                    Ok(true)
+                } else {
+                    //看是否需要升级
+                    match ptr::replace(self.upgrade.get(), SendUsed) {
+                        //升级调用，返回升级到的端口Reciver<T>
+                        GoUp(port) => Err(port),
+                        _ => Ok(true),
+                    }
+                }
+            },
+
+            // 没有其他线程发送数据
+            ptr => unsafe {
+                //删除信号
+                drop(SignalToken::from_raw(ptr));
+                //没有接收数据
+                Ok(false)
+            },
+        }
+    }
+}
+
+impl<T> Drop for Packet<T> {
+    fn drop(&mut self) {
+        assert_eq!(self.state.load(Ordering::SeqCst), DISCONNECTED);
+    }
+}
+
+```
+### Shared的通道
+当oneshot的tx做clone操作时，oneshot的通道升级到Shared类型通道:
+```rust 
+//用发送包的技术来表示通道的状态
+//通道中断计数标志
+const DISCONNECTED: isize = isize::MIN;
+//最大能支持的通道数
+const FUDGE: isize = 1024;
+const MAX_REFCOUNT: usize = (isize::MAX) as usize;
+//最多能计数的无阻塞收包数目
+const MAX_STEALS: isize = 1 << 20;
+const EMPTY: *mut u8 = ptr::null_mut(); // initial state: no data, no blocked receiver
+
+pub struct Packet<T> {
+    //消息包的queue
+    queue: mpsc::Queue<T>,
+    //发送的包总数,每次阻塞或接收包数目到达限值会设置为-1。
+    // -1作为有阻塞，需要发送信号的标记
+    cnt: AtomicIsize,
+    //接收的包总数,每次阻塞，或接收包数目达到限值会清零
+    steals: UnsafeCell<isize>,
+    //唤醒的信号SingleToken指针
+
+    //接收线程阻塞时期待的信号量
+    to_wake: AtomicPtr<u8>,
+
+    //初始最少有两个使用者,每多一个发送线程就加1
+    channels: AtomicUsize,
+
+    //接收端关闭通道的标志
+    port_dropped: AtomicBool,
+    //发送端发现接收端中断，确定清理线程的辅助结构
+    sender_drain: AtomicIsize,
+
+    //使用单元类型的Mutex，将Mutex仅做锁的场景，不包含临界区,通常这个锁的临界区是一段代码操作
+    select_lock: Mutex<()>,
+}
+
+pub enum Failure {
+    Empty,
+    Disconnected,
+}
+
+enum StartResult {
+    Installed,
+    Abort,
+}
+
+impl<T> Packet<T> {
+    //新建一个通道，随后必须紧跟postinit_lock及inherit_blocker后才能做其他
+    //通道操作
+    pub fn new() -> Packet<T> {
+        Packet {
+            //包队列
+            queue: mpsc::Queue::new(),
+            //发送的包总数,每次阻塞或接收包数目到达限值会清零。 
+            cnt: AtomicIsize::new(0),
+            //接收的包总数,每次阻塞，或接收包数目达到限值会清零
+            steals: UnsafeCell::new(0),
+            //唤醒接收线程的信号
+            to_wake: AtomicPtr::new(EMPTY),
+            //初始最少有两个使用者,每多一个发送线程就加1
+            channels: AtomicUsize::new(2),
+            //接收端关闭通道的标志
+            port_dropped: AtomicBool::new(false),
+            //发送端发现接收端中断，确定清理线程的辅助结构
+            sender_drain: AtomicIsize::new(0),
+            //用于创建时的临界区代码保户
+            select_lock: Mutex::new(()),
+        }
+    }
+
+    // 必须在new之后第一时间调用，在封装self的Arc还没有clone之前
+    pub fn postinit_lock(&self) -> MutexGuard<'_, ()> {
+        self.select_lock.lock().unwrap()
+    }
+
+    // 这个函数处理升级前的通道遗留的阻塞线程场景,guard是调用postinit_lock的返回
+    pub fn inherit_blocker(&self, token: Option<SignalToken>, guard: MutexGuard<'_, ()>) {
+        //判断是否有接收线程阻塞
+        if let Some(token) = token {
+            assert_eq!(self.cnt.load(Ordering::SeqCst), 0);
+            assert_eq!(self.to_wake.load(Ordering::SeqCst), EMPTY);
+            //将阻塞信号设置到to_wake中
+            self.to_wake.store(unsafe { token.to_raw() }, Ordering::SeqCst);
+            //有接收线程阻塞，导致发第一个包的时候，才会去唤醒接收线程，接收线程才可能
+            //做升级，然后才能接收数据包。这个-1作为阻塞的标志
+            //这个设计方式过于复杂，不是一个好的设计，
+            self.cnt.store(-1, Ordering::SeqCst);
+
+            unsafe {
+                // cnt为-1，steals也需要设置为-1
+                *self.steals.get() = -1;
+            }
+        }
+
+        //解锁
+        drop(guard);
+    }
+
+    pub fn send(&self, t: T) -> Result<(), T> {
+        //看接收端口Receiver是否已经关闭
+        if self.port_dropped.load(Ordering::SeqCst) {
+            return Err(t);
+        }
+
+        //判断通道是否中断,因为每个线程发送都可能会造成计数加1，所以最大值
+        //是DISCONNECTED+FUDGE,这个区间可认为通道已经被设置为中断
+        if self.cnt.load(Ordering::SeqCst) < DISCONNECTED + FUDGE {
+            return Err(t);
+        }
+
+        //消息入队列
+        self.queue.push(t);
+        //增加队列计数,每次push队列都要先对cnt增加值来反映此操作
+        //但此时此时接收端口Receiver可能生命周期终止，导致cnt被设置为DISCONNECT
+        match self.cnt.fetch_add(1, Ordering::SeqCst) {
+            //原值为-1，是发送的第一个包，且接收端在等待信号
+            //其他线程不会得到-1, 只有-1的发送线程来发送信号
+            -1 => {
+                //发信号通知接收线程退出阻塞,工作结束,
+                //这个机制搞的有些复杂
+                self.take_to_wake().signal();
+            }
+
+            // 消息入队列后，通道被中断，此时需要把数据包撤回.
+            n if n < DISCONNECTED + FUDGE => {
+                //重新设置cnt为中断状态
+                self.cnt.store(DISCONNECTED, Ordering::SeqCst);
+
+                //判断我们是否是第一个sender_drain
+                if self.sender_drain.fetch_add(1, Ordering::SeqCst) == 0 {
+                    //是，负责删除队列里面的所有消息包
+                    loop {
+                        //循环直到queue为空
+                        loop {
+                            match self.queue.pop() {
+                                mpsc::Data(..) => {}
+                                mpsc::Empty => break,
+                                mpsc::Inconsistent => thread::yield_now(),
+                            }
+                        }
+                        
+                        if self.sender_drain.fetch_sub(1, Ordering::SeqCst) == 1 {
+                            //确定所有线程都已经被处理
+                            break;
+                        }
+                        //还有其他线程做了sender_drain的add，那再循环
+                    }
+
+                    // 本线程push到queue的包确定已经删除
+                }
+            }
+
+            _ => {}
+        }
+
+        Ok(())
+    }
+
+    pub fn recv(&self, deadline: Option<Instant>) -> Result<T, Failure> {
+        //尽量不阻塞
+        match self.try_recv() {
+            Err(Empty) => {}
+            data => return data,
+        }
+
+        //需要阻塞
+        //生成通知信号
+        let (wait_token, signal_token) = blocking::tokens();
+        //因为try_recv到此处可能会有其他线程发包，需要做些
+        //处理看是否需要阻塞
+        if self.decrement(signal_token) == Installed {
+            //确定要阻塞
+            if let Some(deadline) = deadline {
+                //有超时要去,做一个超时等待
+                let timed_out = !wait_token.wait_max_until(deadline);
+                if timed_out {
+                    //如果超时，需要做清理工作
+                    self.abort_selection(false);
+                }
+            } else {
+                //阻塞至包来到
+                wait_token.wait();
+            }
+        }
+
+        //当前已经有数据包
+        match self.try_recv() {
+            data @ Ok(..) => unsafe {
+                //反应阻塞收包统计,try_recv会加1,这里减掉
+                //有可能没有阻塞，但按照阻塞来计算
+                //这里是为了对冲在阻塞时对cnt多减1
+                //无论如何，利用这个来实现对阻塞与否的判断我认为不是一个好主意
+                *self.steals.get() -= 1;
+                data
+            },
+            data => data,
+        }
+    }
+
+    //判断是否应该阻塞
+    fn decrement(&self, token: SignalToken) -> StartResult {
+        unsafe {
+            assert_eq!(
+                self.to_wake.load(Ordering::SeqCst),
+                EMPTY,
+                "This is a known bug in the Rust standard library. See https://github.com/rust-lang/rust/issues/39364"
+            );
+            // 设置收线程阻塞信号到通道
+            let ptr = token.to_raw();
+            self.to_wake.store(ptr, Ordering::SeqCst);
+
+            //进入阻塞时对steals做清零
+            let steals = ptr::replace(self.steals.get(), 0);
+
+            //cnt需要把上次阻塞到本次阻塞之间的收包数目减掉，然后再减1,以便cnt成为-1
+            match self.cnt.fetch_sub(1 + steals, Ordering::SeqCst) {
+                //如果减法之前发送侧已经中断
+                DISCONNECTED => {
+                    //将cnt恢复为中断
+                    self.cnt.store(DISCONNECTED, Ordering::SeqCst);
+                }
+                
+                //不是中断，原来至少应该发送过一个包，cnt应该不小于0
+                n => {
+                    assert!(n >= 0);
+                    //在两次取值间可能有其他通道已经发包过来，那不应该阻塞
+                    //如果没有其他包，则阻塞
+                    //发送的包减掉接收的包不大于0，表示没有线程竞争发包
+                    if n - steals <= 0 {
+                        //正常阻塞
+                        return Installed;
+                    }
+                }
+            }
+
+            //此时队列已经有包或者DISCONNECT了，不需要阻塞
+            //撤掉信号
+            self.to_wake.store(EMPTY, Ordering::SeqCst);
+            drop(SignalToken::from_raw(ptr));
+            Abort
+        }
+    }
+
+    //接收数据包
+    pub fn try_recv(&self) -> Result<T, Failure> {
+        //从队列取得一个包
+        let ret = match self.queue.pop() {
+            //成功
+            mpsc::Data(t) => Some(t),
+            //不成功
+            mpsc::Empty => None,
+
+            // 此时处于一个临界状态.可以做个自旋等待一下
+            mpsc::Inconsistent => {
+                let data;
+                //默认为肯定会获得数据
+                loop {
+                    //这里等待一个操作系统调度周期
+                    //试图让发送线程工作
+                    //但等待时间不定
+                    thread::yield_now();
+                    match self.queue.pop() {
+                        //收到数据
+                        mpsc::Data(t) => {
+                            data = t;
+                            break;
+                        }
+                        //不应有这种情况
+                        mpsc::Empty => panic!("inconsistent => empty"),
+                        //继续等待
+                        mpsc::Inconsistent => {}
+                    }
+                }
+                Some(data)
+            }
+        };
+        match ret {
+            //接收到数据
+            Some(data) => unsafe {
+                //如果非阻塞收包已经大于MAX_STEALS
+                if *self.steals.get() > MAX_STEALS {
+                    //将cnt清零
+                    match self.cnt.swap(0, Ordering::SeqCst) {
+                        //原cnt是DISCONNECTED
+                        DISCONNECTED => {
+                            //重新置为DISCONNECTED
+                            self.cnt.store(DISCONNECTED, Ordering::SeqCst);
+                        }
+                        n => {
+                            //这里在cnt及steals上共同减去两者之间小者
+                            //取值小者
+                            let m = cmp::min(n, *self.steals.get());
+                            //steals及cnt都减去最小值
+                            *self.steals.get() -= m;
+                            //实际上是原cnt减去m
+                            self.bump(n - m);
+                        }
+                    }
+                    assert!(*self.steals.get() >= 0);
+                }
+                //steals增加
+                *self.steals.get() += 1;
+                Ok(data)
+            },
+
+            //没有收到数据
+            None => {
+                match self.cnt.load(Ordering::SeqCst) {
+                    //如果通道没有中断，返回异常的队列空
+                    n if n != DISCONNECTED => Err(Empty),
+                    //其他 只可能是DISCONNECTED
+                    _ => {
+                        //再接收一次
+                        match self.queue.pop() {
+                            //没有对self.steals做操作
+                            mpsc::Data(t) => Ok(t),
+                            //空，认为已经中断
+                            mpsc::Empty => Err(Disconnected),
+                            // 不应有这种情况
+                            mpsc::Inconsistent => unreachable!(),
+                        }
+                        //丢弃这个包，所以不必更新计数
+                    }
+                }
+            }
+        }
+    }
+
+    // Sender<T>做clone时的支撑函数 
+    pub fn clone_chan(&self) {
+        //channel数目增加
+        let old_count = self.channels.fetch_add(1, Ordering::SeqCst);
+
+        if old_count > MAX_REFCOUNT {
+            abort();
+        }
+    }
+
+    // 发送线程关闭通道
+    pub fn drop_chan(&self) {
+        //减少channel计数
+        match self.channels.fetch_sub(1, Ordering::SeqCst) {
+            //需要做清理
+            1 => {}
+            //还有其他发送线程，不必处理
+            n if n > 1 => return,
+            //不应该发生这种情况
+            n => panic!("bad number of channels left {n}"),
+        }
+
+        //所有发送线程均已关闭，发端置中断状态
+        match self.cnt.swap(DISCONNECTED, Ordering::SeqCst) {
+            // 有接收线程阻塞
+            -1 => {
+                //发信号解除阻塞
+                self.take_to_wake().signal();
+            }
+            DISCONNECTED => {}
+            n => {
+                assert!(n >= 0);
+            }
+        }
+    }
+
+    //接收线程关闭通道
+    pub fn drop_port(&self) {
+        //置标志
+        self.port_dropped.store(true, Ordering::SeqCst);
+        //获取上次阻塞以来接收的数据包
+        let mut steals = unsafe { *self.steals.get() };
+        while {
+            //这个block是while的条件语句
+            //当发送数据包与接收数据包相同时，设置中断
+            match self.cnt.compare_exchange(
+                steals,
+                DISCONNECTED,
+                Ordering::SeqCst,
+                Ordering::SeqCst,
+            ) {
+                //成功,退出循环
+                Ok(_) => false,
+                //old是DISCONNECT时，退出循环，否则进入循环
+                Err(old) => old != DISCONNECTED,
+            }
+        } {
+            //这个循环把队列清空
+            loop {
+                //收包
+                match self.queue.pop() {
+                    mpsc::Data(..) => {
+                        steals += 1;
+                    }
+                    mpsc::Empty | mpsc::Inconsistent => break,
+                }
+                //生命周期终结，释放包
+            }
+        }
+    }
+
+    // 重组阻塞信号结构 
+    fn take_to_wake(&self) -> SignalToken {
+        let ptr = self.to_wake.load(Ordering::SeqCst);
+        self.to_wake.store(EMPTY, Ordering::SeqCst);
+        assert!(ptr != EMPTY);
+        unsafe { SignalToken::from_raw(ptr) }
+    }
+
+    //一次性给cnt增加若干值
+    fn bump(&self, amt: isize) -> isize {
+        //一次增加cnt输入参数
+        match self.cnt.fetch_add(amt, Ordering::SeqCst) {
+            //如果原值是DISCONNECT
+            DISCONNECTED => {
+                //cnt恢复为DISCONNECT
+                self.cnt.store(DISCONNECTED, Ordering::SeqCst);
+                DISCONNECTED
+            }
+            n => n,
+        }
+    }
+
+    //接收线程阻塞超时时做处理
+    pub fn abort_selection(&self, _was_upgrade: bool) -> bool {
+        //加锁，保护下面的临界区代码
+        {
+            let _guard = self.select_lock.lock().unwrap();
+        }
+
+        let steals = {
+            //这个程序员愿意用block作为表达式结果
+            //获取cnt
+            let cnt = self.cnt.load(Ordering::SeqCst);
+            //发送端没有中断，cnt应该是阻塞超时的次数
+            //只能是-1或者0
+            if cnt < 0 && cnt != DISCONNECTED { -cnt } else { 0 }
+        };
+        //cnt增加，清除超时,每次超时如果有包，则steals加1
+        let prev = self.bump(steals + 1);
+
+        //发送端已经中断
+        if prev == DISCONNECTED {
+            //更新等待信号为空, 
+            assert_eq!(self.to_wake.load(Ordering::SeqCst), EMPTY);
+            //后继退出收包
+            true
+        } else {
+            //当前的发包计数
+            let cur = prev + steals + 1;
+            assert!(cur >= 0);
+            if prev < 0 {
+                //没有发包导致，drop掉接收等待信号
+                drop(self.take_to_wake());
+            } else {
+                //发送端马上应该发送信号，等一下
+                while self.to_wake.load(Ordering::SeqCst) != EMPTY {
+                    thread::yield_now();
+                }
+            }
+            unsafe {
+                let old = self.steals.get();
+                //steals只可能是0或1
+                assert!(*old == 0 || *old == -1);
+                //更新self.steals,实际上是steals加1
+                *old = steals;
+                prev >= 0
+            }
+        }
+    }
+}
+
+impl<T> Drop for Packet<T> {
+    fn drop(&mut self) {
+        //确保Packet已经清理完毕
+        assert_eq!(self.cnt.load(Ordering::SeqCst), DISCONNECTED);
+        assert_eq!(self.to_wake.load(Ordering::SeqCst), EMPTY);
+        assert_eq!(self.channels.load(Ordering::SeqCst), 0);
+    }
+}
+```
+shared 类型的通道设计最奇怪的地方是用了复杂的发包计数来作为阻塞标记。导致该处代码不易理解。
+### mpsc的对外函数及接口
+
+通道相关的类型结构及函数：
+```rust
+pub fn channel<T>() -> (Sender<T>, Receiver<T>) {
+    //初始时创建oneshot的通道
+    let a = Arc::new(oneshot::Packet::new());
+    //对onshot通道做clone，然后创建Sender及Receiver
+    (Sender::new(Flavor::Oneshot(a.clone())), Receiver::new(Flavor::Oneshot(a)))
+}
+
+//发送端端口
+pub struct Sender<T> {
+    inner: UnsafeCell<Flavor<T>>,
+}
+
+//接收端端口
+pub struct Receiver<T> {
+    inner: UnsafeCell<Flavor<T>>,
+}
+
+//用来实现可升级的通道，因为有带参数的成员，RUST没有使用dyn trait这种设计
+//对于认为以后通道类型不会再扩张时，采用enum的设计方式更易控制
+//但如果预计后继还会有很多通道方式，则应该采用dyn Packet<T>的设计方式
+enum Flavor<T> {
+    //只发送单一通信包的通道
+    Oneshot(Arc<oneshot::Packet<T>>),
+    //一对一的多通信包的通道,当发端发送第二个包的时候
+    //要创建并切换到这个通道
+    Stream(Arc<stream::Packet<T>>),
+    //多对一的通道，当发端做clone操作的时候
+    //要创建并切换到这个通道
+    Shared(Arc<shared::Packet<T>>),
+    //同步通道，本书不分析
+    Sync(Arc<sync::Packet<T>>),
+}
+
+//Sender及Receiver内部访问支持trait
+trait UnsafeFlavor<T> {
+    fn inner_unsafe(&self) -> &UnsafeCell<Flavor<T>>;
+    unsafe fn inner_mut(&self) -> &mut Flavor<T> {
+        &mut *self.inner_unsafe().get()
+    }
+    unsafe fn inner(&self) -> &Flavor<T> {
+        &*self.inner_unsafe().get()
+    }
+}
+impl<T> UnsafeFlavor<T> for Sender<T> {
+    fn inner_unsafe(&self) -> &UnsafeCell<Flavor<T>> {
+        &self.inner
+    }
+}
+impl<T> UnsafeFlavor<T> for Receiver<T> {
+    fn inner_unsafe(&self) -> &UnsafeCell<Flavor<T>> {
+        &self.inner
+    }
+}
+```
+Sender的方法：
+```rust
+impl<T> Sender<T> {
+    //创建包含通道的Sender
+    fn new(inner: Flavor<T>) -> Sender<T> {
+        Sender { inner: UnsafeCell::new(inner) }
+    }
+
+    //发送一个数据包
+    pub fn send(&self, t: T) -> Result<(), SendError<T>> {
+        //相当于新创建了一个Flavor的变量, 此时要注意drop是否发生了两次
+        //这里对解引用的match因为没有引发赋值，不会导致所有权转移
+        let (new_inner, ret) = match *unsafe { self.inner() } {
+            //必须是ref，否则会导致所有权转移
+            Flavor::Oneshot(ref p) => {
+                //判断是否还能发送包，此时只能发一个包
+                if !p.sent() {
+                    return p.send(t).map_err(SendError);
+                } else {
+                    //多于一个包，创建stream的通道来进行升级
+                    let a = Arc::new(stream::Packet::new());
+                    //基于新的通道创建新的Receiver
+                    let rx = Receiver::new(Flavor::Stream(a.clone()));
+                    //通知rx端进行升级操作
+                    match p.upgrade(rx) {
+                        //升级成功
+                        oneshot::UpSuccess => {
+                            //发送报文
+                            let ret = a.send(t);
+                            //将新的通道赋值
+                            (a, ret)
+                        }
+                        //接收已经DISCONNECT，将数据包及新通道共同返回
+                        oneshot::UpDisconnected => (a, Err(t)),
+                        //接收线程阻塞,需要做唤醒
+                        oneshot::UpWoke(token) => {
+                            //先将包发送
+                            a.send(t).ok().unwrap();
+                            //唤醒接收线程
+                            token.signal();
+                            //返回新通道
+                            (a, Ok(()))
+                        }
+                    }
+                }
+            }
+            //已经是Stream，正常发送包的逻辑，直接返回，不修改self
+            Flavor::Stream(ref p) => return p.send(t).map_err(SendError),
+            //已经是Shared，正常的发送逻辑，直接返回，不修改self
+            Flavor::Shared(ref p) => return p.send(t).map_err(SendError),
+            //不可能到达这个代码位置
+            Flavor::Sync(..) => unreachable!(),
+        };
+
+        unsafe {
+            //只有oneshot会进入此处
+            //新建Sender，并将新的Sender及老的Sender进行内存替换
+            //此处要注意，enum的不同成员不保证内存相同，但这里是没有问题的
+            let tmp = Sender::new(Flavor::Stream(new_inner));
+            mem::swap(self.inner_mut(), tmp.inner_mut());
+            //此处,tmp会生命周期终结，tmp当前是oneshot的类型。
+            //要注意收端是怎么终结的
+        }
+        ret.map_err(SendError)
+    }
+}
+
+impl<T> Clone for Sender<T> {
+    /// clone代表进入了多发一收的模式，需要升级到shared类型的通道 
+    fn clone(&self) -> Sender<T> {
+        let packet = match *unsafe { self.inner() } {
+            Flavor::Oneshot(ref p) => {
+                //创建shared类型通道
+                let a = Arc::new(shared::Packet::new());
+                {
+                    //创建后首先lock
+                    let guard = a.postinit_lock();
+                    //创建Receiver
+                    let rx = Receiver::new(Flavor::Shared(a.clone()));
+                    //进行升级
+                    let sleeper = match p.upgrade(rx) {
+                        oneshot::UpSuccess | oneshot::UpDisconnected => None,
+                        oneshot::UpWoke(task) => Some(task),
+                    };
+                    //完成通道设置
+                    a.inherit_blocker(sleeper, guard);
+                }
+                //置值
+                a
+            }
+            //进入一对一的多包发送
+            Flavor::Stream(ref p) => {
+                //仍然创建shared类型通道
+                let a = Arc::new(shared::Packet::new());
+                {
+                    //首先lock
+                    let guard = a.postinit_lock();
+                    //创建Receiver
+                    let rx = Receiver::new(Flavor::Shared(a.clone()));
+                    //升级
+                    let sleeper = match p.upgrade(rx) {
+                        stream::UpSuccess | stream::UpDisconnected => None,
+                        stream::UpWoke(task) => Some(task),
+                    };
+                    //完成通道设置
+                    a.inherit_blocker(sleeper, guard);
+                }
+                //置值
+                a
+            }
+            Flavor::Shared(ref p) => {
+                //先做clone_chan
+                p.clone_chan();
+                //创建新的Sender,并返回
+                return Sender::new(Flavor::Shared(p.clone()));
+            }
+            //不会到达这个地方
+            Flavor::Sync(..) => unreachable!(),
+        };
+
+        unsafe {
+            //创建新的Sender
+            let tmp = Sender::new(Flavor::Shared(packet.clone()));
+            //替换现有的Sender
+            mem::swap(self.inner_mut(), tmp.inner_mut());
+            //原有的Flavor生命周期终止并被drop
+        }
+        //创建新的Sender,并返回
+        Sender::new(Flavor::Shared(packet))
+    }
+}
+
+impl<T> Drop for Sender<T> {
+    fn drop(&mut self) {
+        //行为一致，都是中断通道
+        match *unsafe { self.inner() } {
+            Flavor::Oneshot(ref p) => p.drop_chan(),
+            Flavor::Stream(ref p) => p.drop_chan(),
+            Flavor::Shared(ref p) => p.drop_chan(),
+            Flavor::Sync(..) => unreachable!(),
+        }
+    }
+}
+```
+Receiver的方法：
+```rust
+impl<T> Receiver<T> {
+    fn new(inner: Flavor<T>) -> Receiver<T> {
+        Receiver { inner: UnsafeCell::new(inner) }
+    }
+
+    //不阻塞的收包
+    pub fn try_recv(&self) -> Result<T, TryRecvError> {
+        loop {
+            let new_port = match *unsafe { self.inner() } {
+                Flavor::Oneshot(ref p) => match p.try_recv() {
+                    //非升级的情况都直接返回
+                    Ok(t) => return Ok(t),
+                    Err(oneshot::Empty) => return Err(TryRecvError::Empty),
+                    Err(oneshot::Disconnected) => return Err(TryRecvError::Disconnected),
+                    //升级的情况将rx置值到new_port
+                    Err(oneshot::Upgraded(rx)) => rx,
+                },
+                Flavor::Stream(ref p) => match p.try_recv() {
+                    //非升级的情况都直接返回
+                    Ok(t) => return Ok(t),
+                    Err(stream::Empty) => return Err(TryRecvError::Empty),
+                    Err(stream::Disconnected) => return Err(TryRecvError::Disconnected),
+                    //升级的情况将rx置值到new_port
+                    Err(stream::Upgraded(rx)) => rx,
+                },
+                Flavor::Shared(ref p) => match p.try_recv() {
+                    Ok(t) => return Ok(t),
+                    Err(shared::Empty) => return Err(TryRecvError::Empty),
+                    Err(shared::Disconnected) => return Err(TryRecvError::Disconnected),
+                    //不应该出现升级的情况
+                },
+                Flavor::Sync(ref p) => match p.try_recv() {
+                    Ok(t) => return Ok(t),
+                    Err(sync::Empty) => return Err(TryRecvError::Empty),
+                    Err(sync::Disconnected) => return Err(TryRecvError::Disconnected),
+                },
+            };
+            unsafe {
+                //直接用new_port替换原来的Flavor
+                mem::swap(self.inner_mut(), new_port.inner_mut());
+            }
+            //new_port生命周期终结，原有的Flavor被调用drop
+        }
+    }
+
+    //阻塞收包，替换逻辑与try_recv相同
+    pub fn recv(&self) -> Result<T, RecvError> {
+        loop {
+            let new_port = match *unsafe { self.inner() } {
+                Flavor::Oneshot(ref p) => match p.recv(None) {
+                    Ok(t) => return Ok(t),
+                    Err(oneshot::Disconnected) => return Err(RecvError),
+                    Err(oneshot::Upgraded(rx)) => rx,
+                    Err(oneshot::Empty) => unreachable!(),
+                },
+                Flavor::Stream(ref p) => match p.recv(None) {
+                    Ok(t) => return Ok(t),
+                    Err(stream::Disconnected) => return Err(RecvError),
+                    Err(stream::Upgraded(rx)) => rx,
+                    Err(stream::Empty) => unreachable!(),
+                },
+                Flavor::Shared(ref p) => match p.recv(None) {
+                    Ok(t) => return Ok(t),
+                    Err(shared::Disconnected) => return Err(RecvError),
+                    Err(shared::Empty) => unreachable!(),
+                },
+                Flavor::Sync(ref p) => return p.recv(None).map_err(|_| RecvError),
+            };
+            unsafe {
+                mem::swap(self.inner_mut(), new_port.inner_mut());
+            }
+        }
+    }
+
+    //设置超时的阻塞收包
+    pub fn recv_timeout(&self, timeout: Duration) -> Result<T, RecvTimeoutError> {
+        // Do an optimistic try_recv to avoid the performance impact of
+        // Instant::now() in the full-channel case.
+        match self.try_recv() {
+            Ok(result) => Ok(result),
+            Err(TryRecvError::Disconnected) => Err(RecvTimeoutError::Disconnected),
+            //没有包的时候才进入超时
+            Err(TryRecvError::Empty) => match Instant::now().checked_add(timeout) {
+                //调用超时接收
+                Some(deadline) => self.recv_deadline(deadline),
+                None => self.recv().map_err(RecvTimeoutError::from),
+            },
+        }
+    }
+
+    //真正的超时接收,与recv基本相同，仅增加了超时参数
+    pub fn recv_deadline(&self, deadline: Instant) -> Result<T, RecvTimeoutError> {
+        use self::RecvTimeoutError::*;
+
+        loop {
+            let port_or_empty = match *unsafe { self.inner() } {
+                Flavor::Oneshot(ref p) => match p.recv(Some(deadline)) {
+                    Ok(t) => return Ok(t),
+                    Err(oneshot::Disconnected) => return Err(Disconnected),
+                    Err(oneshot::Upgraded(rx)) => Some(rx),
+                    Err(oneshot::Empty) => None,
+                },
+                Flavor::Stream(ref p) => match p.recv(Some(deadline)) {
+                    Ok(t) => return Ok(t),
+                    Err(stream::Disconnected) => return Err(Disconnected),
+                    Err(stream::Upgraded(rx)) => Some(rx),
+                    Err(stream::Empty) => None,
+                },
+                Flavor::Shared(ref p) => match p.recv(Some(deadline)) {
+                    Ok(t) => return Ok(t),
+                    Err(shared::Disconnected) => return Err(Disconnected),
+                    Err(shared::Empty) => None,
+                },
+                Flavor::Sync(ref p) => match p.recv(Some(deadline)) {
+                    Ok(t) => return Ok(t),
+                    Err(sync::Disconnected) => return Err(Disconnected),
+                    Err(sync::Empty) => None,
+                },
+            };
+
+            if let Some(new_port) = port_or_empty {
+                unsafe {
+                    mem::swap(self.inner_mut(), new_port.inner_mut());
+                }
+            }
+
+            // If we're already passed the deadline, and we're here without
+            // data, return a timeout, else try again.
+            if Instant::now() >= deadline {
+                return Err(Timeout);
+            }
+        }
+    }
+
+    //函数式编程，用iterator来简化rx的动作
+    pub fn iter(&self) -> Iter<'_, T> {
+        Iter { rx: self }
+    }
+
+    //不会阻塞的iterator
+    pub fn try_iter(&self) -> TryIter<'_, T> {
+        TryIter { rx: self }
+    }
+}
+```
+针对Receiver的迭代器举例：
+```rust
+//只是为了函数式编程及利用Iterator的基础设施
+pub struct Iter<'a, T: 'a> {
+    rx: &'a Receiver<T>,
+}
+
+impl<'a, T> Iterator for Iter<'a, T> {
+    type Item = T;
+
+    fn next(&mut self) -> Option<T> {
+        self.rx.recv().ok()
+    }
+}
+
+```
+# RUST的RUNTIME
+RUST的runtime及程序的主线程初始化      
+路径：library/std/src/rt.rs：    
+      library/std/src/unix/mod.rs       
+      library/std/src/panic.rs   
+      library/std/src/panicking.rs   
+      library/std/src/panic/*.rs   
+RUST程序execv以后，最初是由std::rt::lang_start进入RUST的RUNTIME    :
+代码如下：
+```rust
+//RUST应用的代码入口点
+fn lang_start<T: crate::process::Termination + 'static>(
+    main: fn() -> T,
+    argc: isize,
+    argv: *const *const u8,
+) -> isize {
+    //调用了lang_start_internal
+    let Ok(v) = lang_start_internal(
+        //__rust_begin_short_backtrace(main)标识栈顶,同时也调用了main
+        &move || crate::sys_common::backtrace::__rust_begin_short_backtrace(main).report().to_i32(),
+        argc,
+        argv,
+    );
+    v
+}
+
+fn lang_start_internal(
+    main: &(dyn Fn() -> i32 + Sync + crate::panic::RefUnwindSafe),
+    argc: isize,
+    argv: *const *const u8,
+) -> Result<isize, !> {
+    use crate::{mem, panic};
+    let rt_abort = move |e| {
+        mem::forget(e);
+        rtabort!("initialization or cleanup bug");
+    };
+    //完成执行main之前的准备,具体见后面的init函数，用catch_unwind捕获init函数执行中的panic信息
+    panic::catch_unwind(move || unsafe { init(argc, argv) }).map_err(rt_abort)?;
+    //执行main函数，同样，用catch_unwind捕获所有可能的panic信息
+    let ret_code = panic::catch_unwind(move || panic::catch_unwind(main).unwrap_or(101) as isize)
+        .map_err(move |e| {
+            mem::forget(e);
+            rtabort!("drop of the panic payload panicked");
+        });
+    //完成所有的清理工作,一样的catch_unwind
+    panic::catch_unwind(cleanup).map_err(rt_abort)?;
+    ret_code
+}
+```
+进入main函数之前的初始化内容                    
+```rust
+//此函数在main函数之前被调用完成标准输入/输出/错误，线程栈保护等设置，
+//然后控制权交给main
+unsafe fn init(argc: isize, argv: *const *const u8) {
+    unsafe {
+        //见下面的代码分析，完成进入main的各项初始化
+        sys::init(argc, argv);
+
+        //以下是对主线程的线程runtime的初始化,可对比线程的spawn函数
+        //设置主线程的栈保护
+        let main_guard = sys::thread::guard::init();
+        //设置当前的线程为主线程
+        let thread = Thread::new(Some(rtunwrap!(Ok, CString::new("main"))));
+        //设置栈保护地址与线程的信息, 使用了thread_local_key的方式使得此info仅与当前线程相关
+        thread_info::set(main_guard, thread);
+    }
+}
+
+//linux系统的上文sys::init实现
+pub unsafe fn init(argc: isize, argv: *const *const u8) {
+    // 见下文说明.
+    sanitize_standard_fds();
+
+    // 将 SIGPIPE 设置为ignore
+    reset_sigpipe();
+
+    //进程栈溢出初始化,系统调用sigaltstack()支持设置一个内存空间，当访问这个空间地址的时候
+    //发送一个信号给进程，stack_overflow即利用这个机制完成了对当前线程的该信号的设置及处理
+    //这个对所有线程的堆栈溢出的处理做了初始化
+    stack_overflow::init();
+    //对命令行的输入完成RUST的结构转化
+    args::init(argc, argv);
+
+    unsafe fn sanitize_standard_fds() {
+        //仅linux
+        {
+            {
+                use crate::sys::os::errno;
+                //轮询stdin,stdout,stderr的文件描述符
+                let pfds: &mut [_] = &mut [
+                    libc::pollfd { fd: 0, events: 0, revents: 0 },
+                    libc::pollfd { fd: 1, events: 0, revents: 0 },
+                    libc::pollfd { fd: 2, events: 0, revents: 0 },
+                ];
+                //从poll结果获得文件描述符是否已经关闭
+                while libc::poll(pfds.as_mut_ptr(), 3, 0) == -1 {
+                    if errno() == libc::EINTR {
+                        continue;
+                    }
+                    //此处说明未知错误需要退出
+                    libc::abort();
+                }
+                for pfd in pfds {
+                    if pfd.revents & libc::POLLNVAL == 0 {
+                        //文件描述符已经打开
+                        continue;
+                    }
+                    //文件描述符关闭, 则用/dev/null作为文件描述符，注意下面直接用str转换为CStr的
+                    //代码,因为此循环的fd最小，所以下面这个open如果调用成功，返回的fd即为当前的///被关闭的fd.从而达到了重新将标准输入/输出/错误文件描述符打开的目的
+                    if libc::open("/dev/null\0".as_ptr().cast(), libc::O_RDWR, 0) == -1 {
+                        // 无法打开文件，则应退出程序
+                        libc::abort();
+                    }
+                }
+            } 
+        }
+    }
+
+    //设置对SIGPIPE的处理为IGNORE
+    unsafe fn reset_sigpipe() {
+        rtassert!(signal(libc::SIGPIPE, libc::SIG_IGN) != libc::SIG_ERR);
+    }
+}
+```
+对panic的捕获函数：
+```rust
+//对f的panic做unwind操作并捕获
+pub fn catch_unwind<F: FnOnce() -> R + UnwindSafe, R>(f: F) -> Result<R> {
+    //编译器的try catch机制
+    unsafe { panicking::r#try(f) }
+}
+
+//常用于前面已经调用过catch_unwind，但需要继续panic过程
+pub fn resume_unwind(payload: Box<dyn Any + Send>) -> ! {
+    panicking::rust_panic_without_hook(payload)
+}
+``` 
+RUST的RUNTIME主要是完成一些安全机制及异常处理机制。了解RUNTIME可以使得我们对如何构建一个强健的，易于排查错误的应用有更深的了解。
+
+# 标准库文件系统分析
+## linux的操作系统相关的文件系统实现
+```rust
+// 操作系统无关界面接口结构
+pub struct File(FileDesc);
+
+// 这个宏仅仅在Linux下有效
+macro_rules! cfg_has_statx {
+    ($($then_tt:tt)*) => {
+        cfg_if::cfg_if! {
+                $($then_tt)*
+        }
+    };
+    ($($block_inner:tt)*) => {
+        {
+            $($block_inner)*
+        }
+    };
+}
+
+//操作系统支持statx结构,删除了一些与linux无关的内容
+cfg_has_statx! {{
+    #[derive(Clone)]
+    //文件属性
+    pub struct FileAttr {
+        stat: stat64,
+        statx_extra_fields: Option<StatxExtraFields>,
+    }
+
+    #[derive(Clone)]
+    struct StatxExtraFields {
+        stx_mask: u32,
+        stx_btime: libc::statx_timestamp,
+    }
+
+    //linux上，statx包含了最全面的信息
+    unsafe fn try_statx(
+        fd: c_int,
+        path: *const c_char,
+        flags: i32,
+        mask: u32,
+    ) -> Option<io::Result<FileAttr>> {
+        use crate::sync::atomic::{AtomicU8, Ordering};
+
+        syscall! {
+            fn statx(
+                fd: c_int,
+                pathname: *const c_char,
+                flags: c_int,
+                mask: libc::c_uint,
+                statxbuf: *mut libc::statx
+            ) -> c_int
+        }
+
+        let mut buf: libc::statx = mem::zeroed();
+        if let Err(err) = cvt(statx(fd, path, flags, mask, &mut buf)) {
+            return Some(Err(err));
+        }
+
+        // 需要用stat64返回，所以做一下翻译.
+        let mut stat: stat64 = mem::zeroed();
+        // `c_ulong` on gnu-mips, `dev_t` otherwise
+        stat.st_dev = libc::makedev(buf.stx_dev_major, buf.stx_dev_minor) as _;
+        stat.st_ino = buf.stx_ino as libc::ino64_t;
+        stat.st_nlink = buf.stx_nlink as libc::nlink_t;
+        stat.st_mode = buf.stx_mode as libc::mode_t;
+        stat.st_uid = buf.stx_uid as libc::uid_t;
+        stat.st_gid = buf.stx_gid as libc::gid_t;
+        stat.st_rdev = libc::makedev(buf.stx_rdev_major, buf.stx_rdev_minor) as _;
+        stat.st_size = buf.stx_size as off64_t;
+        stat.st_blksize = buf.stx_blksize as libc::blksize_t;
+        stat.st_blocks = buf.stx_blocks as libc::blkcnt64_t;
+        stat.st_atime = buf.stx_atime.tv_sec as libc::time_t;
+        // `i64` on gnu-x86_64-x32, `c_ulong` otherwise.
+        stat.st_atime_nsec = buf.stx_atime.tv_nsec as _;
+        stat.st_mtime = buf.stx_mtime.tv_sec as libc::time_t;
+        stat.st_mtime_nsec = buf.stx_mtime.tv_nsec as _;
+        stat.st_ctime = buf.stx_ctime.tv_sec as libc::time_t;
+        stat.st_ctime_nsec = buf.stx_ctime.tv_nsec as _;
+
+        let extra = StatxExtraFields {
+            stx_mask: buf.stx_mask,
+            stx_btime: buf.stx_btime,
+        };
+
+        Some(Ok(FileAttr { stat, statx_extra_fields: Some(extra) }))
+    }
+
+}} 
+// all DirEntry's will have a reference to this struct
+struct InnerReadDir {
+    dirp: Dir,
+    root: PathBuf,
+}
+
+pub struct ReadDir {
+    inner: Arc<InnerReadDir>,
+}
+
+struct Dir(*mut libc::DIR);
+
+unsafe impl Send for Dir {}
+unsafe impl Sync for Dir {}
+
+pub struct DirEntry {
+    dir: Arc<InnerReadDir>,
+    entry: dirent64_min,
+    // We need to store an owned copy of the entry name on platforms that use
+    // readdir() (not readdir_r()), because a) struct dirent may use a flexible
+    // array to store the name, b) it lives only until the next readdir() call.
+    name: CString,
+}
+
+// Define a minimal subset of fields we need from `dirent64`, especially since
+// we're not using the immediate `d_name` on these targets. Keeping this as an
+// `entry` field in `DirEntry` helps reduce the `cfg` boilerplate elsewhere.
+struct dirent64_min {
+    d_ino: u64,
+    #[cfg(not(any(target_os = "solaris", target_os = "illumos")))]
+    d_type: u8,
+}
+
+#[derive(Clone, Debug)]
+pub struct OpenOptions {
+    // generic
+    read: bool,
+    write: bool,
+    append: bool,
+    truncate: bool,
+    create: bool,
+    create_new: bool,
+    // system-specific
+    custom_flags: i32,
+    mode: mode_t,
+}
+
+#[derive(Clone, PartialEq, Eq, Debug)]
+pub struct FilePermissions {
+    mode: mode_t,
+}
+
+#[derive(Copy, Clone, PartialEq, Eq, Hash, Debug)]
+pub struct FileType {
+    mode: mode_t,
+}
+
+#[derive(Debug)]
+pub struct DirBuilder {
+    mode: mode_t,
+}
+
+cfg_has_statx! {{
+    impl FileAttr {
+        fn from_stat64(stat: stat64) -> Self {
+            Self { stat, statx_extra_fields: None }
+        }
+    }
+} else {
+    impl FileAttr {
+        fn from_stat64(stat: stat64) -> Self {
+            Self { stat }
+        }
+    }
+}}
+
+impl FileAttr {
+    pub fn size(&self) -> u64 {
+        self.stat.st_size as u64
+    }
+    pub fn perm(&self) -> FilePermissions {
+        FilePermissions { mode: (self.stat.st_mode as mode_t) }
+    }
+
+    pub fn file_type(&self) -> FileType {
+        FileType { mode: self.stat.st_mode as mode_t }
+    }
+}
+
+impl FileAttr {
+    pub fn modified(&self) -> io::Result<SystemTime> {
+        Ok(SystemTime::from(libc::timespec {
+            tv_sec: self.stat.st_mtime as libc::time_t,
+            tv_nsec: self.stat.st_mtime_nsec as _,
+        }))
+    }
+
+    pub fn created(&self) -> io::Result<SystemTime> {
+        cfg_has_statx! {
+            if let Some(ext) = &self.statx_extra_fields {
+                return if (ext.stx_mask & libc::STATX_BTIME) != 0 {
+                    Ok(SystemTime::from(libc::timespec {
+                        tv_sec: ext.stx_btime.tv_sec as libc::time_t,
+                        tv_nsec: ext.stx_btime.tv_nsec as _,
+                    }))
+                } else {
+                    Err(io::const_io_error!(
+                        io::ErrorKind::Uncategorized,
+                        "creation time is not available for the filesystem",
+                    ))
+                };
+            }
+        }
+
+        Err(io::const_io_error!(
+            io::ErrorKind::Unsupported,
+            "creation time is not available on this platform \
+                            currently",
+        ))
+    }
+}
+
+impl AsInner<stat64> for FileAttr {
+    fn as_inner(&self) -> &stat64 {
+        &self.stat
+    }
+}
+
+impl FilePermissions {
+    pub fn readonly(&self) -> bool {
+        // check if any class (owner, group, others) has write permission
+        self.mode & 0o222 == 0
+    }
+
+    pub fn set_readonly(&mut self, readonly: bool) {
+        if readonly {
+            // remove write permission for all classes; equivalent to `chmod a-w <file>`
+            self.mode &= !0o222;
+        } else {
+            // add write permission for all classes; equivalent to `chmod a+w <file>`
+            self.mode |= 0o222;
+        }
+    }
+    pub fn mode(&self) -> u32 {
+        self.mode as u32
+    }
+}
+
+impl FileType {
+    pub fn is_dir(&self) -> bool {
+        self.is(libc::S_IFDIR)
+    }
+    pub fn is_file(&self) -> bool {
+        self.is(libc::S_IFREG)
+    }
+    pub fn is_symlink(&self) -> bool {
+        self.is(libc::S_IFLNK)
+    }
+
+    pub fn is(&self, mode: mode_t) -> bool {
+        self.mode & libc::S_IFMT == mode
+    }
+}
+
+impl FromInner<u32> for FilePermissions {
+    fn from_inner(mode: u32) -> FilePermissions {
+        FilePermissions { mode: mode as mode_t }
+    }
+}
+
+impl fmt::Debug for ReadDir {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        // This will only be called from std::fs::ReadDir, which will add a "ReadDir()" frame.
+        // Thus the result will be e g 'ReadDir("/home")'
+        fmt::Debug::fmt(&*self.inner.root, f)
+    }
+}
+
+impl Iterator for ReadDir {
+    type Item = io::Result<DirEntry>;
+
+    fn next(&mut self) -> Option<io::Result<DirEntry>> {
+        unsafe {
+            loop {
+                // As of POSIX.1-2017, readdir() is not required to be thread safe; only
+                // readdir_r() is. However, readdir_r() cannot correctly handle platforms
+                // with unlimited or variable NAME_MAX.  Many modern platforms guarantee
+                // thread safety for readdir() as long an individual DIR* is not accessed
+                // concurrently, which is sufficient for Rust.
+                super::os::set_errno(0);
+                let entry_ptr = readdir64(self.inner.dirp.0);
+                if entry_ptr.is_null() {
+                    // null can mean either the end is reached or an error occurred.
+                    // So we had to clear errno beforehand to check for an error now.
+                    return match super::os::errno() {
+                        0 => None,
+                        e => Some(Err(Error::from_raw_os_error(e))),
+                    };
+                }
+
+                // Only d_reclen bytes of *entry_ptr are valid, so we can't just copy the
+                // whole thing (#93384).  Instead, copy everything except the name.
+                let mut copy: dirent64 = mem::zeroed();
+                // Can't dereference entry_ptr, so use the local entry to get
+                // offsetof(struct dirent, d_name)
+                let copy_bytes = &mut copy as *mut _ as *mut u8;
+                let copy_name = &mut copy.d_name as *mut _ as *mut u8;
+                let name_offset = copy_name.offset_from(copy_bytes) as usize;
+                let entry_bytes = entry_ptr as *const u8;
+                let entry_name = entry_bytes.add(name_offset);
+                ptr::copy_nonoverlapping(entry_bytes, copy_bytes, name_offset);
+
+                let entry = dirent64_min {
+                    d_ino: copy.d_ino as u64,
+                    #[cfg(not(any(target_os = "solaris", target_os = "illumos")))]
+                    d_type: copy.d_type as u8,
+                };
+
+                let ret = DirEntry {
+                    entry,
+                    // d_name is guaranteed to be null-terminated.
+                    name: CStr::from_ptr(entry_name as *const _).to_owned(),
+                    dir: Arc::clone(&self.inner),
+                };
+                if ret.name_bytes() != b"." && ret.name_bytes() != b".." {
+                    return Some(Ok(ret));
+                }
+            }
+        }
+    }
+
+}
+
+impl Drop for Dir {
+    fn drop(&mut self) {
+        let r = unsafe { libc::closedir(self.0) };
+        debug_assert_eq!(r, 0);
+    }
+}
+
+impl DirEntry {
+    pub fn path(&self) -> PathBuf {
+        self.dir.root.join(self.file_name_os_str())
+    }
+
+    pub fn file_name(&self) -> OsString {
+        self.file_name_os_str().to_os_string()
+    }
+
+    pub fn metadata(&self) -> io::Result<FileAttr> {
+        let fd = cvt(unsafe { dirfd(self.dir.dirp.0) })?;
+        let name = self.name_cstr().as_ptr();
+
+        cfg_has_statx! {
+            if let Some(ret) = unsafe { try_statx(
+                fd,
+                name,
+                libc::AT_SYMLINK_NOFOLLOW | libc::AT_STATX_SYNC_AS_STAT,
+                libc::STATX_ALL,
+            ) } {
+                return ret;
+            }
+        }
+
+        let mut stat: stat64 = unsafe { mem::zeroed() };
+        cvt(unsafe { fstatat64(fd, name, &mut stat, libc::AT_SYMLINK_NOFOLLOW) })?;
+        Ok(FileAttr::from_stat64(stat))
+    }
+
+    pub fn file_type(&self) -> io::Result<FileType> {
+        match self.entry.d_type {
+            libc::DT_CHR => Ok(FileType { mode: libc::S_IFCHR }),
+            libc::DT_FIFO => Ok(FileType { mode: libc::S_IFIFO }),
+            libc::DT_LNK => Ok(FileType { mode: libc::S_IFLNK }),
+            libc::DT_REG => Ok(FileType { mode: libc::S_IFREG }),
+            libc::DT_SOCK => Ok(FileType { mode: libc::S_IFSOCK }),
+            libc::DT_DIR => Ok(FileType { mode: libc::S_IFDIR }),
+            libc::DT_BLK => Ok(FileType { mode: libc::S_IFBLK }),
+            _ => self.metadata().map(|m| m.file_type()),
+        }
+    }
+
+    pub fn ino(&self) -> u64 {
+        self.entry.d_ino as u64
+    }
+
+    fn name_bytes(&self) -> &[u8] {
+        self.name_cstr().to_bytes()
+    }
+
+    fn name_cstr(&self) -> &CStr {
+        &self.name
+    }
+
+    pub fn file_name_os_str(&self) -> &OsStr {
+        OsStr::from_bytes(self.name_bytes())
+    }
+}
+
+impl OpenOptions {
+    pub fn new() -> OpenOptions {
+        OpenOptions {
+            // generic
+            read: false,
+            write: false,
+            append: false,
+            truncate: false,
+            create: false,
+            create_new: false,
+            // system-specific
+            custom_flags: 0,
+            mode: 0o666,
+        }
+    }
+
+    pub fn read(&mut self, read: bool) {
+        self.read = read;
+    }
+    pub fn write(&mut self, write: bool) {
+        self.write = write;
+    }
+    pub fn append(&mut self, append: bool) {
+        self.append = append;
+    }
+    pub fn truncate(&mut self, truncate: bool) {
+        self.truncate = truncate;
+    }
+    pub fn create(&mut self, create: bool) {
+        self.create = create;
+    }
+    pub fn create_new(&mut self, create_new: bool) {
+        self.create_new = create_new;
+    }
+
+    pub fn custom_flags(&mut self, flags: i32) {
+        self.custom_flags = flags;
+    }
+    pub fn mode(&mut self, mode: u32) {
+        self.mode = mode as mode_t;
+    }
+
+    fn get_access_mode(&self) -> io::Result<c_int> {
+        match (self.read, self.write, self.append) {
+            (true, false, false) => Ok(libc::O_RDONLY),
+            (false, true, false) => Ok(libc::O_WRONLY),
+            (true, true, false) => Ok(libc::O_RDWR),
+            (false, _, true) => Ok(libc::O_WRONLY | libc::O_APPEND),
+            (true, _, true) => Ok(libc::O_RDWR | libc::O_APPEND),
+            (false, false, false) => Err(Error::from_raw_os_error(libc::EINVAL)),
+        }
+    }
+
+    fn get_creation_mode(&self) -> io::Result<c_int> {
+        match (self.write, self.append) {
+            (true, false) => {}
+            (false, false) => {
+                if self.truncate || self.create || self.create_new {
+                    return Err(Error::from_raw_os_error(libc::EINVAL));
+                }
+            }
+            (_, true) => {
+                if self.truncate && !self.create_new {
+                    return Err(Error::from_raw_os_error(libc::EINVAL));
+                }
+            }
+        }
+
+        Ok(match (self.create, self.truncate, self.create_new) {
+            (false, false, false) => 0,
+            (true, false, false) => libc::O_CREAT,
+            (false, true, false) => libc::O_TRUNC,
+            (true, true, false) => libc::O_CREAT | libc::O_TRUNC,
+            (_, _, true) => libc::O_CREAT | libc::O_EXCL,
+        })
+    }
+}
+
+impl File {
+    pub fn open(path: &Path, opts: &OpenOptions) -> io::Result<File> {
+        let path = cstr(path)?;
+        File::open_c(&path, opts)
+    }
+
+    pub fn open_c(path: &CStr, opts: &OpenOptions) -> io::Result<File> {
+        let flags = libc::O_CLOEXEC
+            | opts.get_access_mode()?
+            | opts.get_creation_mode()?
+            | (opts.custom_flags as c_int & !libc::O_ACCMODE);
+        // The third argument of `open64` is documented to have type `mode_t`. On
+        // some platforms (like macOS, where `open64` is actually `open`), `mode_t` is `u16`.
+        // However, since this is a variadic function, C integer promotion rules mean that on
+        // the ABI level, this still gets passed as `c_int` (aka `u32` on Unix platforms).
+        let fd = cvt_r(|| unsafe { open64(path.as_ptr(), flags, opts.mode as c_int) })?;
+        Ok(File(unsafe { FileDesc::from_raw_fd(fd) }))
+    }
+
+    pub fn file_attr(&self) -> io::Result<FileAttr> {
+        let fd = self.as_raw_fd();
+
+        cfg_has_statx! {
+            if let Some(ret) = unsafe { try_statx(
+                fd,
+                b"\0" as *const _ as *const c_char,
+                libc::AT_EMPTY_PATH | libc::AT_STATX_SYNC_AS_STAT,
+                libc::STATX_ALL,
+            ) } {
+                return ret;
+            }
+        }
+
+        let mut stat: stat64 = unsafe { mem::zeroed() };
+        cvt(unsafe { fstat64(fd, &mut stat) })?;
+        Ok(FileAttr::from_stat64(stat))
+    }
+
+    pub fn fsync(&self) -> io::Result<()> {
+        cvt_r(|| unsafe { os_fsync(self.as_raw_fd()) })?;
+        return Ok(());
+
+        unsafe fn os_fsync(fd: c_int) -> c_int {
+            libc::fsync(fd)
+        }
+    }
+
+    pub fn datasync(&self) -> io::Result<()> {
+        cvt_r(|| unsafe { os_datasync(self.as_raw_fd()) })?;
+        return Ok(());
+
+        unsafe fn os_datasync(fd: c_int) -> c_int {
+            libc::fdatasync(fd)
+        }
+    }
+
+    pub fn truncate(&self, size: u64) -> io::Result<()> {
+        use crate::convert::TryInto;
+        let size: off64_t =
+            size.try_into().map_err(|e| io::Error::new(io::ErrorKind::InvalidInput, e))?;
+        cvt_r(|| unsafe { ftruncate64(self.as_raw_fd(), size) }).map(drop)
+    }
+
+    pub fn read(&self, buf: &mut [u8]) -> io::Result<usize> {
+        self.0.read(buf)
+    }
+
+    pub fn read_vectored(&self, bufs: &mut [IoSliceMut<'_>]) -> io::Result<usize> {
+        self.0.read_vectored(bufs)
+    }
+
+    #[inline]
+    pub fn is_read_vectored(&self) -> bool {
+        self.0.is_read_vectored()
+    }
+
+    pub fn read_at(&self, buf: &mut [u8], offset: u64) -> io::Result<usize> {
+        self.0.read_at(buf, offset)
+    }
+
+    pub fn read_buf(&self, buf: &mut ReadBuf<'_>) -> io::Result<()> {
+        self.0.read_buf(buf)
+    }
+
+    pub fn write(&self, buf: &[u8]) -> io::Result<usize> {
+        self.0.write(buf)
+    }
+
+    pub fn write_vectored(&self, bufs: &[IoSlice<'_>]) -> io::Result<usize> {
+        self.0.write_vectored(bufs)
+    }
+
+    #[inline]
+    pub fn is_write_vectored(&self) -> bool {
+        self.0.is_write_vectored()
+    }
+
+    pub fn write_at(&self, buf: &[u8], offset: u64) -> io::Result<usize> {
+        self.0.write_at(buf, offset)
+    }
+
+    pub fn flush(&self) -> io::Result<()> {
+        Ok(())
+    }
+
+    pub fn seek(&self, pos: SeekFrom) -> io::Result<u64> {
+        let (whence, pos) = match pos {
+            // Casting to `i64` is fine, too large values will end up as
+            // negative which will cause an error in `lseek64`.
+            SeekFrom::Start(off) => (libc::SEEK_SET, off as i64),
+            SeekFrom::End(off) => (libc::SEEK_END, off),
+            SeekFrom::Current(off) => (libc::SEEK_CUR, off),
+        };
+        let n = cvt(unsafe { lseek64(self.as_raw_fd(), pos, whence) })?;
+        Ok(n as u64)
+    }
+
+    pub fn duplicate(&self) -> io::Result<File> {
+        self.0.duplicate().map(File)
+    }
+
+    pub fn set_permissions(&self, perm: FilePermissions) -> io::Result<()> {
+        cvt_r(|| unsafe { libc::fchmod(self.as_raw_fd(), perm.mode) })?;
+        Ok(())
+    }
+}
+
+impl DirBuilder {
+    pub fn new() -> DirBuilder {
+        DirBuilder { mode: 0o777 }
+    }
+
+    pub fn mkdir(&self, p: &Path) -> io::Result<()> {
+        let p = cstr(p)?;
+        cvt(unsafe { libc::mkdir(p.as_ptr(), self.mode) })?;
+        Ok(())
+    }
+
+    pub fn set_mode(&mut self, mode: u32) {
+        self.mode = mode as mode_t;
+    }
+}
+
+fn cstr(path: &Path) -> io::Result<CString> {
+    Ok(CString::new(path.as_os_str().as_bytes())?)
+}
+
+impl AsInner<FileDesc> for File {
+    fn as_inner(&self) -> &FileDesc {
+        &self.0
+    }
+}
+
+impl AsInnerMut<FileDesc> for File {
+    fn as_inner_mut(&mut self) -> &mut FileDesc {
+        &mut self.0
+    }
+}
+
+impl IntoInner<FileDesc> for File {
+    fn into_inner(self) -> FileDesc {
+        self.0
+    }
+}
+
+impl FromInner<FileDesc> for File {
+    fn from_inner(file_desc: FileDesc) -> Self {
+        Self(file_desc)
+    }
+}
+
+impl AsFd for File {
+    fn as_fd(&self) -> BorrowedFd<'_> {
+        self.0.as_fd()
+    }
+}
+
+impl AsRawFd for File {
+    fn as_raw_fd(&self) -> RawFd {
+        self.0.as_raw_fd()
+    }
+}
+
+impl IntoRawFd for File {
+    fn into_raw_fd(self) -> RawFd {
+        self.0.into_raw_fd()
+    }
+}
+
+impl FromRawFd for File {
+    unsafe fn from_raw_fd(raw_fd: RawFd) -> Self {
+        Self(FromRawFd::from_raw_fd(raw_fd))
+    }
+}
+
+impl fmt::Debug for File {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        #[cfg(any(target_os = "linux", target_os = "netbsd"))]
+        fn get_path(fd: c_int) -> Option<PathBuf> {
+            let mut p = PathBuf::from("/proc/self/fd");
+            p.push(&fd.to_string());
+            readlink(&p).ok()
+        }
+
+        fn get_mode(fd: c_int) -> Option<(bool, bool)> {
+            let mode = unsafe { libc::fcntl(fd, libc::F_GETFL) };
+            if mode == -1 {
+                return None;
+            }
+            match mode & libc::O_ACCMODE {
+                libc::O_RDONLY => Some((true, false)),
+                libc::O_RDWR => Some((true, true)),
+                libc::O_WRONLY => Some((false, true)),
+                _ => None,
+            }
+        }
+
+        let fd = self.as_raw_fd();
+        let mut b = f.debug_struct("File");
+        b.field("fd", &fd);
+        if let Some(path) = get_path(fd) {
+            b.field("path", &path);
+        }
+        if let Some((read, write)) = get_mode(fd) {
+            b.field("read", &read).field("write", &write);
+        }
+        b.finish()
+    }
+}
+
+pub fn readdir(p: &Path) -> io::Result<ReadDir> {
+    let root = p.to_path_buf();
+    let p = cstr(p)?;
+    unsafe {
+        let ptr = libc::opendir(p.as_ptr());
+        if ptr.is_null() {
+            Err(Error::last_os_error())
+        } else {
+            let inner = InnerReadDir { dirp: Dir(ptr), root };
+            Ok(ReadDir {
+                inner: Arc::new(inner),
+            })
+        }
+    }
+}
+
+pub fn unlink(p: &Path) -> io::Result<()> {
+    let p = cstr(p)?;
+    cvt(unsafe { libc::unlink(p.as_ptr()) })?;
+    Ok(())
+}
+
+pub fn rename(old: &Path, new: &Path) -> io::Result<()> {
+    let old = cstr(old)?;
+    let new = cstr(new)?;
+    cvt(unsafe { libc::rename(old.as_ptr(), new.as_ptr()) })?;
+    Ok(())
+}
+
+pub fn set_perm(p: &Path, perm: FilePermissions) -> io::Result<()> {
+    let p = cstr(p)?;
+    cvt_r(|| unsafe { libc::chmod(p.as_ptr(), perm.mode) })?;
+    Ok(())
+}
+
+pub fn rmdir(p: &Path) -> io::Result<()> {
+    let p = cstr(p)?;
+    cvt(unsafe { libc::rmdir(p.as_ptr()) })?;
+    Ok(())
+}
+
+pub fn readlink(p: &Path) -> io::Result<PathBuf> {
+    let c_path = cstr(p)?;
+    let p = c_path.as_ptr();
+
+    let mut buf = Vec::with_capacity(256);
+
+    loop {
+        let buf_read =
+            cvt(unsafe { libc::readlink(p, buf.as_mut_ptr() as *mut _, buf.capacity()) })? as usize;
+
+        unsafe {
+            buf.set_len(buf_read);
+        }
+
+        if buf_read != buf.capacity() {
+            buf.shrink_to_fit();
+
+            return Ok(PathBuf::from(OsString::from_vec(buf)));
+        }
+
+        // Trigger the internal buffer resizing logic of `Vec` by requiring
+        // more space than the current capacity. The length is guaranteed to be
+        // the same as the capacity due to the if statement above.
+        buf.reserve(1);
+    }
+}
+
+pub fn symlink(original: &Path, link: &Path) -> io::Result<()> {
+    let original = cstr(original)?;
+    let link = cstr(link)?;
+    cvt(unsafe { libc::symlink(original.as_ptr(), link.as_ptr()) })?;
+    Ok(())
+}
+
+pub fn link(original: &Path, link: &Path) -> io::Result<()> {
+    let original = cstr(original)?;
+    let link = cstr(link)?;
+    cfg_if::cfg_if! {
+        {
+            // Where we can, use `linkat` instead of `link`; see the comment above
+            // this one for details on why.
+            cvt(unsafe { libc::linkat(libc::AT_FDCWD, original.as_ptr(), libc::AT_FDCWD, link.as_ptr(), 0) })?;
+        }
+    }
+    Ok(())
+}
+
+pub fn stat(p: &Path) -> io::Result<FileAttr> {
+    let p = cstr(p)?;
+
+    cfg_has_statx! {
+        if let Some(ret) = unsafe { try_statx(
+            libc::AT_FDCWD,
+            p.as_ptr(),
+            libc::AT_STATX_SYNC_AS_STAT,
+            libc::STATX_ALL,
+        ) } {
+            return ret;
+        }
+    }
+
+    let mut stat: stat64 = unsafe { mem::zeroed() };
+    cvt(unsafe { stat64(p.as_ptr(), &mut stat) })?;
+    Ok(FileAttr::from_stat64(stat))
+}
+
+pub fn lstat(p: &Path) -> io::Result<FileAttr> {
+    let p = cstr(p)?;
+
+    cfg_has_statx! {
+        if let Some(ret) = unsafe { try_statx(
+            libc::AT_FDCWD,
+            p.as_ptr(),
+            libc::AT_SYMLINK_NOFOLLOW | libc::AT_STATX_SYNC_AS_STAT,
+            libc::STATX_ALL,
+        ) } {
+            return ret;
+        }
+    }
+
+    let mut stat: stat64 = unsafe { mem::zeroed() };
+    cvt(unsafe { lstat64(p.as_ptr(), &mut stat) })?;
+    Ok(FileAttr::from_stat64(stat))
+}
+
+pub fn canonicalize(p: &Path) -> io::Result<PathBuf> {
+    let path = CString::new(p.as_os_str().as_bytes())?;
+    let buf;
+    unsafe {
+        let r = libc::realpath(path.as_ptr(), ptr::null_mut());
+        if r.is_null() {
+            return Err(io::Error::last_os_error());
+        }
+        buf = CStr::from_ptr(r).to_bytes().to_vec();
+        libc::free(r as *mut _);
+    }
+    Ok(PathBuf::from(OsString::from_vec(buf)))
+}
+
+fn open_from(from: &Path) -> io::Result<(crate::fs::File, crate::fs::Metadata)> {
+    use crate::fs::File;
+    use crate::sys_common::fs::NOT_FILE_ERROR;
+
+    let reader = File::open(from)?;
+    let metadata = reader.metadata()?;
+    if !metadata.is_file() {
+        return Err(NOT_FILE_ERROR);
+    }
+    Ok((reader, metadata))
+}
+
+fn open_to_and_set_permissions(
+    to: &Path,
+    reader_metadata: crate::fs::Metadata,
+) -> io::Result<(crate::fs::File, crate::fs::Metadata)> {
+    use crate::fs::OpenOptions;
+    use crate::os::unix::fs::{OpenOptionsExt, PermissionsExt};
+
+    let perm = reader_metadata.permissions();
+    let writer = OpenOptions::new()
+        // create the file with the correct mode right away
+        .mode(perm.mode())
+        .write(true)
+        .create(true)
+        .truncate(true)
+        .open(to)?;
+    let writer_metadata = writer.metadata()?;
+    if writer_metadata.is_file() {
+        // Set the correct file permissions, in case the file already existed.
+        // Don't set the permissions on already existing non-files like
+        // pipes/FIFOs or device nodes.
+        writer.set_permissions(perm)?;
+    }
+    Ok((writer, writer_metadata))
+}
+
+pub fn copy(from: &Path, to: &Path) -> io::Result<u64> {
+    let (mut reader, reader_metadata) = open_from(from)?;
+    let max_len = u64::MAX;
+    let (mut writer, _) = open_to_and_set_permissions(to, reader_metadata)?;
+
+    use super::kernel_copy::{copy_regular_files, CopyResult};
+
+    match copy_regular_files(reader.as_raw_fd(), writer.as_raw_fd(), max_len) {
+        CopyResult::Ended(bytes) => Ok(bytes),
+        CopyResult::Error(e, _) => Err(e),
+        CopyResult::Fallback(written) => match io::copy::generic_copy(&mut reader, &mut writer) {
+            Ok(bytes) => Ok(bytes + written),
+            Err(e) => Err(e),
+        },
+    }
+}
+
+pub fn chown(path: &Path, uid: u32, gid: u32) -> io::Result<()> {
+    let path = cstr(path)?;
+    cvt(unsafe { libc::chown(path.as_ptr(), uid as libc::uid_t, gid as libc::gid_t) })?;
+    Ok(())
+}
+
+pub fn fchown(fd: c_int, uid: u32, gid: u32) -> io::Result<()> {
+    cvt(unsafe { libc::fchown(fd, uid as libc::uid_t, gid as libc::gid_t) })?;
+    Ok(())
+}
+
+pub fn lchown(path: &Path, uid: u32, gid: u32) -> io::Result<()> {
+    let path = cstr(path)?;
+    cvt(unsafe { libc::lchown(path.as_ptr(), uid as libc::uid_t, gid as libc::gid_t) })?;
+    Ok(())
+}
+
+pub fn chroot(dir: &Path) -> io::Result<()> {
+    let dir = cstr(dir)?;
+    cvt(unsafe { libc::chroot(dir.as_ptr()) })?;
+    Ok(())
+}
+
+pub use remove_dir_impl::remove_dir_all;
+
+mod remove_dir_impl {
+    use super::{cstr, lstat, Dir, DirEntry, InnerReadDir, ReadDir};
+    use crate::ffi::CStr;
+    use crate::io;
+    use crate::os::unix::io::{AsRawFd, FromRawFd, IntoRawFd};
+    use crate::os::unix::prelude::{OwnedFd, RawFd};
+    use crate::path::{Path, PathBuf};
+    use crate::sync::Arc;
+    use crate::sys::{cvt, cvt_r};
+
+    use libc::{fdopendir, openat, unlinkat};
+
+    pub fn openat_nofollow_dironly(parent_fd: Option<RawFd>, p: &CStr) -> io::Result<OwnedFd> {
+        let fd = cvt_r(|| unsafe {
+            openat(
+                parent_fd.unwrap_or(libc::AT_FDCWD),
+                p.as_ptr(),
+                libc::O_CLOEXEC | libc::O_RDONLY | libc::O_NOFOLLOW | libc::O_DIRECTORY,
+            )
+        })?;
+        Ok(unsafe { OwnedFd::from_raw_fd(fd) })
+    }
+
+    fn fdreaddir(dir_fd: OwnedFd) -> io::Result<(ReadDir, RawFd)> {
+        let ptr = unsafe { fdopendir(dir_fd.as_raw_fd()) };
+        if ptr.is_null() {
+            return Err(io::Error::last_os_error());
+        }
+        let dirp = Dir(ptr);
+        // file descriptor is automatically closed by libc::closedir() now, so give up ownership
+        let new_parent_fd = dir_fd.into_raw_fd();
+        // a valid root is not needed because we do not call any functions involving the full path
+        // of the DirEntrys.
+        let dummy_root = PathBuf::new();
+        Ok((
+            ReadDir {
+                inner: Arc::new(InnerReadDir { dirp, root: dummy_root }),
+            },
+            new_parent_fd,
+        ))
+    }
+
+    fn is_dir(ent: &DirEntry) -> Option<bool> {
+        match ent.entry.d_type {
+            libc::DT_UNKNOWN => None,
+            libc::DT_DIR => Some(true),
+            _ => Some(false),
+        }
+    }
+
+    fn remove_dir_all_recursive(parent_fd: Option<RawFd>, path: &CStr) -> io::Result<()> {
+        // try opening as directory
+        let fd = match openat_nofollow_dironly(parent_fd, &path) {
+            Err(err) if err.raw_os_error() == Some(libc::ENOTDIR) => {
+                // not a directory - don't traverse further
+                return match parent_fd {
+                    // unlink...
+                    Some(parent_fd) => {
+                        cvt(unsafe { unlinkat(parent_fd, path.as_ptr(), 0) }).map(drop)
+                    }
+                    // ...unless this was supposed to be the deletion root directory
+                    None => Err(err),
+                };
+            }
+            result => result?,
+        };
+
+        // open the directory passing ownership of the fd
+        let (dir, fd) = fdreaddir(fd)?;
+        for child in dir {
+            let child = child?;
+            let child_name = child.name_cstr();
+            match is_dir(&child) {
+                Some(true) => {
+                    remove_dir_all_recursive(Some(fd), child_name)?;
+                }
+                Some(false) => {
+                    cvt(unsafe { unlinkat(fd, child_name.as_ptr(), 0) })?;
+                }
+                None => {
+                    // POSIX specifies that calling unlink()/unlinkat(..., 0) on a directory can succeed
+                    // if the process has the appropriate privileges. This however can causing orphaned
+                    // directories requiring an fsck e.g. on Solaris and Illumos. So we try recursing
+                    // into it first instead of trying to unlink() it.
+                    remove_dir_all_recursive(Some(fd), child_name)?;
+                }
+            }
+        }
+
+        // unlink the directory after removing its contents
+        cvt(unsafe {
+            unlinkat(parent_fd.unwrap_or(libc::AT_FDCWD), path.as_ptr(), libc::AT_REMOVEDIR)
+        })?;
+        Ok(())
+    }
+
+    fn remove_dir_all_modern(p: &Path) -> io::Result<()> {
+        // We cannot just call remove_dir_all_recursive() here because that would not delete a passed
+        // symlink. No need to worry about races, because remove_dir_all_recursive() does not recurse
+        // into symlinks.
+        let attr = lstat(p)?;
+        if attr.file_type().is_symlink() {
+            crate::fs::remove_file(p)
+        } else {
+            remove_dir_all_recursive(None, &cstr(p)?)
+        }
+    }
+
+    pub fn remove_dir_all(p: &Path) -> io::Result<()> {
+        remove_dir_all_modern(p)
+    }
+}
+
+```
+# RUST不采用类的理由
 面对对象语言如C++,Java以类为中心，并以类的继承为最基本的一个设计理念。但继承实际上是极易被错误使用，并导致整个软件结构混乱的根源之一。
 类起源基于C的struct总结出来的良好的设计模式：
 ```rust
@@ -7077,3 +17334,23 @@ let A = xxx<RealizeSomeTrait1>{   };
 let A = xxx {.., behavior : RealizeSomeTrait1}
 ```
 如果用泛型，则struct xxx实质会变成多个类型，无法对调用它的代码完成抽象化；用dyn Trait则不存在这个问题。
+
+# 栈和堆
+
+## 为什么有栈及堆
+栈存在的必要性：
+在程序中调用一个函数代码实际做如下工作：
+1. 函数调用的返回指令地址入栈 (栈指针减)
+2. 函数调用的参数入栈(假设没有参数使用寄存器)
+3. 指令跳转到函数入口地址
+4. 函数对每一个局部变量在栈内分配地址，栈指针减
+5. 函数利用栈指针+偏移量访问每一个变量及参数
+6. 函数返回时，栈指针加回，获取返回指令地址，指令跳转到上一级函数
+
+以上能够看出栈的主要解决的问题，这基本上是最经济及性能最高的方案，早期内存及寻址都是很贵的。      
+这个设计方案实际上有很大问题，直接导致了利用栈溢出获取系统控制权成了最牛的黑客技术之一。 
+ 
+
+堆存在的必要性：
+1. 希望变量能够跨越函数
+2. 变量的生命周期是动态的，希望经济的使用内存
