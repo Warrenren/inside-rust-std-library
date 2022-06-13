@@ -152,6 +152,8 @@ pub trait Add<Rhs = Self> {
 
 macro_rules! add_impl {
     ($($t:ty)*) => ($(
+        //注意这里的const实现，代表trait里面的函数
+        //都是const函数,为了使得加法能够给const及static赋值
         impl const Add for $t {
             type Output = $t;
 
