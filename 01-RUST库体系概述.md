@@ -153,6 +153,7 @@ impl AsRef<str> for str {...}
 3. 模块成员默认私有
 4. 严格的类型及类型无效值限制
 5. 基础类型都满足Copy/Send/Sync auto trait
+6. if及match的分支语法
 
 明确的不安全特性：   
 1. 裸指针解引用；   
