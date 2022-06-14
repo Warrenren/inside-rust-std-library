@@ -2,7 +2,7 @@
 ## RUST的临界区变量实现
 代码路径: library/std/src/sync/*.rs
 ### `Mutex<T>`的实现
-`Mutex<T>`是最典型的临界区变量。RUST的设计目标是在使用`Mutex<T>`时代码中不必关注其的跨线程操作的安全性，与智能指针的使用相类似。这一设计思路实际在`RefCell<T>`, `Rc<T>`, `Arc<T>`等安全封装结构时是一脉相承的：   
+`Mutex<T>`是最典型的临界区变量。RUST的设计目标是在使用`Mutex<T>`时代码中不必关注其的跨线程操作的安全性，使用方式与内部可变性类型的使用相类似。这一设计思路实际在`RefCell<T>`, `Rc<T>`, `Arc<T>`等类型设计上是一脉相承的：   
 1. 设计一个基础类型结构，将要操作的真实类型变量封装在其内，并拥有其所有权，
 2. 设计一个借用类型结构，由基础类型结构的某一方法生成，在此方法中完成附加安全操作，如计数增加，加锁等。
 3. 借用类型结构实现解引用方法，返回真实类型变量的引用或可变引用，由此可以对真实变类型变量进行访问，修改操作
@@ -31,19 +31,19 @@ unsafe impl<T: ?Sized + Send> Sync for Mutex<T> {}
 
 用于`Mutex<T>`配合的借用封装类型结构`MutexGuard`如下：
 ```rust
-//用于lock调用后的对原始变量的访问引用。并包含了poison用于在生命周期终结的时候
+//用于lock调用后的对原始变量的访问引用。并包含了poison用于在自身生命周期终结的时候
 //更新Mutex<T>的Flag
 pub struct MutexGuard<'a, T: ?Sized + 'a> {
     lock: &'a Mutex<T>,
     poison: poison::Guard,
 }
 
-//标识MutexGuard的当前线程状态
+//标识MutexGuard的当前线程panic状态
 pub struct Guard {
     panicking: bool,
 }
 
-//支持函数
+//支持函数, LockResult请参考14-线程间锁通信
 pub fn map_result<T, U, F>(result: LockResult<T>, f: F) -> LockResult<U>
 where
     F: FnOnce(T) -> U,
@@ -84,8 +84,9 @@ impl<T: ?Sized> DerefMut for MutexGuard<'_, T> {
 impl<T: ?Sized> Drop for MutexGuard<'_, T> {
     fn drop(&mut self) {
         unsafe {
-            //更新Mutex<T>的Flag,一般的，如果在上锁的状态下panic
-            //会对所有栈变量做drop调用，从而将poison更新为true
+            //更新Mutex<T>的Flag,一般的，如果在上锁的状态下线程panic
+            //会导致对所有栈变量做drop调用，从而此drop被调用
+            //self.lock.poison被更新为true
             self.lock.poison.done(&self.poison);
             //解锁
             self.lock.inner.raw_unlock();
@@ -104,7 +105,7 @@ pub fn guard_poison<'a, T: ?Sized>(guard: &MutexGuard<'a, T>) -> &'a poison::Fla
 }
 
 ```
-在`Mutex<T>`结构中，poison导致更新一般在发生panic时，线程drop`MutexGuard<T>`时进行标志更新。因为poison的设计，`Mutex<T>`的lock后返回的结构复杂。值得说明的时，上锁后线程异常退出是很少被考虑到的安全问题，RUST的标准库则给出了解决方案。       
+在`Mutex<T>`结构中，poison导致更新一般在发生panic时，线程drop`MutexGuard<T>`时进行标志更新。值得说明的时，上锁后线程异常退出是很少被考虑到的安全问题，RUST的标准库则给出了解决方案。       
 
 `Mutex<T>`的代码分析如下：   
 ```rust 
@@ -177,8 +178,7 @@ impl<T: ?Sized> Mutex<T> {
 }
 
 ```
-RUST的`Mutex<T>`几乎是屏蔽了临界区的概念，使用`Mutex<T>`的程序员不必再熟悉锁就能写出安全的互斥代码。从`Mutex<T>`可以发现，如果熟悉了RUST的类型方式，那RUST比其他的语言代码编写起来简单很多。  
-
+RUST的`Mutex<T>`再一次揭示了RUST标准库对编程员简化编程的努力及一些标准思维及技巧。
 ### `Condvar`实现分析
 RUST的Condvar是与`MutexGuard<'a, T>`临界区变量相关联在一起。RUST的Condvar摆脱了其他语言的那些复杂概念与代码形式，使用方式逻辑上非常顺理成章。     
 

@@ -105,7 +105,7 @@ pub fn futex_wake_all(futex: &AtomicI32) {
 FUTEX的令人惊讶在于为什么如此之晚这一特性才被实现。
 
 ### Mutex源代码分析
-Mutex作为传统的临界区保护机制，在linux上，RUST利用futex重新实现了Mutex库而没有使用pthread_mutex_t。
+Mutex作为传统的临界区保护机制，在linux适配层上，RUST利用futex重新实现了Mutex库而没有使用pthread_mutex_t。
 
 ```rust
 pub struct Mutex {
@@ -653,7 +653,7 @@ impl ReentrantMutex {
 }
 ```
 
-## RUST的包装后的锁机制
+## RUST适配层扩展的锁机制
 代码路径： library/std/src/sys_common/mutex.rs|condvar.rs|rwlock.rs
 
 ### 适用于静态变量的锁

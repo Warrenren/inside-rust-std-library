@@ -654,10 +654,99 @@ GlobalAlloc trait是操作系统无关及操作系统相关的界面接口。Glo
 Allocator是RUST自身的内存管理模块，其他的RUST模块如果有内存需求，同过Allocator triat来完成。Allocator使用GlobalAlloc完成对操作系统的使用。
 
 std库用System 作为这两个trait的实现载体，core库中用Global重新实现了Allocator，Global没有实现GlobalAlloc,因为Global需要适配非操作系统情况，具体请参考02-内存一章, System的代码如下：  
+
+以下是unix操作系统相关的部分，代码位置：library/std/src/sys/unix/alloc.rs  
+不同的操作系统，其内存申请的系统调用都不一致，因此对GlobalAlloc的实现也不一致。  
+类unix的操作系统主要使用了libc的库函数实现操作系统的系统调用。后继还会看到更多的libc中与操作系统交互的代码，分析RUST std库的代码，必须熟练的掌握libc库。
 ```rust
 //单元结构体，仅用来作为内存管理的实现载体
 pub struct System;
 
+unsafe impl GlobalAlloc for System {
+    unsafe fn alloc(&self, layout: Layout) -> *mut u8 {
+        // 用libc来实现内存申请，这里适配的难点在于对齐的适配，
+        // libc的malloc对齐是不能指定的。  
+        // 只有在申请的内存对齐小于MIN_ALIGN而且申请的内存大小大于对齐大小时
+        // 才能调用libc的malloc做申请.  
+        // 对齐的内存申请C程序员不是太长接触
+        if layout.align() <= MIN_ALIGN && layout.align() <= layout.size() {
+            libc::malloc(layout.size()) as *mut u8
+        } else {
+            //见随后的分析
+            aligned_malloc(&layout)
+        }
+    }
+
+    unsafe fn alloc_zeroed(&self, layout: Layout) -> *mut u8 {
+        // 一样需要处理对齐
+        if layout.align() <= MIN_ALIGN && layout.align() <= layout.size() {
+            libc::calloc(layout.size(), 1) as *mut u8
+        } else {
+            let ptr = self.alloc(layout);
+            //不能用calloc处理时需要清零
+            if !ptr.is_null() {
+                ptr::write_bytes(ptr, 0, layout.size());
+            }
+            ptr
+        }
+    }
+
+    unsafe fn dealloc(&self, ptr: *mut u8, _layout: Layout) {
+        //都使用free做释放
+        libc::free(ptr as *mut libc::c_void)
+    }
+
+    unsafe fn realloc(&self, ptr: *mut u8, layout: Layout, new_size: usize) -> *mut u8 {
+        //对齐处理
+        if layout.align() <= MIN_ALIGN && layout.align() <= new_size {
+            libc::realloc(ptr as *mut libc::c_void, new_size) as *mut u8
+        } else {
+            //无法对齐时的处理，
+            realloc_fallback(self, ptr, layout, new_size)
+        }
+    }
+}
+
+//此函数用于libc的realloc无法支持RUST语义时使用
+pub unsafe fn realloc_fallback(
+    alloc: &System,
+    ptr: *mut u8,
+    old_layout: Layout,
+    new_size: usize,
+) -> *mut u8 {
+    // Docs for GlobalAlloc::realloc require this to be valid:
+    let new_layout = Layout::from_size_align_unchecked(new_size, old_layout.align());
+
+    let new_ptr = GlobalAlloc::alloc(alloc, new_layout);
+    if !new_ptr.is_null() {
+        let size = cmp::min(old_layout.size(), new_size);
+        ptr::copy_nonoverlapping(ptr, new_ptr, size);
+        GlobalAlloc::dealloc(alloc, ptr, old_layout);
+    }
+    new_ptr
+}
+cfg_if::cfg_if! {
+    if #[cfg(target_os = "wasi")] {
+        //wasi提供aligned_alloc的支持
+        unsafe fn aligned_malloc(layout: &Layout) -> *mut u8 {
+            libc::aligned_alloc(layout.align(), layout.size()) as *mut u8
+        }
+    } else {
+        //其他需要用posix_memalign来完成
+        unsafe fn aligned_malloc(layout: &Layout) -> *mut u8 {
+            let mut out = ptr::null_mut();
+            // posix_memalign requires that the alignment be a multiple of `sizeof(void*)`.
+            // Since these are all powers of 2, we can just use max.
+            let align = layout.align().max(crate::mem::size_of::<usize>());
+            let ret = libc::posix_memalign(&mut out, align, layout.size());
+            if ret != 0 { ptr::null_mut() } else { out as *mut u8 }
+        }
+    }
+}
+```
+RUST程序需要处理内存对齐，所以调用了一些不常见的libc内存函数。 
+以下为操作系统无关部分的内存管理实现。
+```rust
 impl System {
     //具体的内存申请实现，与Global类似，可参考前文的解释
     fn alloc_impl(&self, layout: Layout, zeroed: bool) -> Result<NonNull<[u8]>, AllocError> {
@@ -802,94 +891,3 @@ unsafe impl Allocator for System {
 }
 ```
 以上是std库的通用实现,代码位置：library/std/src/alloc.rs
-
-以下是unix操作系统相关的部分，代码位置：library/std/src/sys/unix/alloc.rs  
-不同的操作系统，其内存申请的系统调用都不一致，因此对GlobalAlloc的实现也不一致。  
-类unix的操作系统主要使用了libc的库函数实现操作系统的系统调用。后继还会看到更多的libc中与操作系统交互的代码，分析RUST std库的代码，必须熟练的掌握libc库。
-```rust
-unsafe impl GlobalAlloc for System {
-    unsafe fn alloc(&self, layout: Layout) -> *mut u8 {
-        // 用libc来实现内存申请，这里适配的难点在于对齐的适配，libc的对齐实际上是不能指定的。  
-        // 实际上，在读这个代码前我就从来没有意识到适配会出现这个问题，只有在申请的内存对齐小于MIN_ALIGN以及申请的内存大小大于对齐大小时才能调用libc的malloc做申请.  
-        if layout.align() <= MIN_ALIGN && layout.align() <= layout.size() {
-            libc::malloc(layout.size()) as *mut u8
-        } else {
-            #[cfg(target_os = "macos")]
-            {
-                if layout.align() > (1 << 31) {
-                    return ptr::null_mut();
-                }
-            }
-            //见随后的分析
-            aligned_malloc(&layout)
-        }
-    }
-
-    unsafe fn alloc_zeroed(&self, layout: Layout) -> *mut u8 {
-        // 一样需要处理对齐
-        if layout.align() <= MIN_ALIGN && layout.align() <= layout.size() {
-            libc::calloc(layout.size(), 1) as *mut u8
-        } else {
-            let ptr = self.alloc(layout);
-            //不能用calloc处理时需要清零
-            if !ptr.is_null() {
-                ptr::write_bytes(ptr, 0, layout.size());
-            }
-            ptr
-        }
-    }
-
-    unsafe fn dealloc(&self, ptr: *mut u8, _layout: Layout) {
-        //都使用free做释放
-        libc::free(ptr as *mut libc::c_void)
-    }
-
-    unsafe fn realloc(&self, ptr: *mut u8, layout: Layout, new_size: usize) -> *mut u8 {
-        //对齐处理
-        if layout.align() <= MIN_ALIGN && layout.align() <= new_size {
-            libc::realloc(ptr as *mut libc::c_void, new_size) as *mut u8
-        } else {
-            //无法对齐时的处理，
-            realloc_fallback(self, ptr, layout, new_size)
-        }
-    }
-}
-
-//此函数用于libc的realloc无法支持RUST语义时使用
-pub unsafe fn realloc_fallback(
-    alloc: &System,
-    ptr: *mut u8,
-    old_layout: Layout,
-    new_size: usize,
-) -> *mut u8 {
-    // Docs for GlobalAlloc::realloc require this to be valid:
-    let new_layout = Layout::from_size_align_unchecked(new_size, old_layout.align());
-
-    let new_ptr = GlobalAlloc::alloc(alloc, new_layout);
-    if !new_ptr.is_null() {
-        let size = cmp::min(old_layout.size(), new_size);
-        ptr::copy_nonoverlapping(ptr, new_ptr, size);
-        GlobalAlloc::dealloc(alloc, ptr, old_layout);
-    }
-    new_ptr
-}
-cfg_if::cfg_if! {
-    if #[cfg(target_os = "wasi")] {
-        //wasi提供aligned_alloc的支持
-        unsafe fn aligned_malloc(layout: &Layout) -> *mut u8 {
-            libc::aligned_alloc(layout.align(), layout.size()) as *mut u8
-        }
-    } else {
-        //其他需要用posix_memalign来完成
-        unsafe fn aligned_malloc(layout: &Layout) -> *mut u8 {
-            let mut out = ptr::null_mut();
-            // posix_memalign requires that the alignment be a multiple of `sizeof(void*)`.
-            // Since these are all powers of 2, we can just use max.
-            let align = layout.align().max(crate::mem::size_of::<usize>());
-            let ret = libc::posix_memalign(&mut out, align, layout.size());
-            if ret != 0 { ptr::null_mut() } else { out as *mut u8 }
-        }
-    }
-}
-```
-RUST程序需要处理内存对齐，所以调用了一些不常见的libc内存函数。 
