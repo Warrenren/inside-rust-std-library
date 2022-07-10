@@ -772,3 +772,221 @@ impl OnceState {
     }
 }
 ```
+
+### OnceLock类型分析
+`OnceLock<T>`是`OnceCell<T>`在多线程下的版本，也Once的一个具体的实例。
+提供了多线程的情况下对变量做一次性初始化的解决方案。
+```rust
+pub struct OnceLock<T> {
+    //保证多线程情况下仅做一次初始化
+    once: Once,
+    // 被仅初始化一次的变量 
+    value: UnsafeCell<MaybeUninit<T>>,
+    //因为value是MaybeUninit<T>，所以需要PhantomData向编译器提示
+    //本结构负责T的释放，以便编译器进行drop check
+    _marker: PhantomData<T>,
+}
+
+impl<T> OnceLock<T> {
+    //创建函数
+    pub const fn new() -> OnceLock<T> {
+        OnceLock {
+            once: Once::new(),
+            //获得正确的内存
+            value: UnsafeCell::new(MaybeUninit::uninit()),
+            _marker: PhantomData,
+        }
+    }
+
+    //直接获取内部变量的引用
+    unsafe fn get_unchecked(&self) -> &T {
+        debug_assert!(self.is_initialized());
+        //请参考UnsafeCell的内容
+        (&*self.value.get()).assume_init_ref()
+    }
+
+    //直接获取内部变量的可变引用
+    unsafe fn get_unchecked_mut(&mut self) -> &mut T {
+        debug_assert!(self.is_initialized());
+        (&mut *self.value.get()).assume_init_mut()
+    }
+
+    //仅在初始化过后才能返回内部引用
+    pub fn get(&self) -> Option<&T> {
+        if self.is_initialized() {
+            // Safe b/c checked is_initialized
+            Some(unsafe { self.get_unchecked() })
+        } else {
+            None
+        }
+    }
+
+    //仅在初始化过后才能返回内部变量可变引用
+    pub fn get_mut(&mut self) -> Option<&mut T> {
+        if self.is_initialized() {
+            // Safe b/c checked is_initialized and we have a unique access
+            Some(unsafe { self.get_unchecked_mut() })
+        } else {
+            None
+        }
+    }
+
+    //如果已经初始化，返回内部变量引用，
+    //否则，调用f进行初始化，然后返回内部变量引用
+    pub fn get_or_init<F>(&self, f: F) -> &T
+    where
+        F: FnOnce() -> T,
+    {
+        //Ok::<T,!>(f())将FnOnce()->T转换成了
+        //FnOnce()->Result<T,!>, 
+        //并且只可能返回Ok()的值
+        match self.get_or_try_init(|| Ok::<T, !>(f())) {
+            Ok(val) => val,
+            //编译器分析出不会返回Err，
+        }
+    }
+
+    //可能不成功
+    pub fn get_or_try_init<F, E>(&self, f: F) -> Result<&T, E>
+    where
+        F: FnOnce() -> Result<T, E>,
+    {
+        // 如果已经初始化完成，则返回
+        if let Some(value) = self.get() {
+            return Ok(value);
+        }
+        //见后继方法的分析
+        self.initialize(f)?;
+
+        debug_assert!(self.is_initialized());
+
+        //再次获得内部变量引用并返回
+        Ok(unsafe { self.get_unchecked() })
+    }
+
+    //上面方法的支持方法
+    fn initialize<F, E>(&self, f: F) -> Result<(), E>
+    where
+        F: FnOnce() -> Result<T, E>,
+    {
+        let mut res: Result<(), E> = Ok(());
+        let slot = &self.value;
+
+        //利用once实现仅初始化一次
+        self.once.call_once_force(|p| {
+            match f() {
+                Ok(value) => {
+                    //实现对value的赋值
+                    unsafe { (&mut *slot.get()).write(value) };
+                }
+                Err(e) => {
+                    res = Err(e);
+
+                    //设置once状态为POSIONED
+                    p.poison();
+                }
+            }
+        });
+        res
+    }
+
+    //修改内部变量的值,这个方法的编码技巧值得学习
+    pub fn set(&self, value: T) -> Result<(), T> {
+        //用Some来做是否成功的判断
+        let mut value = Some(value);
+        //此处仅当赋值成功时才会调用value.take().unwrap()
+        self.get_or_init(|| value.take().unwrap());
+        match value {
+            //成功设置了值
+            None => Ok(()),
+            //内部变量已经初始化过了
+            Some(value) => Err(value),
+        }
+    }
+
+
+    //对一个Pin<&Self>做初始化
+    pub(crate) fn get_or_init_pin<F, G>(self: Pin<&Self>, f: F, g: G) -> Pin<&T>
+    where
+        F: FnOnce() -> T,
+        G: FnOnce(Pin<&mut T>),
+    {
+        //判断是否初始化完毕
+        if let Some(value) = self.get_ref().get() {
+            //初始化完毕，创建一个Pin返回
+            return unsafe { Pin::new_unchecked(value) };
+        }
+
+        let slot = &self.value;
+
+        self.once.call_once_force(|_| {
+            let value = f();
+            let value: &mut T = unsafe { (&mut *slot.get()).write(value) };
+            //初始化成功后，调用回调函数g,完成进一步初始化
+            g(unsafe { Pin::new_unchecked(value) });
+        });
+
+        //创建Pin返回
+        unsafe { Pin::new_unchecked(self.get_ref().get_unchecked()) }
+    }
+
+    //消费掉self，返回内部变量
+    pub fn into_inner(mut self) -> Option<T> {
+        //见后继分析
+        self.take()
+    }
+
+    pub fn take(&mut self) -> Option<T> {
+        if self.is_initialized() {
+            //重新创建一个Once
+            self.once = Once::new();
+            //将内部变量读出，并将value设置为默认值
+            unsafe { Some((&mut *self.value.get()).assume_init_read()) }
+        } else {
+            None
+        }
+    }
+
+    fn is_initialized(&self) -> bool {
+        self.once.is_completed()
+    }
+
+}
+```
+### LazyLock类型分析
+`LazyLock<T>`是`Lazy<T>`的多线程版本
+```rust
+//惰性，在解引用时进行初始化
+pub struct LazyLock<T, F = fn() -> T> {
+    //初始化的目的类型
+    cell: OnceLock<T>,
+    //保存初始化闭包
+    init: Cell<Option<F>>,
+}
+
+impl<T, F> LazyLock<T, F> {
+    pub const fn new(f: F) -> LazyLock<T, F> {
+        LazyLock { cell: OnceLock::new(), init: Cell::new(Some(f)) }
+    }
+}
+
+impl<T, F: FnOnce() -> T> LazyLock<T, F> {
+    //执行初始化
+    pub fn force(this: &LazyLock<T, F>) -> &T {
+        //利用OnceLock及闭包进行初始化
+        this.cell.get_or_init(|| match this.init.take() {
+            Some(f) => f(),
+            None => panic!("Lazy instance has previously been poisoned"),
+        })
+    }
+}
+
+//在此方法进行初始化
+impl<T, F: FnOnce() -> T> Deref for LazyLock<T, F> {
+    type Target = T;
+    fn deref(&self) -> &T {
+        LazyLock::force(self)
+    }
+}
+
+```
