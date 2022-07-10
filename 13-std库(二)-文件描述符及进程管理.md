@@ -85,7 +85,10 @@ pub struct OwnedFd {
 }
 
 impl BorrowedFd<'_> {
-    //直接在RawFd上生成BorrowFd,注意，这里的RawFd应该已经被一个OwnedFd所包装,否则这里不正确
+    //直接在RawFd上生成BorrowFd, 这个函数主要用于不适合获得rawfd的所有权，
+    //但需要借用fd时。
+    //例如:标准输入/输出/错误， 或者从C语言调用传入的参数fd，不允许关闭,
+    //如果在这些rawfd的基础上生成OwnedFd，会导致他们被错误关闭
     pub unsafe fn borrow_raw(fd: RawFd) -> Self {
         assert_ne!(fd, u32::MAX as RawFd);
         //这里的PhantomData的赋值令人疑惑，只能认为是编译器的魔术了 
