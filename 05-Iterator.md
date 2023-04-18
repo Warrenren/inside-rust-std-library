@@ -236,7 +236,7 @@ pub trait Step: Clone + PartialOrd + Sized {
 ```
 照此，可以实现一个自定义类型的类型, 并支持Step Trait，如此，即可使用Range符号的Iterator。例如，一个二维的点的range,例如Range<(i32, i32)>的变量((0,0)..(10,10)), 三维的点的range，数列等。
 
-一下是为所有整数类型实现Step的宏：
+以下是为所有整数类型实现Step的宏：
 ```rust
 
 macro_rules! step_identical_methods {
