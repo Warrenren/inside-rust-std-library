@@ -651,7 +651,7 @@ OsString及OStr在unix上的结构定义与RUST的String及str基本一致，代
 std库与core库在内存管理RUST提供的机制是统一的。即Allocator trait 与 GlobalAlloc trait。  
 从std库可以发现RUST为什么将内存管理分成了Allocator及GlobalAlloc两个trait。  
 GlobalAlloc trait是操作系统无关及操作系统相关的界面接口。GlobalAlloc的主要功能就是对操作系统的系统调用进行封装，并完成RUST的内存类型与操作系统的系统调用的类型转换。   
-Allocator是RUST自身的内存管理模块，其他的RUST模块如果有内存需求，同过Allocator triat来完成。Allocator使用GlobalAlloc完成对操作系统的使用。
+Allocator是RUST自身的内存管理模块，其他的RUST模块如果有内存需求，通过Allocator triat来完成。Allocator使用GlobalAlloc完成对操作系统的使用。
 
 std库用System 作为这两个trait的实现载体，core库中用Global重新实现了Allocator，Global没有实现GlobalAlloc,因为Global需要适配非操作系统情况，具体请参考02-内存一章, System的代码如下：  
 
